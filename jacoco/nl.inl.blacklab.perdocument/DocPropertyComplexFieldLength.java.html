@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DocPropertyComplexFieldLength.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.perdocument</a> &gt; <span class="el_source">DocPropertyComplexFieldLength.java</span></div><h1>DocPropertyComplexFieldLength.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.perdocument;
+
+import java.util.Arrays;
+import java.util.List;
+
+import nl.inl.blacklab.index.complex.ComplexFieldUtil;
+import nl.inl.blacklab.search.grouping.HitPropValueInt;
+import nl.inl.blacklab.search.grouping.PropValSerializeUtil;
+
+/**
+ * Retrieves the length of a complex field (i.e. the main &quot;contents&quot; field)
+ * in tokens.
+ */
+public class DocPropertyComplexFieldLength extends DocProperty {
+
+	private String friendlyName;
+
+	private String fieldName;
+
+<span class="nc" id="L35">	public DocPropertyComplexFieldLength(String fieldName, String friendlyName) {</span>
+<span class="nc" id="L36">		this.fieldName = ComplexFieldUtil.lengthTokensField(fieldName);</span>
+<span class="nc" id="L37">		this.friendlyName = friendlyName;</span>
+<span class="nc" id="L38">	}</span>
+
+	public DocPropertyComplexFieldLength(String fieldName) {
+<span class="nc" id="L41">		this(fieldName, fieldName + &quot; length&quot;);</span>
+<span class="nc" id="L42">	}</span>
+
+	@Override
+	public HitPropValueInt get(DocResult result) {
+		try {
+<span class="nc" id="L47">			int subtractFromLength = 1; // TODO: check IndexStructure.alwaysHasClosingToken() to see if we really should subtract 1</span>
+<span class="nc" id="L48">			int length = Integer.parseInt(result.getDocument().get(fieldName)) - subtractFromLength;</span>
+<span class="nc" id="L49">			return new HitPropValueInt(length);</span>
+<span class="nc" id="L50">		} catch (NumberFormatException e) {</span>
+<span class="nc" id="L51">			return new HitPropValueInt(0);</span>
+		}
+	}
+
+	/**
+	 * Compares two docs on this property
+	 * @param a first doc
+	 * @param b second doc
+	 * @return 0 if equal, negative if a &lt; b, positive if a &gt; b.
+	 */
+	@Override
+	public int compare(DocResult a, DocResult b) {
+		try {
+<span class="nc" id="L64">			int ia = Integer.parseInt(a.getDocument().get(fieldName));</span>
+<span class="nc" id="L65">			int ib = Integer.parseInt(b.getDocument().get(fieldName));</span>
+<span class="nc bnc" id="L66" title="All 2 branches missed.">			return reverse ? ib - ia : ia - ib;</span>
+<span class="nc" id="L67">		} catch (NumberFormatException e) {</span>
+<span class="nc" id="L68">			return 0;</span>
+		}
+	}
+
+	@Override
+	public String getName() {
+<span class="nc" id="L74">		return friendlyName;</span>
+	}
+
+	public static DocPropertyComplexFieldLength deserialize(String info) {
+<span class="nc" id="L78">		return new DocPropertyComplexFieldLength(info);</span>
+	}
+
+	@Override
+	public String serialize() {
+<span class="nc" id="L83">		return serializeReverse() + PropValSerializeUtil.combineParts(&quot;fieldlen&quot;, fieldName);</span>
+	}
+	
+	@Override
+	public List&lt;String&gt; getPropNames() {
+<span class="nc" id="L88">		return Arrays.asList(serializeReverse() + getName());</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

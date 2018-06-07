@@ -1,0 +1,301 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ComplexFieldDesc.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.indexstructure</a> &gt; <span class="el_source">ComplexFieldDesc.java</span></div><h1>ComplexFieldDesc.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.search.indexstructure;
+
+import java.io.PrintWriter;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.apache.lucene.index.IndexReader;
+
+import nl.inl.blacklab.index.complex.ComplexFieldUtil;
+import nl.inl.blacklab.index.complex.ComplexFieldUtil.BookkeepFieldType;
+import nl.inl.util.StringUtil;
+
+/** Description of a complex field */
+public class ComplexFieldDesc extends BaseFieldDesc {
+<span class="fc" id="L24">	protected static final Logger logger = LogManager.getLogger(ComplexFieldDesc.class);</span>
+
+	/** This complex field's properties */
+	private Map&lt;String, PropertyDesc&gt; props;
+
+	/** The field's main property */
+	private PropertyDesc mainProperty;
+
+	/** The field's main property name (for storing the main prop name before we have the prop. descriptions) */
+	private String mainPropertyName;
+
+	/** Does the field have an associated content store? */
+	private boolean contentStore;
+
+	/** Is the field length in tokens stored? */
+	private boolean lengthInTokens;
+
+	/** Are there XML tag locations stored for this field? */
+	private boolean xmlTags;
+
+	/** These properties should not get a forward index. */
+<span class="fc" id="L45">	private Set&lt;String&gt; noForwardIndexProps = Collections.emptySet();</span>
+
+<span class="fc" id="L47">    private List&lt;String&gt; displayOrder = new ArrayList&lt;&gt;();</span>
+
+	public ComplexFieldDesc(String name) {
+<span class="fc" id="L50">		super(name);</span>
+<span class="fc" id="L51">		props = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L52">		contentStore = false;</span>
+<span class="fc" id="L53">		lengthInTokens = false;</span>
+<span class="fc" id="L54">		xmlTags = false;</span>
+<span class="fc" id="L55">		mainProperty = null;</span>
+<span class="fc" id="L56">	}</span>
+
+	@Override
+	public String toString() {
+<span class="nc" id="L60">		return fieldName + &quot; [&quot; + StringUtil.join(props.values(), &quot;, &quot;) + &quot;]&quot;;</span>
+	}
+
+	/** Get the set of property names for this complex field.
+	 *
+	 * Properties are returned sorted according to the displayOrder defined in the
+	 * index metadata, if any.
+	 *
+	 * @return the set of properties
+	 */
+	public Collection&lt;String&gt; getProperties() {
+<span class="fc" id="L71">	    List&lt;String&gt; sorted = new ArrayList&lt;&gt;(props.keySet());</span>
+<span class="fc" id="L72">	    List&lt;String&gt; order = displayOrder;</span>
+<span class="pc bpc" id="L73" title="1 of 4 branches missed.">	    if (order == null || order.size() == 0)</span>
+<span class="fc" id="L74">	        order = Arrays.asList(&quot;word&quot;, &quot;lemma&quot;, &quot;pos&quot;); // default ordering</span>
+<span class="fc" id="L75">	    sortProperties(sorted, displayOrder);</span>
+<span class="fc" id="L76">		return sorted;</span>
+	}
+
+    private static void sortProperties(List&lt;String&gt; properties, final List&lt;String&gt; displayOrder) {
+<span class="fc" id="L80">        Collections.sort(properties, new Comparator&lt;String&gt;() {</span>
+            @Override
+            public int compare(String o1, String o2) {
+<span class="fc" id="L83">                int s1 = -1, s2 = -1;</span>
+<span class="pc bpc" id="L84" title="1 of 2 branches missed.">                if (displayOrder != null) {</span>
+<span class="fc" id="L85">                    s1 = displayOrder.indexOf(o1.toLowerCase());</span>
+<span class="fc" id="L86">                    s2 = displayOrder.indexOf(o2.toLowerCase());</span>
+                }
+<span class="pc bpc" id="L88" title="1 of 4 branches missed.">                if (s1 == -1 &amp;&amp; s2 == -1) {</span>
+                    // Not defined in displayOrder; just sort alphabetically
+<span class="fc" id="L90">                    return o1.compareTo(o2);</span>
+                }
+                // One or both were defined in the displayOrder
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">                if (s1 == -1)</span>
+<span class="nc" id="L94">                    return 1;</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">                if (s2 == -1)</span>
+<span class="fc" id="L96">                    return -1;</span>
+<span class="nc" id="L97">                return s1 - s2;</span>
+            }
+        });
+<span class="fc" id="L100">    }</span>
+
+	/**
+	 * Get a property description.
+	 * @param name name of the property
+	 * @return the description
+	 */
+	public PropertyDesc getPropertyDesc(String name) {
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">		if (!props.containsKey(name))</span>
+<span class="nc" id="L109">			throw new IllegalArgumentException(&quot;Property '&quot; + name + &quot;' not found!&quot;);</span>
+<span class="fc" id="L110">		return props.get(name);</span>
+	}
+
+	public boolean hasContentStore() {
+<span class="fc" id="L114">		return contentStore;</span>
+	}
+
+	public boolean hasLengthTokens() {
+<span class="nc" id="L118">		return lengthInTokens;</span>
+	}
+
+	/**
+	 * Returns the Lucene field that contains the length (in tokens)
+	 * of this field, or null if there is no such field.
+	 *
+	 * @return the field name or null if lengths weren't stored
+	 */
+	public String getTokenLengthField() {
+<span class="nc bnc" id="L128" title="All 2 branches missed.">		return lengthInTokens ? ComplexFieldUtil.lengthTokensField(fieldName) : null;</span>
+	}
+
+	public boolean hasXmlTags() {
+<span class="nc" id="L132">		return xmlTags;</span>
+	}
+
+	/**
+	 * Checks if this field has a &quot;punctuation&quot; forward index, storing all the
+	 * intra-word characters (whitespace and punctuation) so we can build concordances
+	 * directly from the forward indices.
+	 * @return true iff there's a punctuation forward index.
+	 */
+	public boolean hasPunctuation() {
+<span class="fc" id="L142">		PropertyDesc pd = props.get(ComplexFieldUtil.PUNCTUATION_PROP_NAME);</span>
+<span class="pc bpc" id="L143" title="2 of 4 branches missed.">		return pd != null &amp;&amp; pd.hasForwardIndex();</span>
+	}
+
+	/**
+	 * An index field was found and split into parts, and belongs
+	 * to this complex field. See what type it is and update our
+	 * fields accordingly.
+	 * @param parts parts of the Lucene index field name
+	 */
+	void processIndexField(String[] parts) {
+
+		// See if this is a builtin bookkeeping field or a property.
+<span class="pc bpc" id="L155" title="1 of 2 branches missed.">		if (parts.length == 1)</span>
+<span class="nc" id="L156">			throw new IllegalArgumentException(&quot;Complex field with just basename given, error!&quot;);</span>
+
+<span class="fc" id="L158">		String propPart = parts[1];</span>
+
+<span class="pc bpc" id="L160" title="1 of 4 branches missed.">		if (propPart == null &amp;&amp; parts.length &gt;= 3) {</span>
+			// Bookkeeping field
+<span class="fc" id="L162">			BookkeepFieldType bookkeepingFieldIndex = ComplexFieldUtil</span>
+<span class="fc" id="L163">					.whichBookkeepingSubfield(parts[3]);</span>
+<span class="pc bpc" id="L164" title="2 of 4 branches missed.">			switch (bookkeepingFieldIndex) {</span>
+			case CONTENT_ID:
+				// Complex field has content store
+<span class="fc" id="L167">				contentStore = true;</span>
+<span class="fc" id="L168">				return;</span>
+			case FORWARD_INDEX_ID:
+				// Main property has forward index
+<span class="nc" id="L171">				getOrCreateProperty(&quot;&quot;).setForwardIndex(true);</span>
+<span class="nc" id="L172">				return;</span>
+			case LENGTH_TOKENS:
+				// Complex field has length in tokens
+<span class="fc" id="L175">				lengthInTokens = true;</span>
+<span class="fc" id="L176">				return;</span>
+			}
+<span class="nc" id="L178">			throw new RuntimeException();</span>
+		}
+
+		// Not a bookkeeping field; must be a property (alternative).
+<span class="fc" id="L182">		PropertyDesc pd = getOrCreateProperty(propPart);</span>
+<span class="fc bfc" id="L183" title="All 2 branches covered.">		if (pd.getName().equals(ComplexFieldUtil.START_TAG_PROP_NAME))</span>
+<span class="fc" id="L184">			xmlTags = true;</span>
+<span class="pc bpc" id="L185" title="1 of 2 branches missed.">		if (parts.length &gt; 2) {</span>
+<span class="fc bfc" id="L186" title="All 2 branches covered.">			if (parts[2] != null) {</span>
+				// Alternative
+<span class="fc" id="L188">				pd.addAlternative(parts[2]);</span>
+			} else {
+				// Property bookkeeping field
+<span class="pc bpc" id="L191" title="1 of 2 branches missed.">				if (parts[3].equals(ComplexFieldUtil.FORWARD_INDEX_ID_BOOKKEEP_NAME)) {</span>
+<span class="fc" id="L192">					pd.setForwardIndex(true);</span>
+				} else
+<span class="nc" id="L194">					throw new IllegalArgumentException(&quot;Unknown property bookkeeping field &quot; + parts[3]);</span>
+			}
+		}
+<span class="fc" id="L197">	}</span>
+
+	PropertyDesc getOrCreateProperty(String name) {
+<span class="fc" id="L200">		PropertyDesc pd = props.get(name);</span>
+<span class="fc bfc" id="L201" title="All 2 branches covered.">		if (pd == null) {</span>
+<span class="fc" id="L202">			pd = new PropertyDesc(name);</span>
+<span class="fc" id="L203">			props.put(name, pd);</span>
+		}
+<span class="fc" id="L205">		return pd;</span>
+	}
+
+    public boolean hasProperty(String fieldName) {
+<span class="nc" id="L209">        return props.containsKey(fieldName);</span>
+    }
+	
+	void putProperty(PropertyDesc propDesc) {
+<span class="fc" id="L213">	    props.put(propDesc.getName(), propDesc);</span>
+<span class="fc" id="L214">	}</span>
+
+	public PropertyDesc getMainProperty() {
+<span class="pc bpc" id="L217" title="3 of 4 branches missed.">		if (mainProperty == null &amp;&amp; mainPropertyName != null) {</span>
+			// Set during indexing, when we don't actually have property information
+			// available (because the index is being built up, so we couldn't detect
+			// it on startup).
+			// Just create a property with the correct name, or retrieve it if it
+		    // was defined in the indexmetadata.
+<span class="nc" id="L223">			mainProperty = getOrCreateProperty(mainPropertyName);</span>
+<span class="nc" id="L224">			mainPropertyName = null;</span>
+		}
+<span class="fc" id="L226">		return mainProperty;</span>
+	}
+
+	public void detectMainProperty(IndexReader reader) {
+<span class="pc bpc" id="L230" title="2 of 4 branches missed.">		if (mainPropertyName != null &amp;&amp; mainPropertyName.length() &gt; 0) {</span>
+			// Main property name was set from index metadata before we
+			// had the property desc. available; use that now and don't do
+			// any actual detecting.
+<span class="fc" id="L234">			mainProperty = getPropertyDesc(mainPropertyName);</span>
+<span class="fc" id="L235">			mainPropertyName = null;</span>
+			//return;
+		}
+
+<span class="fc" id="L239">		PropertyDesc firstProperty = null;</span>
+<span class="pc bpc" id="L240" title="1 of 2 branches missed.">		for (PropertyDesc pr: props.values()) {</span>
+<span class="fc bfc" id="L241" title="All 2 branches covered.">			if (firstProperty == null)</span>
+<span class="fc" id="L242">				firstProperty = pr;</span>
+<span class="fc bfc" id="L243" title="All 2 branches covered.">			if (pr.detectOffsetsAlternative(reader, fieldName)) {</span>
+				// This field has offsets stored. Must be the main prop field.
+<span class="pc bpc" id="L245" title="1 of 2 branches missed.">				if (mainProperty == null) {</span>
+<span class="nc" id="L246">					mainProperty = pr;</span>
+				} else {
+					// Was already set from metadata file; same..?
+<span class="pc bpc" id="L249" title="1 of 2 branches missed.">					if (mainProperty != pr) {</span>
+<span class="nc" id="L250">						logger.warn(&quot;Metadata says main property for field &quot; + getName() + &quot; is &quot; + mainProperty.getName() + &quot;, but offsets are stored in &quot; + pr.getName());</span>
+					}
+				}
+<span class="fc" id="L253">				return;</span>
+			}
+<span class="fc" id="L255">		}</span>
+
+		// None have offsets; just assume the first property is the main one
+		// (note that not having any offsets makes it impossible to highlight the
+		// original content, but this may not be an issue. We probably need
+		// a better way to keep track of the main property)
+<span class="nc" id="L261">		logger.warn(&quot;No property with offsets found; assume first property (&quot; + firstProperty.getName() + &quot;) is main property&quot;);</span>
+<span class="nc" id="L262">		mainProperty = firstProperty;</span>
+
+		// throw new RuntimeException(
+		// &quot;No main property (with char. offsets) detected for complex field &quot; + fieldName);
+<span class="nc" id="L266">	}</span>
+
+	public void print(PrintWriter out) {
+<span class="nc bnc" id="L269" title="All 2 branches missed.">		for (PropertyDesc pr: props.values()) {</span>
+<span class="nc" id="L270">			out.println(&quot;  * Property: &quot; + pr.toString());</span>
+<span class="nc" id="L271">		}</span>
+<span class="nc bnc" id="L272" title="All 2 branches missed.">		out.println(&quot;  * &quot; + (contentStore ? &quot;Includes&quot; : &quot;No&quot;) + &quot; content store&quot;);</span>
+<span class="nc bnc" id="L273" title="All 2 branches missed.">		out.println(&quot;  * &quot; + (xmlTags ? &quot;Includes&quot; : &quot;No&quot;) + &quot; XML tag index&quot;);</span>
+<span class="nc bnc" id="L274" title="All 2 branches missed.">		out.println(&quot;  * &quot; + (lengthInTokens ? &quot;Includes&quot; : &quot;No&quot;) + &quot; document length field&quot;);</span>
+<span class="nc" id="L275">	}</span>
+
+	public void setMainPropertyName(String mainPropertyName) {
+<span class="fc" id="L278">		this.mainPropertyName = mainPropertyName;</span>
+<span class="fc bfc" id="L279" title="All 2 branches covered.">		if (props.containsKey(mainPropertyName))</span>
+<span class="fc" id="L280">			mainProperty = props.get(mainPropertyName);</span>
+<span class="fc" id="L281">	}</span>
+
+	public void setNoForwardIndexProps(Set&lt;String&gt; noForwardIndexProps) {
+<span class="nc" id="L284">		this.noForwardIndexProps = noForwardIndexProps;</span>
+<span class="nc" id="L285">	}</span>
+
+	public Set&lt;String&gt; getNoForwardIndexProps() {
+<span class="fc" id="L288">		return noForwardIndexProps;</span>
+	}
+
+    public void setDisplayOrder(List&lt;String&gt; displayOrder) {
+<span class="fc" id="L292">        this.displayOrder.clear();</span>
+<span class="fc" id="L293">        this.displayOrder.addAll(displayOrder);</span>
+<span class="fc" id="L294">    }</span>
+
+    public List&lt;String&gt; getDisplayOrder() {
+<span class="fc" id="L297">        return displayOrder;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

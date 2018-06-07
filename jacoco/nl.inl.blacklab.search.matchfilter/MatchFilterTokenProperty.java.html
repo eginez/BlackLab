@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MatchFilterTokenProperty.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.matchfilter</a> &gt; <span class="el_source">MatchFilterTokenProperty.java</span></div><h1>MatchFilterTokenProperty.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.search.matchfilter;
+
+import nl.inl.blacklab.search.Span;
+import nl.inl.blacklab.search.fimatch.ForwardIndexAccessor;
+import nl.inl.blacklab.search.fimatch.ForwardIndexDocument;
+import nl.inl.blacklab.search.lucene.HitQueryContext;
+
+public class MatchFilterTokenProperty extends MatchFilter {
+	private String groupName;
+
+	private int groupIndex;
+
+	private String propertyName;
+
+<span class="fc" id="L15">	private int propIndex = -1;</span>
+
+<span class="fc" id="L17">	public MatchFilterTokenProperty(String label, String propertyName) {</span>
+<span class="fc" id="L18">		this.groupName = label;</span>
+<span class="fc" id="L19">		this.propertyName = propertyName;</span>
+<span class="fc" id="L20">	}</span>
+
+	@Override
+	public String toString() {
+<span class="nc bnc" id="L24" title="All 2 branches missed.">		return groupName + (propertyName == null ? &quot;&quot; : &quot;.&quot; + propertyName);</span>
+	}
+
+	@Override
+	public int hashCode() {
+<span class="nc" id="L29">		final int prime = 31;</span>
+<span class="nc" id="L30">		int result = 1;</span>
+<span class="nc bnc" id="L31" title="All 2 branches missed.">		result = prime * result + ((groupName == null) ? 0 : groupName.hashCode());</span>
+<span class="nc bnc" id="L32" title="All 2 branches missed.">		result = prime * result + ((propertyName == null) ? 0 : propertyName.hashCode());</span>
+<span class="nc" id="L33">		return result;</span>
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+<span class="nc bnc" id="L38" title="All 2 branches missed.">		if (this == obj)</span>
+<span class="nc" id="L39">			return true;</span>
+<span class="nc bnc" id="L40" title="All 2 branches missed.">		if (obj == null)</span>
+<span class="nc" id="L41">			return false;</span>
+<span class="nc bnc" id="L42" title="All 2 branches missed.">		if (getClass() != obj.getClass())</span>
+<span class="nc" id="L43">			return false;</span>
+<span class="nc" id="L44">		MatchFilterTokenProperty other = (MatchFilterTokenProperty) obj;</span>
+<span class="nc bnc" id="L45" title="All 2 branches missed.">		if (groupName == null) {</span>
+<span class="nc bnc" id="L46" title="All 2 branches missed.">			if (other.groupName != null)</span>
+<span class="nc" id="L47">				return false;</span>
+<span class="nc bnc" id="L48" title="All 2 branches missed.">		} else if (!groupName.equals(other.groupName))</span>
+<span class="nc" id="L49">			return false;</span>
+<span class="nc bnc" id="L50" title="All 2 branches missed.">		if (propertyName == null) {</span>
+<span class="nc bnc" id="L51" title="All 2 branches missed.">			if (other.propertyName != null)</span>
+<span class="nc" id="L52">				return false;</span>
+<span class="nc bnc" id="L53" title="All 2 branches missed.">		} else if (!propertyName.equals(other.propertyName))</span>
+<span class="nc" id="L54">			return false;</span>
+<span class="nc" id="L55">		return true;</span>
+	}
+
+	@Override
+	public void setHitQueryContext(HitQueryContext context) {
+<span class="fc" id="L60">		groupIndex = context.registerCapturedGroup(groupName);</span>
+<span class="fc" id="L61">	}</span>
+
+	@Override
+	public ConstraintValue evaluate(ForwardIndexDocument fiDoc, Span[] capturedGroups) {
+<span class="fc" id="L65">		Span span = capturedGroups[groupIndex];</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">		if (span == null)</span>
+<span class="fc" id="L67">			return ConstraintValue.undefined();</span>
+<span class="fc" id="L68">		int tokenPosition = span.start;</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">		if (propIndex &lt; 0)</span>
+<span class="fc" id="L70">			return ConstraintValue.get(tokenPosition);</span>
+<span class="fc" id="L71">		int termId = fiDoc.getToken(propIndex, tokenPosition);</span>
+<span class="fc" id="L72">		String term = fiDoc.getTermString(propIndex, termId);</span>
+<span class="fc" id="L73">		return ConstraintValue.get(term);</span>
+	}
+
+	@Override
+	public void lookupPropertyIndices(ForwardIndexAccessor fiAccessor) {
+<span class="fc bfc" id="L78" title="All 2 branches covered.">		if (propertyName != null)</span>
+<span class="fc" id="L79">			propIndex = fiAccessor.getPropertyNumber(propertyName);</span>
+<span class="fc" id="L80">	}</span>
+
+	@Override
+	public MatchFilter rewrite() {
+<span class="fc" id="L84">		return this;</span>
+	}
+
+	public MatchFilter matchTokenString(String str, boolean caseSensitive, boolean diacSensitive) {
+<span class="fc" id="L88">		return new MatchFilterTokenPropertyEqualsString(groupName, propertyName, str, caseSensitive, diacSensitive);</span>
+	}
+
+	public MatchFilter matchOtherTokenSameProperty(String otherGroupName, boolean caseSensitive, boolean diacSensitive) {
+<span class="fc" id="L92">		return new MatchFilterSameTokens(groupName, otherGroupName, propertyName, caseSensitive, diacSensitive);</span>
+	}
+
+	public boolean hasProperty() {
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">		return propertyName != null;</span>
+	}
+
+	public String getPropertyName() {
+<span class="fc" id="L100">		return propertyName;</span>
+	}
+
+	public String getGroupName() {
+<span class="fc" id="L104">		return groupName;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

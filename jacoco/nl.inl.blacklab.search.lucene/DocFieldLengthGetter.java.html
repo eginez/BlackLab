@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DocFieldLengthGetter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">DocFieldLengthGetter.java</span></div><h1>DocFieldLengthGetter.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.search.lucene;
+
+import java.io.Closeable;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
+
+import org.apache.lucene.document.Document;
+import org.apache.lucene.index.LeafReader;
+import org.apache.lucene.index.NumericDocValues;
+import org.apache.lucene.index.Terms;
+import org.apache.lucene.index.TermsEnum;
+import org.apache.lucene.uninverting.UninvertingReader;
+
+import nl.inl.blacklab.index.complex.ComplexFieldUtil;
+import nl.inl.blacklab.search.Searcher;
+
+/**
+ * Used to get the field length in tokens for a document.
+ *
+ * This is used by SpanQueryNot and SpanQueryExpansion to make sure
+ * we don't go beyond the document end.
+ */
+class DocFieldLengthGetter implements Closeable {
+	/** We check some cache entries to see if document lengths were saved in the index or not.
+	 * (These days, they should always be saved, but we do this in case someone uses an old index)
+	 */
+	private static final int NUMBER_OF_CACHE_ENTRIES_TO_CHECK = 1000;
+
+	/** The Lucene index reader, for querying field length */
+	private LeafReader reader;
+
+	/** For testing, we don't have an IndexReader available, so we use test values */
+<span class="fc" id="L34">	private boolean useTestValues = false;</span>
+
+	/** Did we check if the field length is stored separately in the index? */
+<span class="fc" id="L37">	private boolean lookedForLengthField = false;</span>
+
+	/** Is the field length stored separately in the index? */
+<span class="fc" id="L40">	private boolean lengthFieldIsStored = false;</span>
+
+	/** Name of the field we're searching */
+	private String fieldName;
+
+	/** Field name to check for the length of the field in tokens */
+	private String lengthTokensFieldName;
+
+	/** Lengths may have been cached using FieldCache */
+	private NumericDocValues cachedFieldLengths;
+
+	private UninvertingReader uninv;
+
+<span class="fc" id="L53">	public DocFieldLengthGetter(LeafReader reader, String fieldName) {</span>
+<span class="fc" id="L54">		this.reader = reader;</span>
+<span class="fc" id="L55">		this.fieldName = fieldName;</span>
+<span class="fc" id="L56">		lengthTokensFieldName = ComplexFieldUtil.lengthTokensField(fieldName);</span>
+
+<span class="fc bfc" id="L58" title="All 2 branches covered.">		if (fieldName.equals(Searcher.DEFAULT_CONTENTS_FIELD_NAME)) {</span>
+			// Cache the lengths for this field to speed things up
+			try {
+				// NOTE: UninvertingReader is an IndexReader that can get docValues even when they weren't explicitly indexed
+<span class="fc" id="L62">				Map&lt;String, UninvertingReader.Type&gt; fields = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L63">				fields.put(lengthTokensFieldName, UninvertingReader.Type.INTEGER);</span>
+<span class="fc" id="L64">				uninv = new UninvertingReader(reader, fields);</span>
+<span class="fc" id="L65">				cachedFieldLengths = uninv.getNumericDocValues(lengthTokensFieldName); //FieldCache.DEFAULT.getInts(reader, lengthTokensFieldName, true);</span>
+
+				// Check if the cache was retrieved OK
+<span class="fc" id="L68">				boolean allZeroes = true;</span>
+<span class="fc" id="L69">				int numToCheck = Math.min(NUMBER_OF_CACHE_ENTRIES_TO_CHECK, reader.maxDoc());</span>
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">				for (int i = 0; i &lt; numToCheck ; i++) {</span>
+					// (NOTE: we don't check if document wasn't deleted, but that shouldn't matter here)
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">					if (cachedFieldLengths.get(i) != 0) {</span>
+<span class="fc" id="L73">						allZeroes = false;</span>
+<span class="fc" id="L74">						break;</span>
+					}
+				}
+<span class="pc bpc" id="L77" title="1 of 2 branches missed.">				if (allZeroes) {</span>
+					// Tokens lengths weren't saved in the index, skip cache
+<span class="nc" id="L79">					cachedFieldLengths = null;</span>
+				}
+<span class="nc" id="L81">			} catch (IOException e) {</span>
+<span class="nc" id="L82">				throw new RuntimeException(e);</span>
+<span class="fc" id="L83">			}</span>
+		}
+<span class="fc" id="L85">	}</span>
+
+	@Override
+	public void close() {
+<span class="nc bnc" id="L89" title="All 2 branches missed.">		if (uninv != null) {</span>
+			try {
+<span class="nc" id="L91">				uninv.close();</span>
+<span class="nc" id="L92">			} catch (IOException e) {</span>
+<span class="nc" id="L93">				throw new RuntimeException(e);</span>
+<span class="nc" id="L94">			}</span>
+		}
+<span class="nc" id="L96">	}</span>
+
+	/** For testing, we don't have an IndexReader available, so we use test values.
+	 *
+	 *  The test values are: there are 3 documents (0, 1 and 2) and each is 5 tokens long.
+	 *
+	 *  @param test whether or not we want to use test values
+	 */
+	public void setTest(boolean test) {
+<span class="fc" id="L105">		this.useTestValues = test;</span>
+<span class="fc" id="L106">	}</span>
+
+	/**
+	 * Get the number of indexed tokens for our field in the specified document.
+	 *
+	 * Used to produce all tokens that aren't hits in our clause.
+	 *
+	 * NOTE: this includes the &quot;dummy&quot; token at the end that may contain punctuation
+	 * after the last word! You must subtract 1 for indices that have these dummy
+	 * tokens (all recent indices do).
+	 *
+	 * @param doc the document
+	 * @return the number of tokens
+	 */
+	public int getFieldLength(int doc) {
+
+<span class="fc bfc" id="L122" title="All 2 branches covered.">		if (useTestValues)</span>
+<span class="fc" id="L123">			return 5; // while testing, all documents have same length</span>
+
+<span class="fc bfc" id="L125" title="All 2 branches covered.">		if (cachedFieldLengths != null) {</span>
+<span class="fc" id="L126">			return (int)cachedFieldLengths.get(doc);</span>
+		}
+
+<span class="pc bpc" id="L129" title="1 of 4 branches missed.">		if (!lookedForLengthField || lengthFieldIsStored)  {</span>
+			// We either know the field length is stored in the index,
+			// or we haven't checked yet and should do so now.
+			try {
+<span class="fc" id="L133">				Document document = reader.document(doc);</span>
+<span class="fc" id="L134">				String strLength = document.get(lengthTokensFieldName);</span>
+<span class="fc" id="L135">				lookedForLengthField = true;</span>
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">				if (strLength != null) {</span>
+					// Yes, found the field length stored in the index.
+					// Parse and return it.
+<span class="nc" id="L139">					lengthFieldIsStored = true;</span>
+<span class="nc" id="L140">					return Integer.parseInt(strLength);</span>
+				}
+				// No, length field is not stored in the index. Always use term vector from now on.
+<span class="fc" id="L143">				lengthFieldIsStored = false;</span>
+<span class="nc" id="L144">			} catch (Exception e) {</span>
+<span class="nc" id="L145">				throw new RuntimeException(e);</span>
+<span class="fc" id="L146">			}</span>
+		}
+
+		// Calculate the total field length by adding all the term frequencies.
+		// (much slower)
+		try {
+<span class="fc" id="L152">			Terms vector = reader.getTermVector(doc, fieldName);</span>
+<span class="fc" id="L153">			TermsEnum termsEnum = vector.iterator();</span>
+<span class="fc" id="L154">			int termFreq = 0;</span>
+<span class="fc bfc" id="L155" title="All 2 branches covered.">			while (termsEnum.next() != null) {</span>
+<span class="fc" id="L156">			    termFreq += termsEnum.totalTermFreq();</span>
+			}
+<span class="fc" id="L158">			return termFreq;</span>
+
+<span class="nc" id="L160">		} catch (IOException e) {</span>
+<span class="nc" id="L161">			throw new RuntimeException(e);</span>
+		}
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

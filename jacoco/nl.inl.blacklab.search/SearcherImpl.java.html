@@ -1,0 +1,721 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SearcherImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search</a> &gt; <span class="el_source">SearcherImpl.java</span></div><h1>SearcherImpl.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search;
+
+import java.io.Closeable;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.AbstractSet;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Set;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.miscellaneous.PerFieldAnalyzerWrapper;
+import org.apache.lucene.document.Document;
+import org.apache.lucene.index.CorruptIndexException;
+import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.MultiFields;
+import org.apache.lucene.index.PostingsEnum;
+import org.apache.lucene.index.TermsEnum;
+import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.Scorer;
+import org.apache.lucene.search.Weight;
+import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.FSDirectory;
+import org.apache.lucene.store.LockObtainFailedException;
+import org.apache.lucene.util.Bits;
+
+import nl.inl.blacklab.analysis.BLDutchAnalyzer;
+import nl.inl.blacklab.externalstorage.ContentStore;
+import nl.inl.blacklab.forwardindex.ForwardIndex;
+import nl.inl.blacklab.index.complex.ComplexFieldUtil;
+import nl.inl.blacklab.index.config.ConfigInputFormat;
+import nl.inl.blacklab.search.indexstructure.ComplexFieldDesc;
+import nl.inl.blacklab.search.indexstructure.FieldType;
+import nl.inl.blacklab.search.indexstructure.IndexStructure;
+import nl.inl.blacklab.search.indexstructure.MetadataFieldDesc;
+import nl.inl.blacklab.search.indexstructure.PropertyDesc;
+import nl.inl.util.ExUtil;
+import nl.inl.util.LuceneUtil;
+import nl.inl.util.VersionFile;
+
+/**
+ * The main interface into the BlackLab library. The Searcher object is instantiated with an open
+ * Lucene IndexReader and accesses that index through special methods.
+ *
+ * The Searcher object knows how to access the original contents of indexed fields, either because
+ * the field is a stored field in the Lucene index, or because it knows where else the content can
+ * be found (such as in fixed-length-encoding files, for fast random access).
+ *
+ * Searcher is thread-safe: a single instance may be shared to perform a number of simultaneous
+ * searches.
+ */
+public class SearcherImpl extends Searcher implements Closeable {
+
+<span class="fc" id="L83">	protected static final Logger logger = LogManager.getLogger(SearcherImpl.class);</span>
+
+	/**
+	 * The Lucene index reader
+	 */
+	IndexReader reader;
+
+	/**
+	 * The Lucene IndexSearcher, for dealing with non-Span queries (for per-document scoring)
+	 */
+	private IndexSearcher indexSearcher;
+
+	/**
+	 * Directory where our index resides
+	 */
+	private File indexLocation;
+
+	/** If true, we've just created a new index. New indices cannot be searched, only added to. */
+<span class="fc" id="L101">	private boolean isEmptyIndex = false;</span>
+
+	/** The index writer. Only valid in indexMode. */
+<span class="fc" id="L104">	private IndexWriter indexWriter = null;</span>
+
+    /**
+     * Open an index.
+     *
+     * @param indexDir the index directory
+     * @param indexMode if true, open in index mode; if false, open in search mode.
+     * @param createNewIndex if true, delete existing index in this location if it exists.
+     * @param config input format config to use as template for index structure / metadata
+     *   (if creating new index)
+     * @throws IOException
+     */
+    SearcherImpl(File indexDir, boolean indexMode, boolean createNewIndex, ConfigInputFormat config)
+<span class="fc" id="L117">            throws IOException {</span>
+<span class="fc" id="L118">        this.indexMode = indexMode;</span>
+
+        try {
+<span class="fc" id="L121">            ConfigReader.applyConfig(this);</span>
+<span class="nc" id="L122">        } catch(IllegalArgumentException e) {</span>
+<span class="nc" id="L123">            throw new IllegalArgumentException(e.getMessage() + &quot; (BlackLab configuration file)&quot;, e.getCause());</span>
+<span class="fc" id="L124">        }</span>
+
+<span class="fc" id="L126">        openIndex(indexDir, indexMode, createNewIndex);</span>
+
+        // Determine the index structure
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">        if (traceIndexOpening) logger.debug(&quot;  Determining index structure...&quot;);</span>
+<span class="fc" id="L130">        indexStructure = new IndexStructure(reader, indexDir, createNewIndex, config);</span>
+
+<span class="fc" id="L132">        finishOpeningIndex(indexDir, indexMode, createNewIndex);</span>
+<span class="fc" id="L133">    }</span>
+
+	/**
+	 * Open an index.
+	 *
+	 * @param indexDir the index directory
+	 * @param indexMode if true, open in index mode; if false, open in search mode.
+	 * @param createNewIndex if true, delete existing index in this location if it exists.
+	 * @param indexTemplateFile index template file to use to create index
+     * @param config input format config to use as template for index structure / metadata
+	 *   (if creating new index)
+	 * @throws IOException
+	 */
+	SearcherImpl(File indexDir, boolean indexMode, boolean createNewIndex, File indexTemplateFile)
+<span class="fc" id="L147">			throws IOException {</span>
+<span class="fc" id="L148">		this.indexMode = indexMode;</span>
+
+<span class="fc" id="L150">        ConfigReader.applyConfig(this);</span>
+
+<span class="fc" id="L152">		openIndex(indexDir, indexMode, createNewIndex);</span>
+
+		// Determine the index structure
+<span class="pc bpc" id="L155" title="1 of 2 branches missed.">		if (traceIndexOpening) logger.debug(&quot;  Determining index structure...&quot;);</span>
+<span class="fc" id="L156">		indexStructure = new IndexStructure(reader, indexDir, createNewIndex, indexTemplateFile);</span>
+
+<span class="fc" id="L158">		finishOpeningIndex(indexDir, indexMode, createNewIndex);</span>
+<span class="fc" id="L159">	}</span>
+
+    protected void openIndex(File indexDir, boolean indexMode, boolean createNewIndex)
+            throws IOException, CorruptIndexException, LockObtainFailedException {
+<span class="pc bpc" id="L163" title="1 of 4 branches missed.">        if (!indexMode &amp;&amp; createNewIndex)</span>
+<span class="nc" id="L164">			throw new RuntimeException(&quot;Cannot create new index, not in index mode&quot;);</span>
+
+<span class="fc bfc" id="L166" title="All 2 branches covered.">		if (!createNewIndex) {</span>
+<span class="pc bpc" id="L167" title="3 of 4 branches missed.">			if (!indexMode || VersionFile.exists(indexDir)) {</span>
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">				if (!isIndex(indexDir)) {</span>
+<span class="nc" id="L169">					throw new IllegalArgumentException(&quot;Not a BlackLab index, or wrong version! &quot;</span>
+<span class="nc" id="L170">							+ VersionFile.report(indexDir));</span>
+				}
+			}
+		}
+
+<span class="pc bpc" id="L175" title="1 of 2 branches missed.">		if (traceIndexOpening) logger.debug(&quot;Constructing Searcher...&quot;);</span>
+
+<span class="fc bfc" id="L177" title="All 2 branches covered.">		if (indexMode) {</span>
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">			if (traceIndexOpening) logger.debug(&quot;  Opening IndexWriter...&quot;);</span>
+<span class="fc" id="L179">			indexWriter = openIndexWriter(indexDir, createNewIndex, null);</span>
+<span class="pc bpc" id="L180" title="1 of 2 branches missed.">			if (traceIndexOpening) logger.debug(&quot;  Opening corresponding IndexReader...&quot;);</span>
+<span class="fc" id="L181">			reader = DirectoryReader.open(indexWriter, false);</span>
+		} else {
+			// Open Lucene index
+<span class="pc bpc" id="L184" title="1 of 2 branches missed.">			if (traceIndexOpening) logger.debug(&quot;  Following symlinks...&quot;);</span>
+<span class="fc" id="L185">			Path indexPath = indexDir.toPath();</span>
+<span class="pc bpc" id="L186" title="1 of 2 branches missed.">			while (Files.isSymbolicLink(indexPath)) {</span>
+				// Resolve symlinks, as FSDirectory.open() can't handle them
+<span class="nc" id="L188">				indexPath = Files.readSymbolicLink(indexPath);</span>
+			}
+<span class="pc bpc" id="L190" title="1 of 2 branches missed.">			if (traceIndexOpening) logger.debug(&quot;  Opening IndexReader...&quot;);</span>
+<span class="fc" id="L191">			reader = DirectoryReader.open(FSDirectory.open(indexPath));</span>
+		}
+<span class="fc" id="L193">		this.indexLocation = indexDir;</span>
+
+//      logger.debug(&quot;TOTAL TERM FREQ contents%lemma@i: &quot; + reader.getSumTotalTermFreq(&quot;contents%lemma@i&quot;));
+//      logger.debug(&quot;TOTAL TERM FREQ test: &quot; + reader.getSumTotalTermFreq(&quot;test&quot;));
+
+<span class="fc" id="L198">    }</span>
+
+	protected void finishOpeningIndex(File indexDir, boolean indexMode, boolean createNewIndex)
+            throws IOException, CorruptIndexException, LockObtainFailedException {
+<span class="fc" id="L202">        isEmptyIndex = indexStructure.isNewIndex();</span>
+
+    	// TODO: we need to create the analyzer before opening the index, because
+    	//   we can't change the analyzer attached to the IndexWriter (and passing a different
+    	//   analyzer in addDocument() went away in Lucene 5.x).
+    	//   For now, if we're in index mode, we re-open the index with the analyzer we determined.
+<span class="pc bpc" id="L208" title="1 of 2 branches missed.">    	if (traceIndexOpening) logger.debug(&quot;  Creating analyzers...&quot;);</span>
+<span class="fc" id="L209">    	createAnalyzers();</span>
+
+<span class="fc bfc" id="L211" title="All 2 branches covered.">    	if (indexMode) {</span>
+    		// Re-open the IndexWriter with the analyzer we've created above (see comment above)
+<span class="pc bpc" id="L213" title="1 of 2 branches missed.">    		if (traceIndexOpening) logger.debug(&quot;  Re-opening IndexWriter with newly created analyzers...&quot;);</span>
+<span class="fc" id="L214">    		reader.close();</span>
+<span class="fc" id="L215">    		reader = null;</span>
+<span class="fc" id="L216">    		indexWriter.close();</span>
+<span class="fc" id="L217">    		indexWriter = null;</span>
+<span class="fc" id="L218">    		indexWriter = openIndexWriter(indexDir, createNewIndex, analyzer);</span>
+<span class="pc bpc" id="L219" title="1 of 2 branches missed.">    		if (traceIndexOpening) logger.debug(&quot;  IndexReader too...&quot;);</span>
+<span class="fc" id="L220">    		reader = DirectoryReader.open(indexWriter, false);</span>
+    	}
+
+    	// Register ourselves in the mapping from IndexReader to Searcher,
+    	// so we can find the corresponding Searcher object from within Lucene code
+<span class="fc" id="L225">    	searcherFromIndexReader.put(reader, this);</span>
+
+    	// Detect and open the ContentStore for the contents field
+<span class="fc bfc" id="L228" title="All 2 branches covered.">    	if (!createNewIndex) {</span>
+<span class="pc bpc" id="L229" title="1 of 2 branches missed.">    		if (traceIndexOpening) logger.debug(&quot;  Determining main contents field name...&quot;);</span>
+<span class="fc" id="L230">    		ComplexFieldDesc mainContentsField = indexStructure.getMainContentsField();</span>
+<span class="pc bpc" id="L231" title="1 of 2 branches missed.">    		if (mainContentsField == null) {</span>
+<span class="nc bnc" id="L232" title="All 2 branches missed.">    			if (!indexMode) {</span>
+<span class="nc bnc" id="L233" title="All 2 branches missed.">    				if (!isEmptyIndex)</span>
+<span class="nc" id="L234">    					throw new RuntimeException(&quot;Could not detect main contents field&quot;);</span>
+
+    				// Empty index. Set a default name for the contents field.
+    				// Searching an empty index will fail and should not be attempted.
+<span class="nc" id="L238">    				this.mainContentsFieldName = Searcher.DEFAULT_CONTENTS_FIELD_NAME;</span>
+    			}
+    		} else {
+<span class="fc" id="L241">    			this.mainContentsFieldName = mainContentsField.getName();</span>
+
+    			// See if we have a punctuation forward index. If we do,
+    			// default to creating concordances using that.
+<span class="pc bpc" id="L245" title="1 of 2 branches missed.">    			if (mainContentsField.hasPunctuation()) {</span>
+<span class="fc" id="L246">    				hitsSettings.setConcordanceType(ConcordanceType.FORWARD_INDEX);</span>
+    			}
+    		}
+
+    		// Register content stores
+<span class="pc bpc" id="L251" title="1 of 2 branches missed.">    		if (traceIndexOpening) logger.debug(&quot;  Opening content stores...&quot;);</span>
+<span class="fc bfc" id="L252" title="All 2 branches covered.">    		for (String cfn: indexStructure.getComplexFields()) {</span>
+<span class="pc bpc" id="L253" title="1 of 2 branches missed.">    			if (indexStructure.getComplexFieldDesc(cfn).hasContentStore()) {</span>
+<span class="fc" id="L254">    				File dir = new File(indexDir, &quot;cs_&quot; + cfn);</span>
+<span class="pc bpc" id="L255" title="1 of 2 branches missed.">    				if (!dir.exists()) {</span>
+<span class="nc" id="L256">    					dir = new File(indexDir, &quot;xml&quot;); // OLD, should eventually be removed</span>
+    				}
+<span class="pc bpc" id="L258" title="1 of 2 branches missed.">    				if (dir.exists()) {</span>
+<span class="pc bpc" id="L259" title="1 of 2 branches missed.">    					if (traceIndexOpening) logger.debug(&quot;    &quot; + dir + &quot;...&quot;);</span>
+<span class="fc" id="L260">    					registerContentStore(cfn, openContentStore(dir, false));</span>
+    				}
+    			}
+<span class="fc" id="L263">    		}</span>
+    	}
+
+<span class="pc bpc" id="L266" title="1 of 2 branches missed.">    	if (traceIndexOpening) logger.debug(&quot;  Opening IndexSearcher...&quot;);</span>
+<span class="fc" id="L267">    	indexSearcher = new IndexSearcher(reader);</span>
+
+    	// Make sure large wildcard/regex expansions succeed
+<span class="pc bpc" id="L270" title="1 of 2 branches missed.">    	if (traceIndexOpening) logger.debug(&quot;  Setting maxClauseCount...&quot;);</span>
+<span class="fc" id="L271">    	BooleanQuery.setMaxClauseCount(100000);</span>
+
+    	// Open the forward indices
+<span class="fc bfc" id="L274" title="All 2 branches covered.">    	if (!createNewIndex) {</span>
+<span class="pc bpc" id="L275" title="1 of 2 branches missed.">    		if (traceIndexOpening) logger.debug(&quot;  Opening forward indices...&quot;);</span>
+<span class="fc" id="L276">    		openForwardIndices();</span>
+    	}
+<span class="fc" id="L278">    }</span>
+
+    @Override
+	public boolean isEmpty() {
+<span class="nc" id="L282">		return isEmptyIndex;</span>
+	}
+
+	private void createAnalyzers() {
+<span class="fc" id="L286">		Map&lt;String, Analyzer&gt; fieldAnalyzers = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L287">		fieldAnalyzers.put(&quot;fromInputFile&quot;, getAnalyzerInstance(&quot;nontokenizing&quot;));</span>
+<span class="fc" id="L288">		Analyzer baseAnalyzer = getAnalyzerInstance(indexStructure.getDefaultAnalyzerName());</span>
+<span class="fc bfc" id="L289" title="All 2 branches covered.">		for (String fieldName: indexStructure.getMetadataFields()) {</span>
+<span class="fc" id="L290">			MetadataFieldDesc fd = indexStructure.getMetadataFieldDesc(fieldName);</span>
+<span class="fc" id="L291">			String analyzerName = fd.getAnalyzerName();</span>
+<span class="pc bpc" id="L292" title="1 of 2 branches missed.">			if (fd.getType() == FieldType.UNTOKENIZED)</span>
+<span class="nc" id="L293">			    analyzerName = &quot;nontokenizing&quot;;</span>
+<span class="pc bpc" id="L294" title="2 of 4 branches missed.">			if (analyzerName.length() &gt; 0 &amp;&amp; !analyzerName.equalsIgnoreCase(&quot;default&quot;)) {</span>
+<span class="nc" id="L295">				Analyzer fieldAnalyzer = getAnalyzerInstance(analyzerName);</span>
+<span class="nc bnc" id="L296" title="All 2 branches missed.">				if (fieldAnalyzer == null) {</span>
+<span class="nc" id="L297">					logger.error(&quot;Unknown analyzer name &quot; + analyzerName + &quot; for field &quot; + fieldName);</span>
+				} else {
+<span class="nc bnc" id="L299" title="All 2 branches missed.">					if (fieldAnalyzer != baseAnalyzer)</span>
+<span class="nc" id="L300">						fieldAnalyzers.put(fieldName, fieldAnalyzer);</span>
+				}
+			}
+<span class="fc" id="L303">		}</span>
+
+<span class="fc" id="L305">		analyzer = new PerFieldAnalyzerWrapper(baseAnalyzer, fieldAnalyzers);</span>
+<span class="fc" id="L306">	}</span>
+
+	@Override
+	public void rollback() {
+		try {
+<span class="nc" id="L311">			indexWriter.rollback();</span>
+<span class="nc" id="L312">			indexWriter = null;</span>
+<span class="nc" id="L313">		} catch (IOException e) {</span>
+<span class="nc" id="L314">			throw ExUtil.wrapRuntimeException(e);</span>
+<span class="nc" id="L315">		}</span>
+<span class="nc" id="L316">	}</span>
+
+	@Override
+	public void close() {
+		try {
+<span class="fc" id="L321">			reader.close();</span>
+<span class="fc bfc" id="L322" title="All 2 branches covered.">			if (indexWriter != null) {</span>
+<span class="fc" id="L323">				indexWriter.commit();</span>
+<span class="fc" id="L324">				indexWriter.close();</span>
+			}
+
+<span class="fc" id="L327">			super.close();</span>
+
+<span class="fc" id="L329">			searcherFromIndexReader.remove(reader);</span>
+
+<span class="nc" id="L331">		} catch (IOException e) {</span>
+<span class="nc" id="L332">			throw ExUtil.wrapRuntimeException(e);</span>
+<span class="fc" id="L333">		}</span>
+<span class="fc" id="L334">	}</span>
+
+	@Override
+	public Document document(int doc) {
+		try {
+<span class="nc bnc" id="L339" title="All 2 branches missed.">			if (doc &lt; 0)</span>
+<span class="nc" id="L340">				throw new IllegalArgumentException(&quot;Negative document id&quot;);</span>
+<span class="nc bnc" id="L341" title="All 2 branches missed.">			if (doc &gt;= reader.maxDoc())</span>
+<span class="nc" id="L342">				throw new IllegalArgumentException(&quot;Document id &gt;= maxDoc&quot;);</span>
+<span class="nc" id="L343">			return reader.document(doc);</span>
+<span class="nc" id="L344">		} catch (Exception e) {</span>
+<span class="nc" id="L345">			throw ExUtil.wrapRuntimeException(e);</span>
+		}
+	}
+
+	@Override
+	public boolean isDeleted(int doc) {
+<span class="nc" id="L351">		Bits liveDocs = MultiFields.getLiveDocs(reader);</span>
+<span class="nc bnc" id="L352" title="All 4 branches missed.">		return liveDocs != null &amp;&amp; !liveDocs.get(doc);</span>
+	}
+
+	@Override
+	public int maxDoc() {
+<span class="nc" id="L357">		return reader.maxDoc();</span>
+	}
+
+	@Override
+	public void getCharacterOffsets(int doc, String fieldName, int[] startsOfWords, int[] endsOfWords,
+			boolean fillInDefaultsIfNotFound) {
+
+<span class="nc bnc" id="L364" title="All 2 branches missed.">		if (startsOfWords.length == 0)</span>
+<span class="nc" id="L365">			return; // nothing to do</span>
+		try {
+			// Determine lowest and highest word position we'd like to know something about.
+			// This saves a little bit of time for large result sets.
+<span class="nc" id="L369">			int minP = -1, maxP = -1;</span>
+<span class="nc" id="L370">			int numStarts = startsOfWords.length;</span>
+<span class="nc" id="L371">			int numEnds = endsOfWords.length;</span>
+<span class="nc bnc" id="L372" title="All 2 branches missed.">			for (int i = 0; i &lt; numStarts; i++) {</span>
+<span class="nc bnc" id="L373" title="All 4 branches missed.">				if (startsOfWords[i] &lt; minP || minP == -1)</span>
+<span class="nc" id="L374">					minP = startsOfWords[i];</span>
+<span class="nc bnc" id="L375" title="All 2 branches missed.">				if (startsOfWords[i] &gt; maxP)</span>
+<span class="nc" id="L376">					maxP = startsOfWords[i];</span>
+			}
+<span class="nc bnc" id="L378" title="All 2 branches missed.">			for (int i = 0; i &lt; numEnds; i++) {</span>
+<span class="nc bnc" id="L379" title="All 4 branches missed.">				if (endsOfWords[i] &lt; minP || minP == -1)</span>
+<span class="nc" id="L380">					minP = endsOfWords[i];</span>
+<span class="nc bnc" id="L381" title="All 2 branches missed.">				if (endsOfWords[i] &gt; maxP)</span>
+<span class="nc" id="L382">					maxP = endsOfWords[i];</span>
+			}
+<span class="nc bnc" id="L384" title="All 4 branches missed.">			if (minP &lt; 0 || maxP &lt; 0)</span>
+<span class="nc" id="L385">				throw new RuntimeException(&quot;Can't determine min and max positions&quot;);</span>
+
+<span class="nc" id="L387">			String fieldPropName = ComplexFieldUtil.mainPropertyOffsetsField(indexStructure, fieldName);</span>
+
+<span class="nc" id="L389">			org.apache.lucene.index.Terms terms = reader.getTermVector(doc, fieldPropName);</span>
+<span class="nc bnc" id="L390" title="All 2 branches missed.">			if (terms == null)</span>
+<span class="nc" id="L391">				throw new IllegalArgumentException(&quot;Field &quot; + fieldPropName + &quot; in doc &quot; + doc + &quot; has no term vector&quot;);</span>
+<span class="nc bnc" id="L392" title="All 2 branches missed.">			if (!terms.hasPositions())</span>
+<span class="nc" id="L393">				throw new IllegalArgumentException(&quot;Field &quot; + fieldPropName + &quot; in doc &quot; + doc + &quot; has no character postion information&quot;);</span>
+
+			//int lowestPos = -1, highestPos = -1;
+<span class="nc" id="L396">			int lowestPosFirstChar = -1, highestPosLastChar = -1;</span>
+<span class="nc" id="L397">			int total = numStarts + numEnds;</span>
+<span class="nc" id="L398">			boolean[] done = new boolean[total]; // NOTE: array is automatically initialized to zeroes!</span>
+<span class="nc" id="L399">			int found = 0;</span>
+
+			// Iterate over terms
+<span class="nc" id="L402">			TermsEnum termsEnum = terms.iterator();</span>
+<span class="nc bnc" id="L403" title="All 2 branches missed.">			while (termsEnum.next() != null) {</span>
+<span class="nc" id="L404">				PostingsEnum dpe = termsEnum.postings(null, PostingsEnum.POSITIONS);</span>
+
+				// Iterate over docs containing this term (NOTE: should be only one doc!)
+<span class="nc bnc" id="L407" title="All 2 branches missed.">				while (dpe.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {</span>
+					// Iterate over positions of this term in this doc
+<span class="nc" id="L409">					int positionsRead = 0;</span>
+<span class="nc" id="L410">					int numberOfPositions = dpe.freq();</span>
+<span class="nc bnc" id="L411" title="All 2 branches missed.">					while (positionsRead &lt; numberOfPositions) {</span>
+<span class="nc" id="L412">						int position = dpe.nextPosition();</span>
+<span class="nc bnc" id="L413" title="All 2 branches missed.">						if (position == -1)</span>
+<span class="nc" id="L414">							break;</span>
+<span class="nc" id="L415">						positionsRead++;</span>
+
+						// Keep track of the lowest and highest char pos, so
+						// we can fill in the character positions we didn't find
+<span class="nc" id="L419">						int startOffset = dpe.startOffset();</span>
+<span class="nc bnc" id="L420" title="All 4 branches missed.">						if (startOffset &lt; lowestPosFirstChar || lowestPosFirstChar == -1) {</span>
+<span class="nc" id="L421">							lowestPosFirstChar = startOffset;</span>
+						}
+<span class="nc" id="L423">						int endOffset = dpe.endOffset();</span>
+<span class="nc bnc" id="L424" title="All 2 branches missed.">						if (endOffset &gt; highestPosLastChar) {</span>
+<span class="nc" id="L425">							highestPosLastChar = endOffset;</span>
+						}
+
+						// We've calculated the min and max word positions in advance, so
+						// we know we can skip this position if it's outside the range we're interested in.
+						// (Saves a little time for large result sets)
+<span class="nc bnc" id="L431" title="All 4 branches missed.">						if (position &lt; minP || position &gt; maxP) {</span>
+<span class="nc" id="L432">							continue;</span>
+						}
+
+<span class="nc bnc" id="L435" title="All 2 branches missed.">						for (int m = 0; m &lt; numStarts; m++) {</span>
+<span class="nc bnc" id="L436" title="All 4 branches missed.">							if (!done[m] &amp;&amp; position == startsOfWords[m]) {</span>
+<span class="nc" id="L437">								done[m] = true;</span>
+<span class="nc" id="L438">								startsOfWords[m] = startOffset;</span>
+<span class="nc" id="L439">								found++;</span>
+							}
+						}
+<span class="nc bnc" id="L442" title="All 2 branches missed.">						for (int m = 0; m &lt; numEnds; m++) {</span>
+<span class="nc bnc" id="L443" title="All 4 branches missed.">							if (!done[numStarts + m] &amp;&amp; position == endsOfWords[m]) {</span>
+<span class="nc" id="L444">								done[numStarts + m] = true;</span>
+<span class="nc" id="L445">								endsOfWords[m] = endOffset;</span>
+<span class="nc" id="L446">								found++;</span>
+							}
+						}
+
+						// NOTE: we might be tempted to break here if found == total,
+						// but that would foul up our calculation of highestPosLastChar and
+						// lowestPosFirstChar.
+<span class="nc" id="L453">					}</span>
+<span class="nc" id="L454">				}</span>
+
+<span class="nc" id="L456">			}</span>
+<span class="nc bnc" id="L457" title="All 2 branches missed.">			if (found &lt; total) {</span>
+<span class="nc bnc" id="L458" title="All 2 branches missed.">				if (!fillInDefaultsIfNotFound)</span>
+<span class="nc" id="L459">					throw new RuntimeException(&quot;Could not find all character offsets!&quot;);</span>
+
+<span class="nc bnc" id="L461" title="All 4 branches missed.">				if (lowestPosFirstChar &lt; 0 || highestPosLastChar &lt; 0)</span>
+<span class="nc" id="L462">					throw new RuntimeException(&quot;Could not find default char positions!&quot;);</span>
+
+<span class="nc bnc" id="L464" title="All 2 branches missed.">				for (int m = 0; m &lt; numStarts; m++) {</span>
+<span class="nc bnc" id="L465" title="All 2 branches missed.">					if (!done[m])</span>
+<span class="nc" id="L466">						startsOfWords[m] = lowestPosFirstChar;</span>
+				}
+<span class="nc bnc" id="L468" title="All 2 branches missed.">				for (int m = 0; m &lt; numEnds; m++) {</span>
+<span class="nc bnc" id="L469" title="All 2 branches missed.">					if (!done[numStarts + m])</span>
+<span class="nc" id="L470">						endsOfWords[m] = highestPosLastChar;</span>
+				}
+			}
+
+<span class="nc" id="L474">		} catch (IOException e) {</span>
+<span class="nc" id="L475">			throw ExUtil.wrapRuntimeException(e);</span>
+<span class="nc" id="L476">		}</span>
+<span class="nc" id="L477">	}</span>
+
+	@Override
+	public IndexReader getIndexReader() {
+<span class="fc" id="L481">		return reader;</span>
+	}
+
+	@Override
+	protected ContentStore openContentStore(String fieldName) {
+<span class="fc" id="L486">		File contentStoreDir = new File(indexLocation, &quot;cs_&quot; + fieldName);</span>
+<span class="fc" id="L487">		ContentStore contentStore = ContentStore.open(contentStoreDir, isEmptyIndex);</span>
+<span class="fc" id="L488">		registerContentStore(fieldName, contentStore);</span>
+<span class="fc" id="L489">		return contentStore;</span>
+	}
+
+	/**
+	 * Opens all the forward indices, to avoid this delay later.
+	 *
+	 * NOTE: used to be public; now private because it's done automatically when
+	 * constructing the Searcher.
+	 */
+	private void openForwardIndices() {
+<span class="fc bfc" id="L499" title="All 2 branches covered.">		for (String field: indexStructure.getComplexFields()) {</span>
+<span class="fc" id="L500">			ComplexFieldDesc fieldDesc = indexStructure.getComplexFieldDesc(field);</span>
+<span class="fc bfc" id="L501" title="All 2 branches covered.">			for (String property: fieldDesc.getProperties()) {</span>
+<span class="fc" id="L502">				PropertyDesc propDesc = fieldDesc.getPropertyDesc(property);</span>
+<span class="fc bfc" id="L503" title="All 2 branches covered.">				if (propDesc.hasForwardIndex()) {</span>
+					// This property has a forward index. Make sure it is open.
+<span class="fc" id="L505">					String fieldProp = ComplexFieldUtil.propertyField(field, property);</span>
+<span class="pc bpc" id="L506" title="1 of 2 branches missed.">					if (traceIndexOpening) logger.debug(&quot;    &quot; + fieldProp + &quot;...&quot;);</span>
+<span class="fc" id="L507">					getForwardIndex(fieldProp);</span>
+				}
+<span class="fc" id="L509">			}</span>
+<span class="fc" id="L510">		}</span>
+<span class="fc" id="L511">	}</span>
+
+	@Override
+	protected ForwardIndex openForwardIndex(String fieldPropName) {
+		ForwardIndex forwardIndex;
+<span class="fc" id="L516">		File dir = new File(indexLocation, &quot;fi_&quot; + fieldPropName);</span>
+
+		// Special case for old BL index with &quot;forward&quot; as the name of the single forward index
+		// (this should be removed eventually)
+<span class="pc bpc" id="L520" title="3 of 6 branches missed.">		if (!isEmptyIndex &amp;&amp; fieldPropName.equals(mainContentsFieldName) &amp;&amp; !dir.exists()) {</span>
+			// Default forward index used to be called &quot;forward&quot;. Look for that instead.
+<span class="nc" id="L522">			File alt = new File(indexLocation, &quot;forward&quot;);</span>
+<span class="nc bnc" id="L523" title="All 2 branches missed.">			if (alt.exists())</span>
+<span class="nc" id="L524">				dir = alt;</span>
+		}
+
+<span class="pc bpc" id="L527" title="1 of 4 branches missed.">		if (!isEmptyIndex &amp;&amp; !dir.exists()) {</span>
+			// Forward index doesn't exist
+<span class="nc" id="L529">			return null;</span>
+		}
+		// Open forward index
+<span class="fc" id="L532">		forwardIndex = ForwardIndex.open(dir, indexMode, getCollator(), isEmptyIndex);</span>
+<span class="fc" id="L533">		forwardIndex.setIdTranslateInfo(reader, fieldPropName); // how to translate from</span>
+																		// Lucene
+																		// doc to fiid
+<span class="fc" id="L536">		return forwardIndex;</span>
+	}
+
+	@Override
+	public QueryExecutionContext getDefaultExecutionContext(String fieldName) {
+<span class="fc" id="L541">		ComplexFieldDesc complexFieldDesc = indexStructure.getComplexFieldDesc(fieldName);</span>
+<span class="pc bpc" id="L542" title="1 of 2 branches missed.">		if (complexFieldDesc == null)</span>
+<span class="nc" id="L543">			throw new IllegalArgumentException(&quot;Unknown complex field &quot; + fieldName);</span>
+<span class="fc" id="L544">		PropertyDesc mainProperty = complexFieldDesc.getMainProperty();</span>
+<span class="pc bpc" id="L545" title="1 of 2 branches missed.">		if (mainProperty == null)</span>
+<span class="nc" id="L546">			throw new IllegalArgumentException(&quot;Main property not found for &quot; + fieldName);</span>
+<span class="fc" id="L547">		String mainPropName = mainProperty.getName();</span>
+<span class="fc" id="L548">		return new QueryExecutionContext(this, fieldName, mainPropName, defaultCaseSensitive,</span>
+				defaultDiacriticsSensitive);
+	}
+
+	@Override
+	public String getIndexName() {
+<span class="nc" id="L554">		return indexLocation.toString();</span>
+	}
+
+	@Override
+	public IndexWriter openIndexWriter(File indexDir, boolean create, Analyzer useAnalyzer) throws IOException,
+			CorruptIndexException, LockObtainFailedException {
+<span class="pc bpc" id="L560" title="1 of 4 branches missed.">		if (!indexDir.exists() &amp;&amp; create) {</span>
+<span class="fc" id="L561">			indexDir.mkdir();</span>
+		}
+<span class="fc" id="L563">		Path indexPath = indexDir.toPath();</span>
+<span class="pc bpc" id="L564" title="1 of 2 branches missed.">		while (Files.isSymbolicLink(indexPath)) {</span>
+			// Resolve symlinks, as FSDirectory.open() can't handle them
+<span class="nc" id="L566">			indexPath = Files.readSymbolicLink(indexPath);</span>
+		}
+<span class="fc" id="L568">		Directory indexLuceneDir = FSDirectory.open(indexPath);</span>
+<span class="fc bfc" id="L569" title="All 2 branches covered.">		if (useAnalyzer == null)</span>
+<span class="fc" id="L570">			useAnalyzer = new BLDutchAnalyzer();</span>
+<span class="fc" id="L571">		IndexWriterConfig config = LuceneUtil.getIndexWriterConfig(useAnalyzer, create);</span>
+<span class="fc" id="L572">		IndexWriter writer = new IndexWriter(indexLuceneDir, config);</span>
+
+<span class="pc bpc" id="L574" title="1 of 2 branches missed.">		if (create)</span>
+<span class="fc" id="L575">			VersionFile.write(indexDir, &quot;blacklab&quot;, &quot;2&quot;);</span>
+		else {
+<span class="nc bnc" id="L577" title="All 2 branches missed.">			if (!isIndex(indexDir)) {</span>
+<span class="nc" id="L578">				throw new IllegalArgumentException(&quot;Not a BlackLab index, or wrong type or version! &quot;</span>
+<span class="nc" id="L579">						+ VersionFile.report(indexDir));</span>
+			}
+		}
+
+<span class="fc" id="L583">		return writer;</span>
+	}
+
+	@Override
+	public IndexWriter getWriter() {
+<span class="fc" id="L588">		return indexWriter;</span>
+	}
+
+	@Override
+	public File getIndexDirectory() {
+<span class="nc" id="L593">		return indexLocation;</span>
+	}
+
+	@Override
+	public void delete(Query q) {
+<span class="nc bnc" id="L598" title="All 2 branches missed.">		if (!indexMode)</span>
+<span class="nc" id="L599">			throw new RuntimeException(&quot;Cannot delete documents, not in index mode&quot;);</span>
+		try {
+			// Open a fresh reader to execute the query
+<span class="nc" id="L602">			try (IndexReader freshReader = DirectoryReader.open(indexWriter, false)) {</span>
+				// Execute the query, iterate over the docs and delete from FI and CS.
+<span class="nc" id="L604">				IndexSearcher s = new IndexSearcher(freshReader);</span>
+<span class="nc" id="L605">				Weight w = s.createNormalizedWeight(q, false);</span>
+<span class="nc bnc" id="L606" title="All 2 branches missed.">				for (LeafReaderContext leafContext: freshReader.leaves()) {</span>
+<span class="nc" id="L607">					Scorer scorer = w.scorer(leafContext);</span>
+<span class="nc bnc" id="L608" title="All 2 branches missed.">					if (scorer == null)</span>
+<span class="nc" id="L609">						return; // no matching documents</span>
+
+					// Iterate over matching docs
+<span class="nc" id="L612">					DocIdSetIterator it = scorer.iterator();</span>
+					while (true) {
+						int docId;
+						try {
+<span class="nc" id="L616">							docId = it.nextDoc() + leafContext.docBase;</span>
+<span class="nc" id="L617">						} catch (IOException e) {</span>
+<span class="nc" id="L618">							throw new RuntimeException(e);</span>
+<span class="nc" id="L619">						}</span>
+<span class="nc bnc" id="L620" title="All 2 branches missed.">						if (docId == DocIdSetIterator.NO_MORE_DOCS)</span>
+<span class="nc" id="L621">							break;</span>
+<span class="nc" id="L622">						Document d = freshReader.document(docId);</span>
+
+<span class="nc" id="L624">						deleteFromForwardIndices(d);</span>
+
+						// Delete this document in all content stores
+<span class="nc" id="L627">						contentStores.deleteDocument(d);</span>
+<span class="nc" id="L628">					}</span>
+<span class="nc" id="L629">				}</span>
+<span class="nc bnc" id="L630" title="All 12 branches missed.">			} finally {</span>
+<span class="nc" id="L631">				reader.close();</span>
+<span class="nc" id="L632">			}</span>
+
+			// Finally, delete the documents from the Lucene index
+<span class="nc" id="L635">			indexWriter.deleteDocuments(q);</span>
+
+<span class="nc" id="L637">		} catch (Exception e) {</span>
+<span class="nc" id="L638">			throw new RuntimeException(e);</span>
+<span class="nc" id="L639">		}</span>
+<span class="nc" id="L640">	}</span>
+
+	@Override
+	public List&lt;String&gt; getFieldTerms(String fieldName, int maxResults) {
+<span class="nc" id="L644">		return LuceneUtil.getFieldTerms(reader, fieldName, maxResults);</span>
+	}
+
+	@Override
+	public IndexSearcher getIndexSearcher() {
+<span class="fc" id="L649">		return indexSearcher;</span>
+	}
+
+	@Override
+	public Set&lt;Integer&gt; docIdSet() {
+
+<span class="nc" id="L655">		final int maxDoc = reader.maxDoc();</span>
+
+<span class="nc" id="L657">		final Bits liveDocs = MultiFields.getLiveDocs(reader);</span>
+
+<span class="nc" id="L659">		return new AbstractSet&lt;Integer&gt;() {</span>
+			@Override
+			public boolean contains(Object o) {
+<span class="nc" id="L662">				Integer i = (Integer)o;</span>
+<span class="nc bnc" id="L663" title="All 4 branches missed.">				return i &lt; maxDoc &amp;&amp; !isDeleted(i);</span>
+			}
+
+			boolean isDeleted(Integer i) {
+<span class="nc bnc" id="L667" title="All 4 branches missed.">				return liveDocs != null &amp;&amp; !liveDocs.get(i);</span>
+			}
+
+			@Override
+			public boolean isEmpty() {
+<span class="nc bnc" id="L672" title="All 2 branches missed.">				return maxDoc == reader.numDeletedDocs() + 1;</span>
+			}
+
+			@Override
+			public Iterator&lt;Integer&gt; iterator() {
+<span class="nc" id="L677">				return new Iterator&lt;Integer&gt;() {</span>
+<span class="nc" id="L678">					int current = -1;</span>
+<span class="nc" id="L679">					int next = -1;</span>
+
+					@Override
+					public boolean hasNext() {
+<span class="nc bnc" id="L683" title="All 2 branches missed.">						if (next &lt; 0)</span>
+<span class="nc" id="L684">							findNext();</span>
+<span class="nc bnc" id="L685" title="All 2 branches missed.">						return next &lt; maxDoc;</span>
+					}
+
+					private void findNext() {
+<span class="nc" id="L689">						next = current + 1;</span>
+<span class="nc bnc" id="L690" title="All 4 branches missed.">						while (next &lt; maxDoc &amp;&amp; isDeleted(next)) {</span>
+<span class="nc" id="L691">							next++;</span>
+						}
+<span class="nc" id="L693">					}</span>
+
+					@Override
+					public Integer next() {
+<span class="nc bnc" id="L697" title="All 2 branches missed.">						if (next &lt; 0)</span>
+<span class="nc" id="L698">							findNext();</span>
+<span class="nc bnc" id="L699" title="All 2 branches missed.">						if (next &gt;= maxDoc)</span>
+<span class="nc" id="L700">							throw new NoSuchElementException();</span>
+<span class="nc" id="L701">						current = next;</span>
+<span class="nc" id="L702">						next = -1;</span>
+<span class="nc" id="L703">						return current;</span>
+					}
+
+					@Override
+					public void remove() {
+<span class="nc" id="L708">						throw new UnsupportedOperationException();</span>
+					}
+				};
+			}
+
+			@Override
+			public int size() {
+<span class="nc" id="L715">				return maxDoc - reader.numDeletedDocs() - 1;</span>
+			}
+		};
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

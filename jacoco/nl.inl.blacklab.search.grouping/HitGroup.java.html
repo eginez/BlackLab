@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HitGroup.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.grouping</a> &gt; <span class="el_source">HitGroup.java</span></div><h1>HitGroup.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.grouping;
+
+import java.util.List;
+
+import nl.inl.blacklab.search.Hit;
+import nl.inl.blacklab.search.Hits;
+import nl.inl.blacklab.search.Searcher;
+
+/**
+ * A group of results, with its group identity and the results themselves, that you can access
+ * randomly (i.e. you can obtain a list of Hit objects)
+ */
+public class HitGroup extends Group {
+	Hits results;
+
+	HitGroup(Searcher searcher, HitPropValue groupIdentity, String defaultConcField) {
+<span class="nc" id="L32">		super(groupIdentity);</span>
+<span class="nc" id="L33">		results = Hits.emptyList(searcher);</span>
+<span class="nc" id="L34">		results.settings().setConcordanceField(defaultConcField);</span>
+<span class="nc" id="L35">	}</span>
+
+	/**
+	 * Wraps a list of Hit objects with the HitGroup interface.
+	 *
+	 * NOTE: the list is not copied!
+	 *
+	 * @param searcher the searcher that produced the hits
+	 * @param groupIdentity grouping identity of this group of hits
+	 * @param defaultConcField concordance field
+	 * @param hits the hits
+	 */
+	HitGroup(Searcher searcher, HitPropValue groupIdentity, String defaultConcField, List&lt;Hit&gt; hits) {
+<span class="fc" id="L48">		super(groupIdentity);</span>
+<span class="fc" id="L49">		results = Hits.fromList(searcher, hits);</span>
+<span class="fc" id="L50">		results.settings().setConcordanceField(defaultConcField);</span>
+<span class="fc" id="L51">	}</span>
+
+	public Hits getHits() {
+<span class="fc" id="L54">		return results;</span>
+	}
+
+	public int size() {
+<span class="fc" id="L58">		return results.size();</span>
+	}
+
+	@Override
+	public String toString() {
+<span class="nc" id="L63">		return &quot;GroupOfHits, identity = &quot; + groupIdentity + &quot;, size = &quot; + results.size();</span>
+	}
+
+	public void setContextField(List&lt;String&gt; contextField) {
+<span class="fc" id="L67">		 results.setContextField(contextField);</span>
+<span class="fc" id="L68">	}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

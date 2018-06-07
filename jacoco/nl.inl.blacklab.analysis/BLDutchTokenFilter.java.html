@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BLDutchTokenFilter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.analysis</a> &gt; <span class="el_source">BLDutchTokenFilter.java</span></div><h1>BLDutchTokenFilter.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.analysis;
+
+import java.io.IOException;
+import java.util.regex.Pattern;
+
+import org.apache.lucene.analysis.TokenFilter;
+import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
+
+/**
+ * The token filter to accompany BLDutchTokenizer. Will get rid of some
+ * unwanted tokens or characters in tokens:
+ * * tokens containing no letters are eliminated (e.g. &quot;-&quot;)
+ * * periods, parens and brackets are removed (e.g. &quot;a.u.b.&quot; -&gt; &quot;aub&quot;, &quot;bel(len)&quot; -&gt; &quot;bellen&quot;)
+ * * apostrophes at the beginning or end of a token are removed (e.g. multiple words in single quotes)
+ */
+public class BLDutchTokenFilter extends TokenFilter {
+<span class="fc" id="L33">	final static Pattern removePattern = Pattern.compile(&quot;[\\.\\(\\)\\[\\]]|^'|'$&quot;);</span>
+
+<span class="fc" id="L35">	final static Pattern anyLetterPattern = Pattern.compile(&quot;[\\p{L}\\d]&quot;);</span>
+
+	/**
+	 * Perform filtering on the input string
+	 * @param input the string
+	 * @return same string with periods, parens, brackets and apostrophes at beginning/end removed
+	 */
+	public static String process(String input) {
+<span class="fc" id="L43">		return removePattern.matcher(input).replaceAll(&quot;&quot;);</span>
+	}
+
+	private CharTermAttribute termAtt;
+
+	/**
+	 * @param input the token stream to remove punctuation from
+	 */
+	public BLDutchTokenFilter(TokenStream input) {
+<span class="fc" id="L52">		super(input);</span>
+<span class="fc" id="L53">		termAtt = addAttribute(CharTermAttribute.class);</span>
+<span class="fc" id="L54">	}</span>
+
+	@Override
+	final public boolean incrementToken() throws IOException {
+<span class="fc bfc" id="L58" title="All 2 branches covered.">		while (input.incrementToken()) {</span>
+<span class="fc" id="L59">			String t = new String(termAtt.buffer(), 0, termAtt.length());</span>
+
+			// Filter out some characters
+<span class="fc" id="L62">			t = process(t);</span>
+
+			// Output if there's any letters in it
+<span class="fc bfc" id="L65" title="All 2 branches covered.">			if (anyLetterPattern.matcher(t).find()) {</span>
+<span class="fc" id="L66">				termAtt.copyBuffer(t.toCharArray(), 0, t.length());</span>
+<span class="fc" id="L67">				return true;</span>
+			}
+<span class="fc" id="L69">		}</span>
+<span class="fc" id="L70">		return false;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

@@ -1,0 +1,267 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>XmlUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.util</a> &gt; <span class="el_source">XmlUtil.java</span></div><h1>XmlUtil.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.util;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.Reader;
+import java.io.StringWriter;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+
+import org.w3c.dom.Document;
+import org.w3c.dom.ls.DOMImplementationLS;
+import org.w3c.dom.ls.LSOutput;
+import org.w3c.dom.ls.LSSerializer;
+import org.xml.sax.ErrorHandler;
+import org.xml.sax.InputSource;
+import org.xml.sax.SAXException;
+import org.xml.sax.SAXParseException;
+
+/**
+ * Utilities for working with XML.
+ */
+<span class="nc" id="L39">public class XmlUtil {</span>
+<span class="fc" id="L40">	private static boolean namespaceAware = false;</span>
+
+	public static boolean isNamespaceAware() {
+<span class="nc" id="L43">		return namespaceAware;</span>
+	}
+
+	public static void setNamespaceAware(boolean namespaceAware) {
+<span class="nc" id="L47">		XmlUtil.namespaceAware = namespaceAware;</span>
+<span class="nc" id="L48">	}</span>
+
+	/**
+	 * Parse XML from reader to a DOM Document
+	 *
+	 * @param reader
+	 *            where to read the XML document from
+	 * @return the DOM representation of the document
+	 * @throws SAXException
+	 */
+	public static Document parseXml(Reader reader) throws SAXException {
+		try {
+<span class="nc" id="L60">			DocumentBuilderFactory domFactory = DocumentBuilderFactory.newInstance();</span>
+<span class="nc" id="L61">			domFactory.setNamespaceAware(namespaceAware);</span>
+<span class="nc" id="L62">			DocumentBuilder domBuilder = domFactory.newDocumentBuilder();</span>
+			// Avoid errors written to stderr
+<span class="nc" id="L64">			domBuilder.setErrorHandler(new SimpleErrorHandler());</span>
+<span class="nc" id="L65">			Document document = domBuilder.parse(new InputSource(reader));</span>
+<span class="nc" id="L66">			return document;</span>
+<span class="nc" id="L67">		} catch (ParserConfigurationException e) {</span>
+<span class="nc" id="L68">			throw new RuntimeException(e);</span>
+<span class="nc" id="L69">		} catch (IOException e) {</span>
+<span class="nc" id="L70">			throw new RuntimeException(e);</span>
+		}
+	}
+
+	/**
+	 * Takes an XML input string and... - removes tags - replaces entities with characters -
+	 * normalizes whitespace
+	 *
+	 * @param conc
+	 *            the input XML string
+	 * @return the plain text output string
+	 */
+	public static String xmlToPlainText(String conc) {
+<span class="fc" id="L83">		return xmlToPlainText(conc, false);</span>
+	}
+
+	private static final class SimpleErrorHandler implements ErrorHandler {
+<span class="nc" id="L87">        public SimpleErrorHandler() {</span>
+            // NOP
+<span class="nc" id="L89">        }</span>
+
+        @Override
+        public void warning(SAXParseException e) {
+            //
+<span class="nc" id="L94">        }</span>
+
+        @Override
+        public void fatalError(SAXParseException e) throws SAXException {
+<span class="nc" id="L98">            throw e;</span>
+        }
+
+        @Override
+        public void error(SAXParseException e) throws SAXException {
+<span class="nc" id="L103">            throw e;</span>
+        }
+    }
+
+    /**
+	 * States of the xmlToPlainText() state machine
+	 */
+<span class="pc" id="L110">	private enum XmlToPlainTextState {</span>
+
+		/** Copy these characters to the destination */
+<span class="fc" id="L113">		COPY,</span>
+
+		/** We're inside a tag; don't copy */
+<span class="fc" id="L116">		IN_TAG,</span>
+
+		/** We're inside an entity; don't copy, but add appropriate character at end */
+<span class="fc" id="L119">		IN_ENTITY,</span>
+	}
+
+	/**
+	 * Takes an XML input string and...
+	 * * removes tags
+	 * * replaces entities with characters
+	 * * normalizes whitespace
+	 * * (optionally) replaces spaces with non-breaking spaces
+	 *
+	 * @param conc
+	 *            the input XML string
+	 * @param makeNonBreaking
+	 *            if true, the output string only contains non-breaking spaces
+	 * @return the plain text output string
+	 */
+	public static String xmlToPlainText(String conc, boolean makeNonBreaking) {
+		// Allocate buffer.
+<span class="fc" id="L137">		int inputLength = conc.length();</span>
+<span class="fc" id="L138">		int bufferLength = inputLength;</span>
+<span class="fc" id="L139">		char[] src = new char[bufferLength];</span>
+
+		// Get character array
+<span class="fc" id="L142">		conc.getChars(0, inputLength, src, 0);</span>
+
+		// Loop through character array
+<span class="fc" id="L145">		int dstIndex = 0;</span>
+<span class="fc" id="L146">		XmlToPlainTextState state = XmlToPlainTextState.COPY;</span>
+<span class="fc" id="L147">		int entityStart = -1;</span>
+<span class="fc" id="L148">		char space = ' ';</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">		if (makeNonBreaking)</span>
+<span class="fc" id="L150">			space = StringUtil.CHAR_NON_BREAKING_SPACE; // Non-breaking space (codepoint 160)</span>
+<span class="fc" id="L151">		boolean lastCopiedASpace = false; // To normalize whitespace</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">		for (int srcIndex = 0; srcIndex &lt; inputLength; srcIndex++) {</span>
+<span class="fc" id="L153">			char c = src[srcIndex];</span>
+<span class="fc bfc" id="L154" title="All 6 branches covered.">			switch (c) {</span>
+			case '&lt;':
+				// Entering tag
+<span class="fc" id="L157">				state = XmlToPlainTextState.IN_TAG;</span>
+<span class="fc" id="L158">				break;</span>
+
+			case '&gt;':
+				// Leaving tag, back to copy
+<span class="fc" id="L162">				state = XmlToPlainTextState.COPY;</span>
+<span class="fc" id="L163">				break;</span>
+
+			case '&amp;':
+				// Entering entity (NOTE: ignore entities if we're inside a tag)
+<span class="fc bfc" id="L167" title="All 2 branches covered.">				if (state != XmlToPlainTextState.IN_TAG) {</span>
+					// Go to entity state
+<span class="fc" id="L169">					state = XmlToPlainTextState.IN_ENTITY;</span>
+<span class="fc" id="L170">					entityStart = srcIndex + 1;</span>
+				}
+				break;
+
+			case ';':
+<span class="fc bfc" id="L175" title="All 2 branches covered.">				if (state == XmlToPlainTextState.IN_ENTITY) {</span>
+					// Leaving entity
+					char whichEntity;
+<span class="fc" id="L178">					String entityName = conc.substring(entityStart, srcIndex);</span>
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">					if (entityName.equals(&quot;lt&quot;))</span>
+<span class="nc" id="L180">						whichEntity = '&lt;';</span>
+<span class="fc bfc" id="L181" title="All 2 branches covered.">					else if (entityName.equals(&quot;gt&quot;))</span>
+<span class="fc" id="L182">						whichEntity = '&gt;';</span>
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">					else if (entityName.equals(&quot;amp&quot;))</span>
+<span class="nc" id="L184">						whichEntity = '&amp;';</span>
+<span class="pc bpc" id="L185" title="1 of 2 branches missed.">					else if (entityName.equals(&quot;quot&quot;))</span>
+<span class="nc" id="L186">						whichEntity = '&quot;';</span>
+<span class="fc bfc" id="L187" title="All 2 branches covered.">					else if (entityName.startsWith(&quot;#x&quot;)) {</span>
+						// Hex entity
+<span class="fc" id="L189">						whichEntity = (char) Integer.parseInt(entityName.substring(2), 16);</span>
+<span class="pc bpc" id="L190" title="2 of 4 branches missed.">					} else if (entityName.length() &gt; 0 &amp;&amp; entityName.charAt(0) == '#') {</span>
+						// Decimal entity
+<span class="fc" id="L192">						whichEntity = (char) Integer.parseInt(entityName.substring(1), 10);</span>
+					} else {
+						// Unknown entity!
+<span class="nc" id="L195">						whichEntity = '?';</span>
+					}
+
+					// Put character in destination buffer
+<span class="fc" id="L199">					src[dstIndex] = whichEntity;</span>
+<span class="fc" id="L200">					dstIndex++;</span>
+<span class="fc" id="L201">					lastCopiedASpace = false; // should be: whichEntity == ' ' || ...</span>
+
+					// Back to copy state
+<span class="fc" id="L204">					state = XmlToPlainTextState.COPY;</span>
+<span class="pc bpc" id="L205" title="1 of 2 branches missed.">				} else if (state == XmlToPlainTextState.COPY) {</span>
+					// Not in entity or tag, just copy character
+<span class="nc" id="L207">					src[dstIndex] = c;</span>
+<span class="nc" id="L208">					dstIndex++;</span>
+<span class="nc" id="L209">					lastCopiedASpace = false;</span>
+				}
+				// else: inside tag, ignore all characters until end of tag
+				break;
+
+			case ' ':
+			case '\t':
+			case '\n':
+			case '\r':
+			case '\u00A0':
+<span class="fc bfc" id="L219" title="All 4 branches covered.">				if (state == XmlToPlainTextState.COPY &amp;&amp; !lastCopiedASpace) {</span>
+					// First space in a run; copy it
+<span class="fc" id="L221">					src[dstIndex] = space;</span>
+<span class="fc" id="L222">					dstIndex++;</span>
+<span class="fc" id="L223">					lastCopiedASpace = true;</span>
+				}
+				break;
+
+			default:
+<span class="fc bfc" id="L228" title="All 2 branches covered.">				if (state == XmlToPlainTextState.COPY) {</span>
+					// Copy character
+<span class="fc" id="L230">					src[dstIndex] = c;</span>
+<span class="fc" id="L231">					dstIndex++;</span>
+<span class="fc" id="L232">					lastCopiedASpace = false;</span>
+				}
+				break;
+			}
+		}
+
+<span class="fc" id="L238">		return new String(src, 0, dstIndex);</span>
+	}
+
+    public static String readXmlAndResolveReferences(BufferedReader reader) {
+        Document document;
+        try {
+<span class="nc" id="L244">            DocumentBuilderFactory domFactory = DocumentBuilderFactory.newInstance();</span>
+<span class="nc" id="L245">            domFactory.setNamespaceAware(true);</span>
+<span class="nc" id="L246">            DocumentBuilder domBuilder = domFactory.newDocumentBuilder();</span>
+<span class="nc" id="L247">            domBuilder.setErrorHandler(new SimpleErrorHandler());</span>
+<span class="nc" id="L248">            document = domBuilder.parse(new InputSource(reader));</span>
+<span class="nc" id="L249">        } catch (ParserConfigurationException e) {</span>
+<span class="nc" id="L250">            throw new RuntimeException(e);</span>
+<span class="nc" id="L251">        } catch (IOException e) {</span>
+<span class="nc" id="L252">            throw new RuntimeException(e);</span>
+<span class="nc" id="L253">        } catch (SAXException e) {</span>
+<span class="nc" id="L254">            throw new RuntimeException(e);</span>
+<span class="nc" id="L255">        }</span>
+<span class="nc" id="L256">        DOMImplementationLS domImplementation = (DOMImplementationLS) document.getImplementation();</span>
+<span class="nc" id="L257">        LSSerializer lsSerializer = domImplementation.createLSSerializer();</span>
+<span class="nc" id="L258">        LSOutput out = domImplementation.createLSOutput();</span>
+<span class="nc" id="L259">        StringWriter sw = new StringWriter();</span>
+<span class="nc" id="L260">        out.setCharacterStream(sw);</span>
+<span class="nc" id="L261">        out.setEncoding(&quot;UTF-8&quot;);</span>
+<span class="nc" id="L262">        lsSerializer.write(document, out);</span>
+<span class="nc" id="L263">        return sw.toString();</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

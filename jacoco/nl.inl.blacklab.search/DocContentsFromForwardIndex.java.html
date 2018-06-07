@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DocContentsFromForwardIndex.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search</a> &gt; <span class="el_source">DocContentsFromForwardIndex.java</span></div><h1>DocContentsFromForwardIndex.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.search;
+
+import java.util.AbstractList;
+import java.util.Collections;
+import java.util.List;
+
+import nl.inl.util.StringUtil;
+
+/**
+ * (Part of) the contents of a document,
+ * in separate properties read from the forward indices.
+ *
+  * The tokens list in this class stores all the properties for each word,
+ * in this order:
+ * - punctuation before this word (&quot;punct&quot;)
+ * - all other properties except punctuation and word (e.g. &quot;lemma&quot;, &quot;pos&quot;)
+ * - the word itself (&quot;word&quot;)
+ *
+ * So if you had &quot;lemma&quot; and &quot;pos&quot; as extra properties in addition to &quot;punct&quot;
+ * and &quot;word&quot;, and you had 10 words of context, the List size would be 40.
+ *
+ * (The reason for the specific ordering is ease of converting it to XML, with
+ * the extra properties being attributes and the word itself being the element
+ * content of the word tags)
+ */
+public class DocContentsFromForwardIndex extends DocContents {
+
+	/** What properties are stored in what order for this Kwic (e.g. word, lemma, pos) */
+	List&lt;String&gt; properties;
+
+	/** Word properties for context left of match (properties.size() values per word;
+	 *  e.g. punct 1, lemma 1, pos 1, word 1, punct 2, lemma 2, pos 2, word 2, etc.) */
+	List&lt;String&gt; tokens;
+
+	/**
+	 * Construct DocContentsFromForwardIndex object.
+	 *
+	 * @param properties the order of properties in the tokens list
+	 * @param tokens the tokens
+	 */
+<span class="fc" id="L41">	public DocContentsFromForwardIndex(List&lt;String&gt; properties, List&lt;String&gt; tokens) {</span>
+<span class="fc" id="L42">		this.properties = properties;</span>
+<span class="fc" id="L43">		this.tokens = tokens;</span>
+<span class="fc" id="L44">	}</span>
+
+	public List&lt;String&gt; getProperties() {
+<span class="nc" id="L47">		return Collections.unmodifiableList(properties);</span>
+	}
+
+	public List&lt;String&gt; getTokens() {
+<span class="nc" id="L51">		return Collections.unmodifiableList(tokens);</span>
+	}
+
+	/**
+	 * Get the tokens of a specific property
+	 * @param property the property to get the tokens for
+	 * @return the tokens
+	 */
+	public List&lt;String&gt; getTokens(String property) {
+<span class="nc" id="L60">		return getSinglePropertyContext(property);</span>
+	}
+
+	@Override
+	public String getXml() {
+<span class="fc" id="L65">		int valuesPerWord = properties.size();</span>
+<span class="fc" id="L66">		int numberOfWords = tokens.size() / valuesPerWord;</span>
+<span class="fc" id="L67">		StringBuilder b = new StringBuilder();</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">		for (int i = 0; i &lt; numberOfWords; i++) {</span>
+<span class="fc" id="L69">			int vIndex = i * valuesPerWord;</span>
+<span class="fc" id="L70">			int j = 0;</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">			if (i &gt; 0)</span>
+<span class="fc" id="L72">				b.append(StringUtil.escapeXmlChars(tokens.get(vIndex)));</span>
+<span class="fc" id="L73">			b.append(&quot;&lt;w&quot;);</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">			for (int k = 1; k &lt; properties.size() - 1; k++) {</span>
+<span class="fc" id="L75">				String name = properties.get(k);</span>
+<span class="fc" id="L76">				String value = tokens.get(vIndex + 1 + j);</span>
+<span class="fc" id="L77">				b.append(&quot; &quot;).append(name).append(&quot;=\&quot;&quot;).append(StringUtil.escapeXmlChars(value)).append(&quot;\&quot;&quot;);</span>
+<span class="fc" id="L78">				j++;</span>
+			}
+<span class="fc" id="L80">			b.append(&quot;&gt;&quot;);</span>
+<span class="fc" id="L81">			b.append(StringUtil.escapeXmlChars(tokens.get(vIndex + 1 + j)));</span>
+<span class="fc" id="L82">			b.append(&quot;&lt;/w&gt;&quot;);</span>
+		}
+<span class="fc" id="L84">		return b.toString();</span>
+	}
+
+	/**
+	 * Get the context of a specific property from the complete
+	 * context list.
+	 *
+	 * @param allContext the complete context list of all properties
+	 * @param property the property to get the context for
+	 * @return the context for this property
+	 */
+	private List&lt;String&gt; getSinglePropertyContext(String property) {
+<span class="nc" id="L96">		final int nProp = properties.size();</span>
+<span class="nc" id="L97">		final int size = tokens.size() / nProp;</span>
+<span class="nc" id="L98">		final int propIndex = properties.indexOf(property);</span>
+<span class="nc bnc" id="L99" title="All 2 branches missed.">		if (propIndex == -1)</span>
+<span class="nc" id="L100">			return null;</span>
+<span class="nc" id="L101">		return new AbstractList&lt;String&gt;() {</span>
+			@Override
+			public String get(int index) {
+<span class="nc" id="L104">				return tokens.get(propIndex + nProp * index);</span>
+			}
+
+			@Override
+			public int size() {
+<span class="nc" id="L109">				return size;</span>
+			}
+		};
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

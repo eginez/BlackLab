@@ -1,0 +1,871 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Indexer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.index</a> &gt; <span class="el_source">Indexer.java</span></div><h1>Indexer.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.index;
+
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.Reader;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.function.Function;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
+
+import org.apache.commons.io.IOUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.apache.lucene.document.Document;
+import org.apache.lucene.document.FieldType;
+import org.apache.lucene.index.CorruptIndexException;
+import org.apache.lucene.index.IndexOptions;
+import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.Term;
+
+import nl.inl.blacklab.externalstorage.ContentStore;
+import nl.inl.blacklab.forwardindex.ForwardIndex;
+import nl.inl.blacklab.index.DocIndexerFactory.Format;
+import nl.inl.blacklab.index.complex.ComplexFieldProperty;
+import nl.inl.blacklab.index.config.ConfigInputFormat;
+import nl.inl.blacklab.search.Searcher;
+import nl.inl.util.FileProcessor;
+import nl.inl.util.FileUtil;
+import nl.inl.util.UnicodeStream;
+
+/**
+ * Tool for indexing. Reports its progress to an IndexListener.
+ */
+public class Indexer {
+
+<span class="fc" id="L58">    static final Logger logger = LogManager.getLogger(Indexer.class);</span>
+
+<span class="fc" id="L60">    public static final Charset DEFAULT_INPUT_ENCODING = StandardCharsets.UTF_8;</span>
+
+    /**
+     * FileProcessor FileHandler that creates a DocIndexer for every file and performs some reporting.
+     */
+<span class="fc" id="L65">    private class DocIndexerWrapper implements FileProcessor.FileHandler {</span>
+
+        @Override
+        public void file(String path, InputStream is, File file) throws Exception {
+            // Attempt to detect the encoding of our inputStream, falling back to DEFAULT_INPUT_ENCODING if the stream doesn't contain a a BOM
+            // This doesn't do any character parsing/decoding itself, it just detects and skips the BOM (if present) and exposes the correct character set for this stream (if present)
+            // This way we can later use the charset to decode the input
+            // There is one gotcha however, and that is that if the inputstream contains non-textual data, we pass the default encoding to our DocIndexer
+            // This usually isn't an issue, since docIndexers work exclusively with either binary data or text.
+            // In the case of binary data docIndexers, they should always ignore the encoding anyway
+            // and for text docIndexers, passing a binary file is an error in itself already.
+<span class="pc" id="L76">            try (</span>
+<span class="fc" id="L77">                UnicodeStream inputStream = new UnicodeStream(is, DEFAULT_INPUT_ENCODING);</span>
+<span class="fc" id="L78">                DocIndexer docIndexer = DocumentFormats.get(Indexer.this.formatIdentifier, Indexer.this, path, inputStream, inputStream.getEncoding());</span>
+            ) {
+<span class="fc" id="L80">                impl(docIndexer, path);</span>
+<span class="pc bpc" id="L81" title="12 of 16 branches missed.">            }</span>
+<span class="fc" id="L82">        }</span>
+
+        public void file(String path, Reader reader) throws Exception {
+<span class="nc" id="L85">            try (DocIndexer docIndexer = DocumentFormats.get(Indexer.this.formatIdentifier, Indexer.this, path, reader)) {</span>
+<span class="nc" id="L86">                impl(docIndexer, path);</span>
+<span class="nc bnc" id="L87" title="All 8 branches missed.">            }</span>
+<span class="nc" id="L88">        }</span>
+
+        private void impl(DocIndexer indexer, String documentName) throws Exception {
+            // FIXME progress reporting is broken in multithreaded indexing, as the listener is shared between threads
+            // So a docIndexer that didn't index anything can slip through if another thread did index some data in the meantime
+<span class="fc" id="L93">            getListener().fileStarted(documentName);</span>
+<span class="fc" id="L94">            int docsDoneBefore = searcher.getWriter().numDocs();</span>
+<span class="fc" id="L95">            long tokensDoneBefore = getListener().getTokensProcessed();</span>
+
+<span class="fc" id="L97">            indexer.index();</span>
+<span class="fc" id="L98">            getListener().fileDone(documentName);</span>
+<span class="fc" id="L99">            int docsDoneAfter = searcher.getWriter().numDocs();</span>
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">            if (docsDoneAfter == docsDoneBefore) {</span>
+<span class="nc" id="L101">                logger.warn(&quot;No docs found in &quot; + documentName + &quot;; wrong format?&quot;);</span>
+            }
+<span class="fc" id="L103">            long tokensDoneAfter = getListener().getTokensProcessed();</span>
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">            if (tokensDoneAfter == tokensDoneBefore) {</span>
+<span class="nc" id="L105">                logger.warn(&quot;No words indexed in &quot; + documentName + &quot;; wrong format?&quot;);</span>
+            }
+<span class="fc" id="L107">        }</span>
+
+        @Override
+        public void directory(File dir) throws Exception {
+            // ignore
+<span class="nc" id="L112">        }</span>
+    }
+
+    private static interface PathCapturingFileHandler extends FileProcessor.FileHandler {
+        byte[] getFile();
+    }
+
+    public static byte[] fetchFileFromArchive(File f, final String pathInsideArchive) {
+<span class="nc bnc" id="L120" title="All 4 branches missed.">        if (f.getName().endsWith(&quot;.gz&quot;) || f.getName().endsWith(&quot;.tgz&quot;)) {</span>
+            // We have to process the whole file, we can't do random access.
+<span class="nc" id="L122">            PathCapturingFileHandler fileCapturer = new PathCapturingFileHandler() {</span>
+                byte[] file;
+                @Override
+                public void directory(File dir) throws Exception {
+                    //
+<span class="nc" id="L127">                }</span>
+
+                @Override
+                public void file(String path, InputStream is, File archive) throws Exception {
+<span class="nc bnc" id="L131" title="All 2 branches missed.">                    if (path.endsWith(pathInsideArchive))</span>
+<span class="nc" id="L132">                        this.file = IOUtils.toByteArray(is);</span>
+<span class="nc" id="L133">                }</span>
+                @Override
+                public byte[] getFile() {
+<span class="nc" id="L136">                    return file;</span>
+                }
+            };
+<span class="nc" id="L139">            try (FileProcessor proc = new FileProcessor(true, false, true)) {</span>
+<span class="nc" id="L140">                proc.setFileHandler(fileCapturer);</span>
+<span class="nc" id="L141">                proc.processFile(f);</span>
+<span class="nc bnc" id="L142" title="All 8 branches missed.">            } catch (FileNotFoundException e) {</span>
+<span class="nc" id="L143">                throw new RuntimeException(e);</span>
+<span class="nc" id="L144">            }</span>
+
+            // FileProcessor must have completed/be closed before result is available
+<span class="nc" id="L147">            return fileCapturer.getFile();</span>
+<span class="nc bnc" id="L148" title="All 2 branches missed.">        } else if (f.getName().endsWith(&quot;.zip&quot;)) {</span>
+            // We can do random access. Fetch the file we want.
+            try {
+<span class="nc" id="L151">                ZipFile z = ZipHandleManager.openZip(f);</span>
+<span class="nc" id="L152">                ZipEntry e = z.getEntry(pathInsideArchive);</span>
+<span class="nc" id="L153">                try (InputStream is = z.getInputStream(e)) {</span>
+<span class="nc" id="L154">                    return IOUtils.toByteArray(is);</span>
+<span class="nc bnc" id="L155" title="All 8 branches missed.">                }</span>
+<span class="nc" id="L156">            } catch (IOException e) {</span>
+<span class="nc" id="L157">                throw new RuntimeException(e);</span>
+            }
+        } else {
+<span class="nc" id="L160">            throw new UnsupportedOperationException(&quot;Unsupported archive type: &quot; + f.getName());</span>
+        }
+    }
+
+<span class="pc" id="L164">    protected DocIndexerWrapper docIndexerWrapper = new DocIndexerWrapper();</span>
+
+    /** Our index */
+    protected Searcher searcher;
+
+    /** Stop after indexing this number of docs. -1 if we shouldn't stop. */
+<span class="pc" id="L170">    protected int maxNumberOfDocsToIndex = -1;</span>
+
+    /** Should we terminate indexing? (e.g. because of an error) */
+<span class="pc" id="L173">    boolean terminateIndexing = false;</span>
+
+    /**
+     * Where to report indexing progress.
+     */
+<span class="pc" id="L178">    protected IndexListener listener = null;</span>
+
+    /**
+     * Have we reported our creation and the start of indexing to the listener yet?
+     */
+<span class="pc" id="L183">    protected boolean createAndIndexStartReported = false;</span>
+
+    /**
+     * When we encounter a zip or tgz file, do we descend into it like it was a directory?
+     */
+<span class="pc" id="L188">    boolean processArchivesAsDirectories = true;</span>
+
+    /**
+     * Recursively index files inside a directory? (or archive file, if processArchivesAsDirectories == true)
+     */
+<span class="pc" id="L193">    protected boolean defaultRecurseSubdirs = true;</span>
+
+    /**
+     * Format of the documents we're going to be indexing, used to create the correct type of DocIndexer.
+     */
+    protected String formatIdentifier;
+
+    /**
+     * @deprecated (since 1.7) use return value of {@link IndexListener#errorOccurred(String, String, File, File)}
+     * If an error occurs (e.g. an XML parse error), should we
+     *  try to continue indexing, or abort? */
+<span class="pc" id="L204">    @Deprecated</span>
+    protected boolean continueAfterInputError = true;
+
+    /**
+     * @deprecated (since 1.7) use {@link IndexListener#errorOccurred(String, String, File, File)}
+     * If an error occurs (e.g. an XML parse error), and we don't
+     * continue indexing, should we re-throw it, or assume the client
+     * picked it up in the listener and return normally?
+     */
+<span class="pc" id="L213">    @Deprecated</span>
+    protected boolean rethrowInputError = true;
+
+    /**
+     * Parameters we should pass to our DocIndexers upon instantiation.
+     */
+    protected Map&lt;String, String&gt; indexerParam;
+
+    /** How to index metadata fields (tokenized) */
+    protected FieldType metadataFieldTypeTokenized;
+
+    /** How to index metadata fields (untokenized) */
+    protected FieldType metadataFieldTypeUntokenized;
+
+    /** Where to look for files linked from the input files */
+<span class="pc" id="L228">    protected List&lt;File&gt; linkedFileDirs = new ArrayList&lt;&gt;();</span>
+
+    /** If a file cannot be found in the linkedFileDirs, use this to retrieve it (if present) */
+    protected Function&lt;String, File&gt; linkedFileResolver;
+
+    /** Index using multiple threads? */
+<span class="pc" id="L234">    protected boolean useThreads = false;</span>
+
+    // TODO this is a workaround for a bug where indexStructure is always written, even when an indexing task was rollbacked on an empty index
+    // result of this is that the index can never be opened again (the forwardindex is missing files that the indexMetadata.yaml says must exist?)
+    // so record rollbacks and then don't write the updated indexStructure
+<span class="pc" id="L239">    boolean hasRollback = false;</span>
+
+    public FieldType getMetadataFieldType(boolean tokenized) {
+<span class="pc bpc" id="L242" title="1 of 2 branches missed.">        return tokenized ? metadataFieldTypeTokenized : metadataFieldTypeUntokenized;</span>
+    }
+
+    /**
+     * @deprecated (since 1.7) use return value of {@link IndexListener#errorOccurred(String, String, File, File)}
+     * If an error occurs (e.g. an XML parse error), should we
+     *  try to continue indexing, or abort?
+     *  @param b if true, continue; if false, abort
+     */
+    @Deprecated
+    public void setContinueAfterInputError(boolean b) {
+<span class="nc" id="L253">        continueAfterInputError = b;</span>
+<span class="nc" id="L254">    }</span>
+
+    /**
+     * @deprecated only functional for index() using reader
+     * If an error occurs (e.g. an XML parse error), and we don't
+     * continue indexing, should we re-throw it, or assume the client
+     * picked it up in the listener and return normally?
+     *  @param b if true, re-throw it; if false, return as normal
+     */
+    @Deprecated
+    public void setRethrowInputError(boolean b) {
+<span class="nc" id="L265">        rethrowInputError = b;</span>
+<span class="nc" id="L266">    }</span>
+
+    /**
+     * When we encounter a zip or tgz file, do we descend into it like it was a directory?
+     *
+     * Note that for accessing large ZIP files, you need Java 7 which supports the
+     * ZIP64 format, otherwise you'll get the &quot;invalid CEN header (bad signature)&quot; error.
+     *
+     * @param b
+     *            if true, treats zipfiles like a directory and processes all the files inside
+     */
+    public void setProcessArchivesAsDirectories(boolean b) {
+<span class="nc" id="L278">        processArchivesAsDirectories = b;</span>
+<span class="nc" id="L279">    }</span>
+
+    /**
+     * Should we recursively index files in subdirectories (and archives files, if that setting is on)?
+     * @param recurseSubdirs true if we should recurse into subdirs
+     */
+    public void setRecurseSubdirs(boolean recurseSubdirs) {
+<span class="nc" id="L286">        this.defaultRecurseSubdirs = recurseSubdirs;</span>
+<span class="nc" id="L287">    }</span>
+
+    /**
+     * Construct Indexer
+     *
+     * @param directory
+     *            the main BlackLab index directory
+     * @param create
+     *            if true, creates a new index; otherwise, appends to existing index
+     * @param docIndexerClass how to index the files, or null to autodetect
+     * @throws IOException
+     * @throws DocumentFormatException if no DocIndexer was specified and autodetection failed
+     * @Deprecated use version that takes a formatIdentifier
+     */
+    @Deprecated
+    public Indexer(File directory, boolean create, Class&lt;? extends DocIndexer&gt; docIndexerClass)
+<span class="nc" id="L303">            throws IOException, DocumentFormatException {</span>
+
+        // docIndexerClass is no longer directly used to instantiate DocIndexers
+        // instead is abstracted behind a DocIndexerFactory that exposes the DocIndexer in question using a string identifier
+        // DocIndexerFactoryClasss however also accepts qualified class names, so we can still target the requested class by passing its full name to the factory
+<span class="nc bnc" id="L308" title="All 2 branches missed.">        init(directory, create, docIndexerClass != null ? docIndexerClass.getCanonicalName() : null, null);</span>
+<span class="nc" id="L309">    }</span>
+
+    /**
+     * Construct Indexer
+     *
+     * @param directory
+     *            the main BlackLab index directory
+     * @param create
+     *            if true, creates a new index; otherwise, appends to existing index
+     * @throws IOException
+     * @throws DocumentFormatException if autodetection of the document format failed
+     */
+    public Indexer(File directory, boolean create)
+            throws IOException, DocumentFormatException {
+<span class="nc" id="L323">        this(directory, create, (String) null, null);</span>
+<span class="nc" id="L324">    }</span>
+
+    /**
+     * Construct Indexer
+     *
+     * @param directory
+     *            the main BlackLab index directory
+     * @param create
+     *            if true, creates a new index; otherwise, appends to existing index
+     * @param docIndexerClass how to index the files, or null to autodetect
+     * @param indexTemplateFile JSON file to use as template for index structure / metadata
+     *   (if creating new index)
+     * @throws DocumentFormatException if no DocIndexer was specified and autodetection failed
+     * @throws IOException
+     * @Deprecated use version that takes a formatIdentifier
+     */
+    @Deprecated
+    public Indexer(File directory, boolean create, Class&lt;? extends DocIndexer&gt; docIndexerClass, File indexTemplateFile)
+            throws DocumentFormatException, IOException {
+
+        // docIndexerClass is no longer directly used to instantiate DocIndexers
+        // instead is abstracted behind a DocIndexerFactory that exposes the DocIndexer in question using a string identifier
+        // DocIndexerFactoryClasss however also accepts qualified class names, so we can still target the requested class by passing its full name to the factory
+<span class="nc bnc" id="L347" title="All 2 branches missed.">        this(directory, create, docIndexerClass != null ? docIndexerClass.getCanonicalName() : null, indexTemplateFile);</span>
+<span class="nc" id="L348">    }</span>
+
+    /**
+     * Construct Indexer
+     *
+     * @param directory the main BlackLab index directory
+     * @param create
+     *            if true, creates a new index; otherwise, appends to existing index.
+     *            When creating a new index, a formatIdentifier or an indexTemplateFile containing a valid &quot;documentFormat&quot; value should also be supplied.
+     *            Otherwise adding new data to the index isn't possible, as we can't construct a DocIndexer to do the actual indexing without a valid formatIdentifier.
+     * @param formatIdentifier (optional) determines how this Indexer will index any new data added to it.
+     *            If omitted, when opening an existing index, the formatIdentifier in its metadata (as &quot;documentFormat&quot;) is used instead.
+     *            When creating a new index, this format will be stored as the default for that index, unless another default is already set by the indexTemplateFile (as &quot;documentFormat&quot;), it will still be used by this Indexer however.
+     * @param indexTemplateFile JSON file to use as template for index structure / metadata
+     *   (if creating new index)
+     * @throws DocumentFormatException if no formatIdentifier was specified and autodetection failed
+     * @throws IOException
+     */
+    public Indexer(File directory, boolean create, String formatIdentifier, File indexTemplateFile)
+<span class="fc" id="L367">            throws DocumentFormatException, IOException {</span>
+<span class="fc" id="L368">        init(directory, create, formatIdentifier, indexTemplateFile);</span>
+<span class="fc" id="L369">    }</span>
+
+    protected void init(File directory, boolean create, String formatIdentifier, File indexTemplateFile) throws IOException, DocumentFormatException {
+
+<span class="pc bpc" id="L373" title="1 of 2 branches missed.">        if (create) {</span>
+<span class="pc bpc" id="L374" title="1 of 2 branches missed.">            if (indexTemplateFile != null) {</span>
+<span class="nc" id="L375">                searcher = Searcher.openForWriting(directory, true, indexTemplateFile);</span>
+
+                // Read back the formatIdentifier that was provided through the indexTemplateFile now that the index has written it
+                // might be null
+<span class="nc" id="L379">                final String defaultFormatIdentifier = searcher.getIndexStructure().getDocumentFormat();</span>
+
+<span class="nc bnc" id="L381" title="All 2 branches missed.">                if (DocumentFormats.isSupported(formatIdentifier)) {</span>
+<span class="nc" id="L382">                    this.formatIdentifier = formatIdentifier;</span>
+<span class="nc bnc" id="L383" title="All 4 branches missed.">                    if (defaultFormatIdentifier == null || defaultFormatIdentifier.isEmpty()) {</span>
+                        // indexTemplateFile didn't provide a default formatIdentifier,
+                        // overwrite it with our provided formatIdentifier
+<span class="nc" id="L386">                        searcher.getIndexStructure().setDocumentFormat(formatIdentifier);</span>
+<span class="nc" id="L387">                        searcher.getIndexStructure().writeMetadata();</span>
+                    }
+<span class="nc bnc" id="L389" title="All 2 branches missed.">                } else if (DocumentFormats.isSupported(defaultFormatIdentifier)) {</span>
+<span class="nc" id="L390">                    this.formatIdentifier = defaultFormatIdentifier;</span>
+                } else {
+                    // TODO we should delete the newly created index here as it failed, how do we clean up files properly?
+<span class="nc" id="L393">                    searcher.close();</span>
+<span class="nc" id="L394">                    throw new DocumentFormatException(&quot;Input format config '&quot; + formatIdentifier + &quot;' not found (or format config contains an error) when creating new index in &quot; + directory);</span>
+                }
+<span class="pc bpc" id="L396" title="1 of 2 branches missed.">            } else if (DocumentFormats.isSupported(formatIdentifier)) {</span>
+<span class="fc" id="L397">                this.formatIdentifier = formatIdentifier;</span>
+
+                // No indexTemplateFile, but maybe the formatIdentifier is backed by a ConfigInputFormat (instead of some other DocIndexer implementation)
+                // this ConfigInputFormat could then still be used as a minimal template to setup the index
+                // (if there's no ConfigInputFormat, that's okay too, a default index template will be used instead)
+<span class="fc" id="L402">                ConfigInputFormat format = null;</span>
+<span class="fc bfc" id="L403" title="All 2 branches covered.">                for (Format desc : DocumentFormats.getFormats()) {</span>
+<span class="pc bpc" id="L404" title="1 of 4 branches missed.">                    if (desc.getId().equals(formatIdentifier) &amp;&amp; desc.getConfig() != null) {</span>
+<span class="nc" id="L405">                        format = desc.getConfig();</span>
+<span class="nc" id="L406">                        break;</span>
+                    }
+<span class="fc" id="L408">                }</span>
+
+                // template might still be null, in that case a default will be created
+<span class="fc" id="L411">                searcher = Searcher.openForWriting(directory, true, format);</span>
+
+<span class="fc" id="L413">                String defaultFormatIdentifier = searcher.getIndexStructure().getDocumentFormat();</span>
+<span class="pc bpc" id="L414" title="2 of 4 branches missed.">                if (defaultFormatIdentifier == null || defaultFormatIdentifier.isEmpty()) {</span>
+                    // ConfigInputFormat didn't provide a default formatIdentifier,
+                    // overwrite it with our provided formatIdentifier
+<span class="fc" id="L417">                    searcher.getIndexStructure().setDocumentFormat(formatIdentifier);</span>
+<span class="fc" id="L418">                    searcher.getIndexStructure().writeMetadata();</span>
+                }
+<span class="fc" id="L420">            } else {</span>
+<span class="nc" id="L421">                throw new DocumentFormatException(&quot;Input format config '&quot; + formatIdentifier + &quot;' not found (or format config contains an error) when creating new index in &quot; + directory);</span>
+            }
+        } else { // opening an existing index
+
+<span class="nc" id="L425">            this.searcher = Searcher.openForWriting(directory, false);</span>
+<span class="nc" id="L426">            String defaultFormatIdentifier = this.searcher.getIndexStructure().getDocumentFormat();</span>
+
+<span class="nc bnc" id="L428" title="All 2 branches missed.">            if (DocumentFormats.isSupported(formatIdentifier))</span>
+<span class="nc" id="L429">                this.formatIdentifier = formatIdentifier;</span>
+<span class="nc bnc" id="L430" title="All 2 branches missed.">            else if (DocumentFormats.isSupported(defaultFormatIdentifier))</span>
+<span class="nc" id="L431">                this.formatIdentifier = defaultFormatIdentifier;</span>
+            else {
+<span class="nc" id="L433">                searcher.close();</span>
+<span class="nc bnc" id="L434" title="All 2 branches missed.">                String message = formatIdentifier == null ? &quot;No formatIdentifier&quot; : &quot;Unknown formatIdentifier '&quot; + formatIdentifier + &quot;'&quot;;</span>
+<span class="nc" id="L435">                throw new DocumentFormatException(message + &quot;, and could not determine the default documentFormat for index &quot; + directory);</span>
+            }
+        }
+
+<span class="fc" id="L439">        metadataFieldTypeTokenized = new FieldType();</span>
+<span class="fc" id="L440">        metadataFieldTypeTokenized.setStored(true);</span>
+        //metadataFieldTypeTokenized.setIndexed(true);
+<span class="fc" id="L442">        metadataFieldTypeTokenized.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS);</span>
+<span class="fc" id="L443">        metadataFieldTypeTokenized.setTokenized(true);</span>
+<span class="fc" id="L444">        metadataFieldTypeTokenized.setOmitNorms(true); // @@@ &lt;-- depending on setting?</span>
+<span class="fc" id="L445">        metadataFieldTypeTokenized.setStoreTermVectors(true);</span>
+<span class="fc" id="L446">        metadataFieldTypeTokenized.setStoreTermVectorPositions(true);</span>
+<span class="fc" id="L447">        metadataFieldTypeTokenized.setStoreTermVectorOffsets(true);</span>
+<span class="fc" id="L448">        metadataFieldTypeTokenized.freeze();</span>
+
+<span class="fc" id="L450">        metadataFieldTypeUntokenized = new FieldType(metadataFieldTypeTokenized);</span>
+<span class="fc" id="L451">        metadataFieldTypeUntokenized.setIndexOptions(IndexOptions.DOCS_AND_FREQS);</span>
+        //metadataFieldTypeUntokenized.setTokenized(false);  // &lt;-- this should be done with KeywordAnalyzer, otherwise untokenized fields aren't lowercased
+<span class="fc" id="L453">        metadataFieldTypeUntokenized.setStoreTermVectors(false);</span>
+<span class="fc" id="L454">        metadataFieldTypeUntokenized.setStoreTermVectorPositions(false);</span>
+<span class="fc" id="L455">        metadataFieldTypeUntokenized.setStoreTermVectorOffsets(false);</span>
+<span class="fc" id="L456">        metadataFieldTypeUntokenized.freeze();</span>
+<span class="fc" id="L457">    }</span>
+
+    public void setFormatIdentifier(String formatIdentifier) throws DocumentFormatException {
+<span class="nc bnc" id="L460" title="All 2 branches missed.">        if (!DocumentFormats.isSupported(formatIdentifier))</span>
+<span class="nc" id="L461">            throw new DocumentFormatException(&quot;Cannot set formatIdentifier '&quot;+formatIdentifier+&quot;' for index &quot; + this.searcher.getIndexName() + &quot;; unknown identifier&quot;);</span>
+
+<span class="nc" id="L463">        this.formatIdentifier = formatIdentifier;</span>
+<span class="nc" id="L464">    }</span>
+
+    /**
+     * Set the listener object that receives messages about indexing progress.
+     * @param listener the listener object to report to
+     */
+    public void setListener(IndexListener listener) {
+<span class="fc" id="L471">        this.listener = listener;</span>
+<span class="fc" id="L472">        getListener(); // report creation and start of indexing, if it hadn't been reported yet</span>
+<span class="fc" id="L473">    }</span>
+
+    /**
+     * Get our index listener, or create a console reporting listener if none was set yet.
+     *
+     * Also reports the creation of the Indexer and start of indexing, if it hadn't been reported
+     * already.
+     *
+     * @return the listener
+     */
+    public IndexListener getListener() {
+<span class="pc bpc" id="L484" title="1 of 2 branches missed.">        if (listener == null) {</span>
+<span class="nc" id="L485">            listener = new IndexListenerReportConsole();</span>
+        }
+<span class="fc bfc" id="L487" title="All 2 branches covered.">        if (!createAndIndexStartReported) {</span>
+<span class="fc" id="L488">            createAndIndexStartReported = true;</span>
+<span class="fc" id="L489">            listener.indexerCreated(this);</span>
+<span class="fc" id="L490">            listener.indexStart();</span>
+        }
+<span class="fc" id="L492">        return listener;</span>
+    }
+
+    /**
+     * Log an exception that occurred during indexing
+     * @param msg log message
+     * @param e the exception
+     */
+    protected void log(String msg, Exception e) {
+<span class="nc" id="L501">        logger.error(msg, e);</span>
+<span class="nc" id="L502">    }</span>
+
+    /**
+     * Set number of documents after which we should stop.
+     * Useful when testing.
+     * @param n number of documents after which to stop
+     */
+    public void setMaxNumberOfDocsToIndex(int n) {
+<span class="nc" id="L510">        this.maxNumberOfDocsToIndex = n;</span>
+<span class="nc" id="L511">    }</span>
+
+    /**
+     * Call this to roll back any changes made to the index this session.
+     * Calling close() will automatically commit any changes. If you call this
+     * method, then call close(), no changes will be committed.
+     */
+    public void rollback() {
+<span class="nc" id="L519">        getListener().rollbackStart();</span>
+<span class="nc" id="L520">        searcher.rollback();</span>
+<span class="nc" id="L521">        getListener().rollbackEnd();</span>
+<span class="nc" id="L522">        hasRollback = true;</span>
+<span class="nc" id="L523">    }</span>
+
+    /**
+     * Close the index
+     */
+    // TODO this should call close() on running FileProcessors
+    public void close() {
+
+        // Signal to the listener that we're done indexing and closing the index (which might take a
+        // while)
+<span class="fc" id="L533">        getListener().indexEnd();</span>
+<span class="fc" id="L534">        getListener().closeStart();</span>
+
+<span class="pc bpc" id="L536" title="1 of 2 branches missed.">        if (!hasRollback){</span>
+<span class="fc" id="L537">            searcher.getIndexStructure().addToTokenCount(getListener().getTokensProcessed());</span>
+<span class="fc" id="L538">            searcher.getIndexStructure().writeMetadata();</span>
+        }
+<span class="fc" id="L540">        searcher.close();</span>
+
+        // Signal that we're completely done now
+<span class="fc" id="L543">        getListener().closeEnd();</span>
+<span class="fc" id="L544">        getListener().indexerClosed();</span>
+<span class="fc" id="L545">    }</span>
+
+    /**
+     * Set the DocIndexer class we should use to index documents.
+     * @param docIndexerClass the class
+     * @deprecated use setDocIndexerFactory
+     */
+    @Deprecated
+    public void setDocIndexer(Class&lt;? extends DocIndexer&gt; docIndexerClass) {
+        // docIndexerClass is no longer directly used to instantiate DocIndexers
+        // instead is abstracted behind a DocIndexerFactory that exposes the DocIndexer in question using a friendly name
+        // the factory however also accepts qualified class names, so we can still target the requested class by passing its full name to the factory
+<span class="nc" id="L557">        this.formatIdentifier = docIndexerClass.getCanonicalName();</span>
+<span class="nc" id="L558">    }</span>
+
+    /**
+     * Add a Lucene document to the index
+     *
+     * @param document
+     *            the document to add
+     * @throws CorruptIndexException
+     * @throws IOException
+     */
+    public void add(Document document) throws CorruptIndexException, IOException {
+<span class="fc" id="L569">        searcher.getWriter().addDocument(document);</span>
+<span class="fc" id="L570">        getListener().luceneDocumentAdded();</span>
+<span class="fc" id="L571">    }</span>
+
+    /**
+     * Updates the specified Document in the index.
+     *
+     * @param term how to find the document to update
+     * @param document the updated document
+     * @throws CorruptIndexException
+     * @throws IOException
+     */
+    public void update(Term term, Document document) throws CorruptIndexException, IOException {
+<span class="nc" id="L582">        searcher.getWriter().updateDocument(term, document);</span>
+<span class="nc" id="L583">        getListener().luceneDocumentAdded();</span>
+<span class="nc" id="L584">    }</span>
+
+    /**
+     * Add a list of tokens to a forward index
+     *
+     * @param fieldName what forward index to add this to
+     * @param prop the property to get values and position increments from
+     * @return the id assigned to the content
+     */
+    public int addToForwardIndex(String fieldName, ComplexFieldProperty prop) {
+<span class="fc" id="L594">        ForwardIndex forwardIndex = searcher.getForwardIndex(fieldName);</span>
+<span class="pc bpc" id="L595" title="1 of 2 branches missed.">        if (forwardIndex == null)</span>
+<span class="nc" id="L596">            throw new IllegalArgumentException(&quot;No forward index for field &quot; + fieldName);</span>
+
+<span class="fc" id="L598">        return forwardIndex.addDocument(prop.getValues(), prop.getPositionIncrements());</span>
+    }
+
+    /**
+     * Index a document or archive from an InputStream.
+     *
+     * @param documentName
+     *            name for the InputStream (e.g. name of the file)
+     * @param input
+     *            the stream
+     */
+    public void index(String documentName, InputStream input) {
+<span class="fc" id="L610">        index(documentName, input, &quot;*&quot;);</span>
+<span class="fc" id="L611">    }</span>
+
+    /**
+     * Index a document from a Reader.
+     *
+     * NOTE: it is generally better to supply an (UTF-8) InputStream or byte array directly,
+     * as this can in some cases be parsed more efficiently (e.g. using VTD-XML).
+     *
+     * Catches and reports any errors that occur.
+     *
+     * @param documentName
+     *            some (preferably unique) name for this document (for example, the file
+     *            name or path)
+     * @param reader
+     *            where to index from
+     * @throws Exception
+     */
+    public void index(String documentName, Reader reader) throws Exception {
+        try {
+<span class="nc" id="L630">            docIndexerWrapper.file(documentName, reader);</span>
+<span class="nc" id="L631">        } catch (MalformedInputFileException e) {</span>
+<span class="nc" id="L632">            listener.errorOccurred(e, documentName, null);</span>
+<span class="nc bnc" id="L633" title="All 2 branches missed.">            if (continueAfterInputError) {</span>
+<span class="nc" id="L634">                logger.error(&quot;Parsing &quot; + documentName + &quot; failed:&quot;);</span>
+<span class="nc" id="L635">                e.printStackTrace();</span>
+<span class="nc" id="L636">                logger.error(&quot;(continuing indexing)&quot;);</span>
+            } else {
+                // Don't continue; re-throw the exception so we eventually abort
+<span class="nc" id="L639">                logger.error(&quot;Input error while processing &quot; + documentName);</span>
+<span class="nc bnc" id="L640" title="All 2 branches missed.">                if (rethrowInputError)</span>
+<span class="nc" id="L641">                    throw e;</span>
+<span class="nc" id="L642">                e.printStackTrace();</span>
+        }
+<span class="nc" id="L644">        } catch (Exception e) {</span>
+<span class="nc" id="L645">            listener.errorOccurred(e, documentName, null);</span>
+<span class="nc bnc" id="L646" title="All 2 branches missed.">            if (continueAfterInputError) {</span>
+<span class="nc" id="L647">                logger.error(&quot;Parsing &quot; + documentName + &quot; failed:&quot;);</span>
+<span class="nc" id="L648">                e.printStackTrace();</span>
+<span class="nc" id="L649">                logger.error(&quot;(continuing indexing)&quot;);</span>
+            } else {
+<span class="nc" id="L651">                logger.error(&quot;Exception while processing &quot; + documentName);</span>
+<span class="nc bnc" id="L652" title="All 2 branches missed.">                if (rethrowInputError)</span>
+<span class="nc" id="L653">                    throw e;</span>
+<span class="nc" id="L654">                e.printStackTrace();</span>
+	        }
+<span class="nc" id="L656">	    }</span>
+<span class="nc" id="L657">    }</span>
+
+    /**
+     * Index a document (or archive if enabled by {@link #setProcessArchivesAsDirectories(boolean)}
+     *
+     * @param fileName
+     * @param input
+     * @param fileNameGlob
+     */
+    public void index(String fileName, InputStream input, String fileNameGlob) {
+<span class="pc" id="L667">        try (FileProcessor proc = new FileProcessor(this.useThreads, this.defaultRecurseSubdirs, this.processArchivesAsDirectories)) {</span>
+<span class="fc" id="L668">            proc.setFileNameGlob(fileNameGlob);</span>
+<span class="fc" id="L669">            proc.setFileHandler(docIndexerWrapper);</span>
+<span class="fc" id="L670">            proc.setErrorHandler(listener);</span>
+<span class="fc" id="L671">            proc.processInputStream(fileName, input, null);</span>
+<span class="pc bpc" id="L672" title="6 of 8 branches missed.">        }</span>
+<span class="fc" id="L673">    }</span>
+
+    /**
+     * Index the file or directory specified.
+
+     * Indexes all files in a directory or archive (previously
+     * only indexed *.xml; specify a glob if you want this
+     * behaviour back, see {@link #index(File, String)}.
+     *
+     * Recurses into subdirs only if that setting is enabled.
+     *
+     * @param file
+     *                 the input file or directory
+     */
+    public void index(File file) {
+<span class="nc" id="L688">        index(file, &quot;*&quot;);</span>
+<span class="nc" id="L689">    }</span>
+
+    /**
+     * Index a document, archive (if enabled by {@link #setProcessArchivesAsDirectories(boolean)}, or directory, optionally recursively if set by {@link #setRecurseSubdirs(boolean)}
+     *
+     * @param file
+     * @param fileNameGlob only files
+     */
+    // TODO this is nearly a literal copy of index for a stream, unify them somehow (take care that file might be a directory)
+    public void index(File file, String fileNameGlob) {
+<span class="nc" id="L699">        try (FileProcessor proc = new FileProcessor(useThreads, this.defaultRecurseSubdirs, this.processArchivesAsDirectories)) {</span>
+<span class="nc" id="L700">            proc.setFileNameGlob(fileNameGlob);</span>
+<span class="nc" id="L701">            proc.setFileHandler(docIndexerWrapper);</span>
+<span class="nc" id="L702">            proc.setErrorHandler(listener);</span>
+<span class="nc" id="L703">            proc.processFile(file);</span>
+<span class="nc bnc" id="L704" title="All 8 branches missed.">        }</span>
+<span class="nc" id="L705">        catch (FileNotFoundException e) {</span>
+<span class="nc" id="L706">            throw new RuntimeException(e);</span>
+<span class="nc" id="L707">        }</span>
+<span class="nc" id="L708">    }</span>
+
+    // Purely for compat with 1.6
+    /**
+     * @deprecated use {@link #index(String, InputStream)}
+     *
+     * @param filePath
+     * @param inputStream
+     * @param glob
+     * @param processArchives
+     */
+    @Deprecated
+    public void indexInputStream(final String filePath, InputStream inputStream, String glob, boolean processArchives) {
+<span class="nc" id="L721">        boolean originalProcessArchives = this.processArchivesAsDirectories;</span>
+<span class="nc" id="L722">        setProcessArchivesAsDirectories(processArchives);</span>
+<span class="nc" id="L723">        index(filePath, inputStream, glob);</span>
+<span class="nc" id="L724">        setProcessArchivesAsDirectories(originalProcessArchives);</span>
+<span class="nc" id="L725">    }</span>
+
+    /**
+     * Should we continue indexing or stop?
+     *
+     * We stop if we've reached the maximum that was set (if any),
+     * or if a fatal error has occurred (indicated by terminateIndexing).
+     *
+     * @return true if we should continue, false if not
+     */
+    public synchronized boolean continueIndexing() {
+<span class="pc bpc" id="L736" title="1 of 2 branches missed.">        if (terminateIndexing)</span>
+<span class="nc" id="L737">            return false;</span>
+<span class="pc bpc" id="L738" title="1 of 2 branches missed.">        if (maxNumberOfDocsToIndex &gt;= 0) {</span>
+<span class="nc bnc" id="L739" title="All 2 branches missed.">            return docsToDoLeft() &gt; 0;</span>
+        }
+<span class="fc" id="L741">        return true;</span>
+    }
+
+    /**
+     * How many more documents should we process?
+     *
+     * @return the number of documents
+     */
+    public synchronized int docsToDoLeft() {
+        try {
+<span class="nc bnc" id="L751" title="All 2 branches missed.">            if (maxNumberOfDocsToIndex &lt; 0)</span>
+<span class="nc" id="L752">                return maxNumberOfDocsToIndex;</span>
+<span class="nc" id="L753">            int docsDone = searcher.getWriter().numDocs();</span>
+<span class="nc" id="L754">            return Math.max(0, maxNumberOfDocsToIndex - docsDone);</span>
+<span class="nc" id="L755">        } catch (Exception e) {</span>
+<span class="nc" id="L756">            throw new RuntimeException(e);</span>
+        }
+    }
+
+    /*
+     * BlackLab index version history:
+     * 1. Initial version
+     * 2. Sort index added to forward index; multiple forward indexes possible
+     */
+
+    public ContentStore getContentStore(String fieldName) {
+<span class="fc" id="L767">        return searcher.getContentStore(fieldName);</span>
+    }
+
+    /**
+     * Get our index directory
+     * @return the index directory
+     */
+    public File getIndexLocation() {
+<span class="nc" id="L775">        return searcher.getIndexDirectory();</span>
+    }
+
+    /**
+     * Set parameters we would like to be passed to the DocIndexer class
+     * @param indexerParam the parameters
+     */
+    public void setIndexerParam(Map&lt;String, String&gt; indexerParam) {
+<span class="nc" id="L783">        this.indexerParam = indexerParam;</span>
+<span class="nc" id="L784">    }</span>
+
+    /**
+     * Get the parameters we would like to be passed to the DocIndexer class.
+     *
+     * Used by DocIndexer classes to get their parameters.
+     * @return the parameters
+     */
+    public Map&lt;String, String&gt; getIndexerParameters() {
+<span class="fc" id="L793">        return indexerParam;</span>
+    }
+
+    /**
+     * Get the IndexWriter we're using.
+     *
+     * Useful if e.g. you want to access FSDirectory.
+     *
+     * @return the IndexWriter
+     */
+    protected IndexWriter getWriter(){
+<span class="nc" id="L804">        return searcher.getWriter();</span>
+    }
+
+    public Searcher getSearcher() {
+<span class="fc" id="L808">        return searcher;</span>
+    }
+
+    /**
+     * Set the directories to search for linked files.
+     *
+     * DocIndexerXPath allows us to index a second file into the
+     * same Lucene document, which is useful for external metadata, etc.
+     * This determines how linked files are located.
+     *
+     * @param linkedFileDirs directories to search
+     */
+    public void setLinkedFileDirs(List&lt;File&gt; linkedFileDirs) {
+<span class="nc" id="L821">        this.linkedFileDirs.clear();</span>
+<span class="nc" id="L822">        this.linkedFileDirs.addAll(linkedFileDirs);</span>
+<span class="nc" id="L823">    }</span>
+
+    /**
+     * Add a directory to search for linked files.
+     *
+     * DocIndexerXPath allows us to index a second file into the
+     * same Lucene document, which is useful for external metadata, etc.
+     * This determines how linked files are located.
+     *
+     * @param linkedFileDir directory to search
+     */
+    public void addLinkedFileDir(File linkedFileDir) {
+<span class="nc" id="L835">        this.linkedFileDirs.add(linkedFileDir);</span>
+<span class="nc" id="L836">    }</span>
+
+    public void setLinkedFileResolver(Function&lt;String, File&gt; resolver) {
+<span class="nc" id="L839">        this.linkedFileResolver = resolver;</span>
+<span class="nc" id="L840">    }</span>
+
+    public Optional&lt;Function&lt;String, File&gt;&gt; getLinkedFileResolver() {
+<span class="nc" id="L843">        return Optional.of(this.linkedFileResolver);</span>
+    }
+
+    public File getLinkedFile(String inputFile) {
+<span class="nc" id="L847">        File f = new File(inputFile);</span>
+<span class="nc bnc" id="L848" title="All 2 branches missed.">        if (f.exists())</span>
+<span class="nc" id="L849">            return f; // either absolute or relative to current dir</span>
+<span class="nc bnc" id="L850" title="All 2 branches missed.">        if (f.isAbsolute())</span>
+<span class="nc" id="L851">            return null; // we tried absolute, but didn't find it</span>
+
+        // Look in the configured directories for the relative path
+<span class="nc" id="L854">        f = FileUtil.findFile(linkedFileDirs, inputFile, null);</span>
+<span class="nc bnc" id="L855" title="All 4 branches missed.">        if (f == null &amp;&amp; this.linkedFileResolver != null)</span>
+<span class="nc" id="L856">            f = this.linkedFileResolver.apply(inputFile);</span>
+
+<span class="nc" id="L858">        return f;</span>
+    }
+
+    public void setUseThreads(boolean useThreads) {
+<span class="nc" id="L862">        this.useThreads = useThreads;</span>
+
+        // TODO some of the class-based docIndexers don't support theaded indexing
+<span class="nc bnc" id="L865" title="All 2 branches missed.">        if (!DocumentFormats.getFormat(formatIdentifier).isConfigurationBased()) {</span>
+<span class="nc" id="L866">            logger.info(&quot;Threaded indexing is disabled for format &quot; + formatIdentifier);</span>
+<span class="nc" id="L867">            this.useThreads = false;</span>
+        }
+<span class="nc" id="L869">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

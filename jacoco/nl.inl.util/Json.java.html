@@ -1,0 +1,281 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Json.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.util</a> &gt; <span class="el_source">Json.java</span></div><h1>Json.java</h1><pre class="source lang-java linenums">package nl.inl.util;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+
+/**
+ * Supports reading/writing JSON and YAML files.
+ *
+ * NOTE: C++ style // comments are allowed in Json files, which is a non-standard extension.
+ *
+ */
+<span class="nc" id="L20">public class Json {</span>
+
+    static private JsonFactory jsonFactory;
+
+    static private ObjectMapper jsonObjectMapper;
+
+    static private JsonFactory yamlFactory;
+
+    static private ObjectMapper yamlObjectMapper;
+
+    static {
+<span class="fc" id="L31">        initObjectMappers();</span>
+<span class="fc" id="L32">    }</span>
+
+    private static void initObjectMappers() {
+<span class="fc" id="L35">        jsonFactory = new JsonFactory();</span>
+<span class="fc" id="L36">        jsonFactory.enable(JsonParser.Feature.ALLOW_COMMENTS);</span>
+<span class="fc" id="L37">        jsonObjectMapper = new ObjectMapper(jsonFactory);</span>
+<span class="fc" id="L38">        jsonObjectMapper.configure(JsonParser.Feature.STRICT_DUPLICATE_DETECTION, true);</span>
+
+<span class="fc" id="L40">        yamlFactory = new YAMLFactory();</span>
+<span class="fc" id="L41">        yamlObjectMapper = new ObjectMapper(yamlFactory);</span>
+<span class="fc" id="L42">        yamlObjectMapper.configure(JsonParser.Feature.STRICT_DUPLICATE_DETECTION, true);</span>
+<span class="fc" id="L43">    }</span>
+
+    public static ObjectMapper getJsonObjectMapper() {
+<span class="fc" id="L46">        return jsonObjectMapper;</span>
+    }
+
+    public static ObjectMapper getYamlObjectMapper() {
+<span class="fc" id="L50">        return yamlObjectMapper;</span>
+    }
+
+//	/**
+//	 * Write a JSON object to a file.
+//	 * @param data the object to write
+//	 * @param file the file to write to
+//	 * @throws IOException
+//	 * @throws JsonMappingException
+//	 * @throws JsonGenerationException
+//	 */
+//	public static void write(JsonNode data, File file) throws JsonGenerationException, JsonMappingException, IOException {
+//		try (PrintWriter out = FileUtil.openForWriting(file)) {
+//		    jsonObjectMapper.writeValue(out, data);
+//		}
+//	}
+//
+//	/**
+//	 * Read a JSON object from a file.
+//	 *
+//	 * The data may be commented using Java-style end-of-line comments (//).
+//	 *
+//	 * @param file the file to read from
+//	 * @return the JSON object read
+//	 * @throws JsonProcessingException if the data read was not valid commented-JSON
+//	 * @throws IOException on I/O error
+//	 */
+//	public static JsonNode read(File file) throws JsonProcessingException, IOException {
+//		try (BufferedReader reader = FileUtil.openForReading(file)) {
+//			return jsonObjectMapper.readTree(readFileStripLineComments(reader));
+//		}
+//	}
+//
+//	/**
+//	 * Read a JSON object from a stream.
+//	 *
+//	 * The data may be commented using Java-style end-of-line comments (//).
+//	 *
+//	 * @param is the stream to read from
+//	 * @param encoding character encoding to use
+//	 * @return the JSON object read
+//	 * @throws JsonProcessingException if the data read was not valid commented-JSON
+//	 * @throws IOException on I/O error
+//	 */
+//	public static JsonNode read(InputStream is, Charset encoding) throws JsonProcessingException, IOException {
+//		BufferedReader reader = new BufferedReader(new InputStreamReader(is, encoding));
+//		return jsonObjectMapper.readTree(readFileStripLineComments(reader));
+//	}
+//
+//	/**
+//	 * Read a JSON object from a stream.
+//	 *
+//	 * The data may be commented using Java-style end-of-line comments (//).
+//	 *
+//	 * @param is the stream to read from
+//	 * @param encoding character encoding to use
+//	 * @return the JSON object read
+//	 * @throws JsonProcessingException if the data read was not valid commented-JSON
+//	 * @throws IOException on I/O error
+//	 */
+//	public static JsonNode read(InputStream is, String encoding) throws JsonProcessingException, IOException {
+//		return read(is, Charset.forName(encoding));
+//	}
+//
+//	/**
+//	 * Read a JSON object from a Reader.
+//	 *
+//	 * The data may be commented using Java-style end-of-line comments (//).
+//	 *
+//	 * @param reader where to read from
+//	 * @return the JSON object read
+//	 * @throws JsonProcessingException if the data read was not valid commented-JSON
+//	 * @throws IOException on I/O error
+//	 */
+//	public static JsonNode read(Reader reader) throws JsonProcessingException, IOException {
+//		BufferedReader buffReader;
+//		if (reader instanceof BufferedReader)
+//			buffReader = (BufferedReader) reader;
+//		else
+//			buffReader = new BufferedReader(reader);
+//		return jsonObjectMapper.readTree(readFileStripLineComments(buffReader));
+//	}
+
+//	private static String readFileStripLineComments(BufferedReader reader) throws IOException {
+//		StringBuilder b = new StringBuilder();
+//		while (true) {
+//			String line = reader.readLine();
+//			if (line == null)
+//				break;
+//			int n = line.length();
+//			boolean inString = false;
+//			boolean done = false;
+//			for (int i = 0; i &lt; n &amp;&amp; !done; i++) {
+//				switch(line.charAt(i)) {
+//				case '\\':
+//					if (inString) {
+//						// Escape: skip the next character
+//						i++;
+//					}
+//					break;
+//				case '&quot;':
+//					// Keep track of whether we're in a string or not
+//					inString = inString ? false : true;
+//					break;
+//				case '/':
+//					// Start of end-of-line comment?
+//					if (!inString &amp;&amp; i &lt; n - 1 &amp;&amp; line.charAt(i + 1) == '/') {
+//						// Yes, strip and break from loop
+//						line = line.substring(0, i).trim();
+//						done = true;
+//					}
+//					break;
+//				}
+//			}
+//			b.append(line).append(&quot;\n&quot;);
+//		}
+//		return b.toString();
+//	}
+
+//	public static ObjectNode object(Object... keyValues) {
+//		JsonNode obj = new JsonNode();
+//		if (keyValues.length % 2 != 0) {
+//			throw new IllegalArgumentException(&quot;Odd number of parameters&quot;);
+//		}
+//		for (int i = 0; i &lt; keyValues.length; i += 2) {
+//			if (!(keyValues[i] instanceof String)) {
+//				throw new IllegalArgumentException(&quot;Non-string key&quot;);
+//			}
+//			String key = (String)keyValues[i];
+//			Object value = keyValues[i + 1];
+//			obj.put(key, value);
+//		}
+//		return obj;
+//	}
+
+	/**
+	 * Get or create a JsonNode child of the specified parent.
+	 *
+	 * @param parent parent node to get the object from
+	 * @param name name of the JsonNode to get
+	 * @return the object
+	 * @throws RuntimeException if a non-JsonNode child with this name exists
+	 */
+	public static ObjectNode getObject(ObjectNode parent, String name) {
+<span class="fc" id="L194">	    ObjectNode object = null;</span>
+<span class="pc bpc" id="L195" title="1 of 2 branches missed.">		if (parent.has(name))</span>
+<span class="fc" id="L196">			object = (ObjectNode)parent.get(name);</span>
+		else
+<span class="nc" id="L198">			object = parent.putObject(name);</span>
+<span class="fc" id="L199">		return object;</span>
+	}
+
+	/**
+	 * Get a string value from a JSON Object, or substitute a default value
+	 * if the key doesn't exist.
+	 *
+	 * @param parent parent node to get the object from
+	 * @param name name of the value to get
+	 * @param defVal value to use if key doesn't exist
+	 * @return the string value
+	 */
+	public static String getString(JsonNode parent, String name, String defVal) {
+<span class="fc bfc" id="L212" title="All 2 branches covered.">		if (parent.has(name))</span>
+<span class="fc" id="L213">			return parent.get(name).textValue();</span>
+<span class="fc" id="L214">		return defVal;</span>
+	}
+
+	/**
+	 * Get a boolean value from a JSON Object, or substitute a default value
+	 * if the key doesn't exist.
+	 *
+	 * @param parent parent node to get the object from
+	 * @param name name of the value to get
+	 * @param defVal value to use if key doesn't exist
+	 * @return the boolean value
+	 */
+	public static boolean getBoolean(JsonNode parent, String name, boolean defVal) {
+<span class="fc bfc" id="L227" title="All 2 branches covered.">		if (parent.has(name))</span>
+<span class="fc" id="L228">			return parent.get(name).booleanValue();</span>
+<span class="fc" id="L229">		return defVal;</span>
+	}
+
+    /**
+     * Get a long value from a JSON Object, or substitute a default value
+     * if the key doesn't exist.
+     *
+     * @param parent parent node to get the object from
+     * @param name name of the value to get
+     * @param defVal value to use if key doesn't exist
+     * @return the long value
+     */
+    public static long getLong(ObjectNode parent, String name, long defVal) {
+<span class="fc bfc" id="L242" title="All 2 branches covered.">        if (parent.has(name))</span>
+<span class="fc" id="L243">            return parent.get(name).longValue();</span>
+<span class="fc" id="L244">        return defVal;</span>
+    }
+
+    /**
+     * Get an int value from a JSON Object, or substitute a default value
+     * if the key doesn't exist.
+     *
+     * @param parent parent node to get the object from
+     * @param name name of the value to get
+     * @param defVal value to use if key doesn't exist
+     * @return the int value
+     */
+    public static int getInt(ObjectNode parent, String name, int defVal) {
+<span class="nc bnc" id="L257" title="All 2 branches missed.">        if (parent.has(name))</span>
+<span class="nc" id="L258">            return parent.get(name).intValue();</span>
+<span class="nc" id="L259">        return defVal;</span>
+    }
+
+    public static ArrayNode arrayOfStrings(ArrayNode arr, List&lt;String&gt; fields) {
+<span class="pc bpc" id="L263" title="1 of 2 branches missed.">        for (String str: fields) {</span>
+<span class="nc" id="L264">            arr.add(str);</span>
+<span class="nc" id="L265">        }</span>
+<span class="fc" id="L266">        return arr;</span>
+    }
+
+    public static List&lt;String&gt; getListOfStrings(JsonNode group, String name) {
+<span class="fc" id="L270">        ArrayNode arr = (ArrayNode)group.get(name);</span>
+<span class="fc" id="L271">        List&lt;String&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="pc bpc" id="L272" title="1 of 2 branches missed.">        if (arr != null) {</span>
+<span class="pc bpc" id="L273" title="1 of 2 branches missed.">            for (int i = 0; i &lt; arr.size(); i++) {</span>
+<span class="nc" id="L274">                result.add(arr.get(i).textValue());</span>
+            }
+        }
+<span class="fc" id="L277">        return result;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

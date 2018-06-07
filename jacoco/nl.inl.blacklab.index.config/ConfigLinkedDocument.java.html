@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ConfigLinkedDocument.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.index.config</a> &gt; <span class="el_source">ConfigLinkedDocument.java</span></div><h1>ConfigLinkedDocument.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.index.config;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+/** Configuration for a linked document. */
+public class ConfigLinkedDocument {
+
+<span class="pc" id="L10">    public static enum MissingLinkPathAction {</span>
+<span class="fc" id="L11">        IGNORE,</span>
+<span class="fc" id="L12">        WARN,</span>
+<span class="fc" id="L13">        FAIL;</span>
+
+        public static MissingLinkPathAction fromStringValue(String v) {
+<span class="nc" id="L16">            return valueOf(v.toUpperCase());</span>
+        }
+
+        public String stringValue() {
+<span class="nc" id="L20">            return toString().toLowerCase();</span>
+        }
+    }
+
+    /** Linked document type name, and field name if we're going to store it */
+    private String name;
+
+    /** Should we store the linked document in the content store? (default: false) */
+<span class="fc" id="L28">    private boolean store = false;</span>
+
+    /** Where in the document to find the information we need to locate the linked document. */
+<span class="fc" id="L31">    List&lt;ConfigLinkValue&gt; linkValues = new ArrayList&lt;&gt;();</span>
+
+    /** What to do if we can't find the link information: ignore, warn or fail (default: fail) */
+<span class="fc" id="L34">    private MissingLinkPathAction ifLinkPathMissing = MissingLinkPathAction.FAIL;</span>
+
+    /** Format of the linked input file */
+    private String inputFormatIdentifier;
+
+    /** File or URL reference to our linked document (or archive containing it) */
+    private String inputFile;
+
+    /** If input file is a TAR or ZIP archive, this is the path inside the archive */
+    private String pathInsideArchive;
+
+    /** Path to our specific document inside this file (if omitted, file must contain exactly one document) */
+    private String documentPath;
+
+<span class="fc" id="L48">    public ConfigLinkedDocument(String name) {</span>
+<span class="fc" id="L49">        this.name = name;</span>
+<span class="fc" id="L50">    }</span>
+
+    public void validate() {
+<span class="fc" id="L53">        String t = &quot;linked document&quot;;</span>
+<span class="fc" id="L54">        ConfigInputFormat.req(name, t, &quot;name&quot;);</span>
+<span class="pc bpc" id="L55" title="1 of 2 branches missed.">        ConfigInputFormat.req(!linkValues.isEmpty(), t, &quot;have at least one linkPath&quot;);</span>
+<span class="pc bpc" id="L56" title="1 of 2 branches missed.">        if (inputFormatIdentifier == null)</span>
+<span class="nc" id="L57">            throw new InputFormatConfigException(&quot;linked document must have inputFormat&quot;);</span>
+<span class="fc" id="L58">        ConfigInputFormat.req(inputFile, t, &quot;inputFile&quot;);</span>
+<span class="fc" id="L59">    }</span>
+
+    public String getName() {
+<span class="nc" id="L62">        return name;</span>
+    }
+
+    public void setName(String name) {
+<span class="nc" id="L66">        this.name = name;</span>
+<span class="nc" id="L67">    }</span>
+
+    public boolean shouldStore() {
+<span class="nc" id="L70">        return store;</span>
+    }
+
+    public void setStore(boolean store) {
+<span class="fc" id="L74">        this.store = store;</span>
+<span class="fc" id="L75">    }</span>
+
+    public List&lt;ConfigLinkValue&gt; getLinkValues() {
+<span class="nc" id="L78">        return Collections.unmodifiableList(linkValues);</span>
+    }
+
+    public void addLinkValue(ConfigLinkValue linkValue) {
+<span class="fc" id="L82">        this.linkValues.add(linkValue);</span>
+<span class="fc" id="L83">    }</span>
+
+    public MissingLinkPathAction getIfLinkPathMissing() {
+<span class="nc" id="L86">        return ifLinkPathMissing;</span>
+    }
+
+    public void setIfLinkPathMissing(MissingLinkPathAction ifLinkPathMissing) {
+<span class="nc" id="L90">        this.ifLinkPathMissing = ifLinkPathMissing;</span>
+<span class="nc" id="L91">    }</span>
+
+    public String getInputFormatIdentifier() {
+<span class="nc" id="L94">        return inputFormatIdentifier;</span>
+    }
+
+    public void setInputFormatIdentifier(String formatIdentifier) {
+<span class="fc" id="L98">        this.inputFormatIdentifier = formatIdentifier;</span>
+<span class="fc" id="L99">    }</span>
+
+    public String getInputFile() {
+<span class="nc" id="L102">        return inputFile;</span>
+    }
+
+    public void setInputFile(String inputFile) {
+<span class="fc" id="L106">        this.inputFile = inputFile;</span>
+<span class="fc" id="L107">    }</span>
+
+    public String getPathInsideArchive() {
+<span class="nc" id="L110">        return pathInsideArchive;</span>
+    }
+
+    public void setPathInsideArchive(String pathInsideArchive) {
+<span class="fc" id="L114">        this.pathInsideArchive = pathInsideArchive;</span>
+<span class="fc" id="L115">    }</span>
+
+    public String getDocumentPath() {
+<span class="nc" id="L118">        return documentPath;</span>
+    }
+
+    public void setDocumentPath(String documentPath) {
+<span class="nc" id="L122">        this.documentPath = documentPath;</span>
+<span class="nc" id="L123">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

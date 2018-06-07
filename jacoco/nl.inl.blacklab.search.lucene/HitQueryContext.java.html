@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HitQueryContext.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">HitQueryContext.java</span></div><h1>HitQueryContext.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.search.lucene;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+import nl.inl.blacklab.search.Span;
+
+/**
+ * Provides per-hit query-wide context, such as captured groups.
+ *
+ * This object is passed to the whole BLSpans tree before iterating
+ * over the hits. Captured groups will register themselves here and receive
+ * an index in the captured group array, and BLSpans objects that need access
+ * to captured groups will store a reference to this context and use it later.
+ */
+public class HitQueryContext {
+
+	/** Root of the BLSpans tree for this query. */
+	private BLSpans rootSpans;
+
+	/** Captured group names for our query, in index order */
+<span class="fc" id="L23">	List&lt;String&gt; groupNames = new ArrayList&lt;&gt;();</span>
+
+	/** We use this to check if subclauses capture groups or not */
+<span class="fc" id="L26">	private int numberOfTimesGroupRegistered = 0;</span>
+
+<span class="fc" id="L28">	public HitQueryContext(BLSpans spans) {</span>
+<span class="fc" id="L29">		this.rootSpans = spans;</span>
+<span class="fc" id="L30">	}</span>
+
+	public HitQueryContext() {
+<span class="fc" id="L33">		this(null);</span>
+<span class="fc" id="L34">	}</span>
+
+	/**
+	 * Set our Spans object.
+	 *
+	 * Used when manually iterating through the index segments,
+	 * because we go through several Spans for a single query.
+	 *
+	 * @param spans our new spans
+	 */
+	public void setSpans(BLSpans spans) {
+<span class="fc" id="L45">		this.rootSpans = spans;</span>
+<span class="fc" id="L46">	}</span>
+
+	/**
+	 * Register a captured group, assigning it a unique index number.
+	 *
+	 * @param name the group's name
+	 * @return the group's assigned index
+	 */
+	public int registerCapturedGroup(String name) {
+<span class="fc" id="L55">		numberOfTimesGroupRegistered++;</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">		if (groupNames.contains(name))</span>
+<span class="fc" id="L57">			return groupNames.indexOf(name); // already registered</span>
+<span class="fc" id="L58">		groupNames.add(name);</span>
+<span class="fc" id="L59">		return groupNames.size() - 1; // index in array</span>
+	}
+
+	/**
+	 * Get the number of captured groups
+	 * @return number of captured groups
+	 */
+	public int numberOfCapturedGroups() {
+<span class="fc" id="L67">		return groupNames.size();</span>
+	}
+
+	/**
+	 * Retrieve all the captured group information.
+	 *
+	 * Used by Hits.
+	 *
+	 * @param capturedGroups array to place the captured group information into
+	 */
+	public void getCapturedGroups(Span[] capturedGroups) {
+<span class="fc" id="L78">		rootSpans.getCapturedGroups(capturedGroups);</span>
+<span class="fc" id="L79">	}</span>
+
+	/**
+	 * Get the names of the captured groups, in index order.
+	 *
+	 * @return the list of names
+	 */
+	public List&lt;String&gt; getCapturedGroupNames() {
+<span class="fc" id="L87">		return Collections.unmodifiableList(groupNames);</span>
+	}
+
+	public int getCaptureRegisterNumber() {
+<span class="fc" id="L91">		return numberOfTimesGroupRegistered;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

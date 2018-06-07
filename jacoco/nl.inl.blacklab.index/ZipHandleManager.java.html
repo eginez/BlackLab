@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ZipHandleManager.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.index</a> &gt; <span class="el_source">ZipHandleManager.java</span></div><h1>ZipHandleManager.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.index;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.zip.ZipFile;
+
+/**
+ * Manages opened zip files.
+ *
+ * Openings large zip files takes time, so it's more efficient to keep zip files open
+ * for a while in case we'll access the same zip file again. Of course, we should
+ * eventually close them to free up resources as well.
+ */
+<span class="nc" id="L20">public class ZipHandleManager {</span>
+
+    /** Do we want to keep zip files open at all? */
+<span class="nc" id="L23">    private static boolean keepZipsOpen = true;</span>
+
+    /** Maximum age of open zip file in sec */
+<span class="nc" id="L26">    private static int maxOpenZipAgeSec = 24 * 3600;</span>
+
+    /** Maximum number of zip files to keep open */
+<span class="nc" id="L29">    private static int maxOpenZipFiles = 10;</span>
+
+    /** Zip files opened by DocIndexerBase indexers. Should be closed eventually. */
+<span class="nc" id="L32">    private static Map&lt;File, ZipHandle&gt; openZips = new LinkedHashMap&lt;&gt;();</span>
+
+    static class ZipHandle implements Comparable&lt;ZipHandle&gt; {
+
+        public File key;
+
+        public ZipFile zipFile;
+
+        public long lastUsed;
+
+<span class="nc" id="L42">        public ZipHandle(File key, ZipFile file) {</span>
+<span class="nc" id="L43">            this.key = key;</span>
+<span class="nc" id="L44">            this.zipFile = file;</span>
+<span class="nc" id="L45">            this.lastUsed = System.currentTimeMillis();</span>
+<span class="nc" id="L46">        }</span>
+
+        @Override
+        public int compareTo(ZipHandle o) {
+<span class="nc" id="L50">            return Long.compare(lastUsed, o.lastUsed);</span>
+        }
+
+        public void markUsed() {
+<span class="nc" id="L54">            lastUsed = System.currentTimeMillis();</span>
+<span class="nc" id="L55">        }</span>
+
+        @Override
+        public int hashCode() {
+<span class="nc" id="L59">            final int prime = 31;</span>
+<span class="nc" id="L60">            int result = 1;</span>
+<span class="nc bnc" id="L61" title="All 2 branches missed.">            result = prime * result + ((key == null) ? 0 : key.hashCode());</span>
+<span class="nc" id="L62">            result = prime * result + (int) (lastUsed ^ (lastUsed &gt;&gt;&gt; 32));</span>
+<span class="nc bnc" id="L63" title="All 2 branches missed.">            result = prime * result + ((zipFile == null) ? 0 : zipFile.hashCode());</span>
+<span class="nc" id="L64">            return result;</span>
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+<span class="nc bnc" id="L69" title="All 2 branches missed.">            if (this == obj)</span>
+<span class="nc" id="L70">                return true;</span>
+<span class="nc bnc" id="L71" title="All 2 branches missed.">            if (obj == null)</span>
+<span class="nc" id="L72">                return false;</span>
+<span class="nc bnc" id="L73" title="All 2 branches missed.">            if (getClass() != obj.getClass())</span>
+<span class="nc" id="L74">                return false;</span>
+<span class="nc" id="L75">            ZipHandle other = (ZipHandle) obj;</span>
+<span class="nc bnc" id="L76" title="All 2 branches missed.">            if (key == null) {</span>
+<span class="nc bnc" id="L77" title="All 2 branches missed.">                if (other.key != null)</span>
+<span class="nc" id="L78">                    return false;</span>
+<span class="nc bnc" id="L79" title="All 2 branches missed.">            } else if (!key.equals(other.key))</span>
+<span class="nc" id="L80">                return false;</span>
+<span class="nc bnc" id="L81" title="All 2 branches missed.">            if (lastUsed != other.lastUsed)</span>
+<span class="nc" id="L82">                return false;</span>
+<span class="nc bnc" id="L83" title="All 2 branches missed.">            if (zipFile == null) {</span>
+<span class="nc bnc" id="L84" title="All 2 branches missed.">                if (other.zipFile != null)</span>
+<span class="nc" id="L85">                    return false;</span>
+<span class="nc bnc" id="L86" title="All 2 branches missed.">            } else if (!zipFile.equals(other.zipFile))</span>
+<span class="nc" id="L87">                return false;</span>
+<span class="nc" id="L88">            return true;</span>
+        }
+
+        public long timeSinceLastUsed() {
+<span class="nc" id="L92">            return System.currentTimeMillis() - lastUsed;</span>
+        }
+
+        public void close() {
+            try {
+<span class="nc" id="L97">                zipFile.close();</span>
+<span class="nc" id="L98">            } catch (IOException e) {</span>
+<span class="nc" id="L99">                throw new RuntimeException(e);</span>
+<span class="nc" id="L100">            }</span>
+<span class="nc" id="L101">        }</span>
+
+    }
+
+    public static void closeAllZips() {
+<span class="nc" id="L106">        synchronized (openZips) {</span>
+            // We don't close linked document zips immediately; closing them when you're likely to
+            // reuse them soon is inefficient.
+            // (we should probably keep track of last access and close them eventually, though)
+<span class="nc" id="L110">            Iterator&lt;ZipHandle&gt; it = openZips.values().iterator();</span>
+<span class="nc bnc" id="L111" title="All 2 branches missed.">            while (it.hasNext()) {</span>
+<span class="nc" id="L112">                it.next().close(); // close zip file</span>
+<span class="nc" id="L113">                it.remove();</span>
+            }
+<span class="nc" id="L115">        }</span>
+<span class="nc" id="L116">    }</span>
+
+    private synchronized static void removeEntriesIfRequired() {
+
+        // Remove any entries that haven't been used for a long time
+<span class="nc" id="L121">        List&lt;ZipHandle&gt; zl = new ArrayList&lt;&gt;(openZips.values());</span>
+<span class="nc" id="L122">        Iterator&lt;ZipHandle&gt; it = zl.iterator();</span>
+<span class="nc bnc" id="L123" title="All 2 branches missed.">        while (it.hasNext()) {</span>
+<span class="nc" id="L124">            ZipHandle zh = it.next();</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">            if (zh.timeSinceLastUsed() &gt; maxOpenZipAgeSec) {</span>
+<span class="nc" id="L126">                openZips.remove(zh.key);</span>
+<span class="nc" id="L127">                zh.close();</span>
+<span class="nc" id="L128">                it.remove();</span>
+            }
+<span class="nc" id="L130">        }</span>
+
+        // If too many zips are open, close ones that haven't been used the longest
+<span class="nc bnc" id="L133" title="All 2 branches missed.">        if (openZips.size() &gt; maxOpenZipFiles) {</span>
+<span class="nc" id="L134">            Collections.sort(zl);</span>
+<span class="nc" id="L135">            it = openZips.values().iterator();</span>
+<span class="nc bnc" id="L136" title="All 4 branches missed.">            while (openZips.size() &gt; maxOpenZipFiles &amp;&amp; it.hasNext()) {</span>
+<span class="nc" id="L137">                ZipHandle zh = it.next();</span>
+<span class="nc" id="L138">                zh.close(); // delete the file</span>
+<span class="nc" id="L139">                it.remove();</span>
+<span class="nc" id="L140">            }</span>
+        }
+<span class="nc" id="L142">    }</span>
+
+    public static ZipFile openZip(File zipFile) throws IOException {
+<span class="nc bnc" id="L145" title="All 2 branches missed.">        if (!keepZipsOpen)</span>
+<span class="nc" id="L146">            return new ZipFile(zipFile);</span>
+<span class="nc" id="L147">        synchronized (openZips) {</span>
+<span class="nc" id="L148">            ZipHandle z = openZips.get(zipFile);</span>
+<span class="nc bnc" id="L149" title="All 2 branches missed.">            if (z == null) {</span>
+<span class="nc" id="L150">                z = new ZipHandle(zipFile, new ZipFile(zipFile));</span>
+<span class="nc" id="L151">                openZips.put(zipFile, z);</span>
+            }
+<span class="nc" id="L153">            z.markUsed();</span>
+<span class="nc" id="L154">            removeEntriesIfRequired();</span>
+<span class="nc" id="L155">            return z.zipFile;</span>
+<span class="nc" id="L156">        }</span>
+    }
+
+    public static void setKeepZipsOpen(boolean keepZipsOpen) {
+<span class="nc" id="L160">        ZipHandleManager.keepZipsOpen = keepZipsOpen;</span>
+<span class="nc" id="L161">    }</span>
+
+    public static void setMaxOpenZipAgeSec(int maxOpenZipAgeSec) {
+<span class="nc" id="L164">        ZipHandleManager.maxOpenZipAgeSec = maxOpenZipAgeSec;</span>
+<span class="nc" id="L165">    }</span>
+
+    public static void setMaxOpen(int maxOpenZipFiles) {
+<span class="nc" id="L168">        ZipHandleManager.maxOpenZipFiles = maxOpenZipFiles;</span>
+<span class="nc" id="L169">    }</span>
+
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

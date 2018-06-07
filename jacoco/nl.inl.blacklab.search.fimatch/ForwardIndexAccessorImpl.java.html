@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ForwardIndexAccessorImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.fimatch</a> &gt; <span class="el_source">ForwardIndexAccessorImpl.java</span></div><h1>ForwardIndexAccessorImpl.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.search.fimatch;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.apache.lucene.index.LeafReader;
+import org.eclipse.collections.api.set.primitive.MutableIntSet;
+
+import nl.inl.blacklab.forwardindex.ForwardIndex;
+import nl.inl.blacklab.forwardindex.Terms;
+import nl.inl.blacklab.index.complex.ComplexFieldUtil;
+import nl.inl.blacklab.search.Searcher;
+import nl.inl.blacklab.search.lucene.DocIntFieldGetter;
+
+/**
+ * Allows the forward index matching subsystem to access the forward indices,
+ * including an easy and fast way to read any property at any position from a document.
+ */
+class ForwardIndexAccessorImpl extends ForwardIndexAccessor {
+
+	/** Our Searcher object */
+	private Searcher searcher;
+
+	/** Field name, e.g. &quot;contents&quot; */
+	String complexFieldBaseName;
+
+	/** The property index for each property name */
+<span class="fc" id="L30">	private Map&lt;String, Integer&gt; propertyNumbers = new HashMap&lt;&gt;();</span>
+
+	/** The property names for each property */
+<span class="fc" id="L33">	List&lt;String&gt; propertyNames = new ArrayList&lt;&gt;();</span>
+
+	/** The forward index for each property */
+<span class="fc" id="L36">	List&lt;ForwardIndex&gt; fis = new ArrayList&lt;&gt;();</span>
+
+	/** The terms object for each property */
+<span class="fc" id="L39">	private List&lt;Terms&gt; terms = new ArrayList&lt;&gt;();</span>
+
+<span class="fc" id="L41">	ForwardIndexAccessorImpl(Searcher searcher, String searchField) {</span>
+<span class="fc" id="L42">		this.searcher = searcher;</span>
+<span class="fc" id="L43">		this.complexFieldBaseName = searchField;</span>
+<span class="fc" id="L44">	}</span>
+
+	/**
+	 * Get the index number corresponding to the given property name.
+	 *
+	 * @param propertyName property to get the index for
+	 * @return index for this property
+	 */
+	@Override
+	public int getPropertyNumber(String propertyName) {
+<span class="fc" id="L54">		Integer n = propertyNumbers.get(propertyName);</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">		if (n == null) {</span>
+			// Assign number and store reference to forward index
+<span class="fc" id="L57">			n = propertyNumbers.size();</span>
+<span class="fc" id="L58">			propertyNumbers.put(propertyName, n);</span>
+<span class="fc" id="L59">			propertyNames.add(propertyName);</span>
+<span class="fc" id="L60">			ForwardIndex fi = searcher.getForwardIndex(ComplexFieldUtil.propertyField(complexFieldBaseName, propertyName));</span>
+<span class="fc" id="L61">			fis.add(fi);</span>
+<span class="fc" id="L62">			terms.add(fi.getTerms());</span>
+		}
+<span class="fc" id="L64">		return n;</span>
+	}
+
+	@Override
+	public void getTermNumbers(MutableIntSet results, int propertyNumber, String propertyValue, boolean caseSensitive, boolean diacSensitive) {
+<span class="fc" id="L69">		terms.get(propertyNumber).indexOf(results, propertyValue, caseSensitive, diacSensitive);</span>
+<span class="fc" id="L70">	}</span>
+
+	public int getTermAtPosition(int fiid, int propertyNumber, int pos) {
+<span class="nc" id="L73">		return fis.get(propertyNumber).getToken(fiid, pos);</span>
+	}
+
+	@Override
+	public String getTermString(int propIndex, int termId) {
+<span class="fc" id="L78">		return fis.get(propIndex).getTerms().get(termId);</span>
+	}
+
+	@Override
+	public boolean termsEqual(int propIndex, int[] termId, boolean caseSensitive, boolean diacSensitive) {
+<span class="fc" id="L83">		return fis.get(propIndex).getTerms().termsEqual(termId, caseSensitive, diacSensitive);</span>
+	}
+
+	@Override
+	public int numberOfProperties() {
+<span class="fc" id="L88">		return fis.size();</span>
+	}
+
+	@Override
+	public ForwardIndexAccessorLeafReader getForwardIndexAccessorLeafReader(LeafReader reader) {
+<span class="fc" id="L93">		return new ForwardIndexAccessorLeafReaderImpl(reader);</span>
+	}
+
+	class ForwardIndexAccessorLeafReaderImpl extends ForwardIndexAccessorLeafReader {
+
+		private List&lt;DocIntFieldGetter&gt; fiidGetters;
+
+<span class="fc" id="L100">		ForwardIndexAccessorLeafReaderImpl(LeafReader reader) {</span>
+<span class="fc" id="L101">			super(reader);</span>
+<span class="fc" id="L102">			fiidGetters = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">			for (int i = 0; i &lt; getNumberOfProperties(); i++)</span>
+<span class="fc" id="L104">				fiidGetters.add(null);</span>
+<span class="fc" id="L105">		}</span>
+
+		DocIntFieldGetter fiidGetter(int propIndex) {
+<span class="fc" id="L108">			DocIntFieldGetter g = fiidGetters.get(propIndex);</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">			if (g == null) {</span>
+<span class="fc" id="L110">				String propertyName = propertyNames.get(propIndex);</span>
+<span class="fc" id="L111">				String propFieldName = ComplexFieldUtil.propertyField(complexFieldBaseName, propertyName);</span>
+<span class="fc" id="L112">				String fiidFieldName = ComplexFieldUtil.forwardIndexIdField(propFieldName);</span>
+<span class="fc" id="L113">				g = new DocIntFieldGetter(reader, fiidFieldName);</span>
+<span class="fc" id="L114">				fiidGetters.set(propIndex, g);</span>
+			}
+<span class="fc" id="L116">			return g;</span>
+		}
+
+		/**
+		 * Get a token source, which we can use to get tokens from a document
+		 * for different properties.
+		 *
+		 * @param id Lucene document id
+		 * @return the token source
+		 */
+		@Override
+		public ForwardIndexDocument getForwardIndexDoc(int id) {
+<span class="fc" id="L128">			return new ForwardIndexDocumentImpl(this, id, reader);</span>
+		}
+
+		@Override
+		public int getDocLength(int docId) {
+			// NOTE: we subtract one because we always have a closing token at the end that doesn't
+			//       represent a word, just any closing punctuation after the last word.
+<span class="fc" id="L135">			return fis.get(0).getDocLength(getFiid(0, docId)) - 1;</span>
+		}
+
+<span class="fc" id="L138">		int[] starts = {0}, ends = {0};</span>
+
+		@Override
+		public int[] getChunk(int propIndex, int docId, int start, int end) {
+<span class="fc" id="L142">			starts[0] = start;</span>
+<span class="fc" id="L143">			ends[0] = end;</span>
+<span class="fc" id="L144">			int fiid = fiidGetter(propIndex).getFieldValue(docId);</span>
+<span class="fc" id="L145">			return fis.get(propIndex).retrievePartsInt(fiid, starts, ends).get(0);</span>
+		}
+
+		@Override
+		public int getFiid(int propIndex, int docId) {
+<span class="fc" id="L150">			return fiidGetter(propIndex).getFieldValue(docId);</span>
+		}
+
+		@Override
+		public int getNumberOfProperties() {
+<span class="fc" id="L155">			return ForwardIndexAccessorImpl.this.numberOfProperties();</span>
+		}
+
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

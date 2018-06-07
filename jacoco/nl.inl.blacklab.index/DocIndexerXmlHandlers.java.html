@@ -1,0 +1,836 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DocIndexerXmlHandlers.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.index</a> &gt; <span class="el_source">DocIndexerXmlHandlers.java</span></div><h1>DocIndexerXmlHandlers.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.index;
+
+import java.io.IOException;
+import java.io.Reader;
+import java.lang.reflect.Constructor;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import javax.xml.parsers.SAXParser;
+import javax.xml.parsers.SAXParserFactory;
+
+import org.apache.lucene.document.Document;
+import org.apache.lucene.document.Field;
+import org.apache.lucene.document.Field.Store;
+import org.apache.lucene.document.IntField;
+import org.apache.lucene.util.BytesRef;
+import org.xml.sax.Attributes;
+import org.xml.sax.InputSource;
+import org.xml.sax.Locator;
+import org.xml.sax.SAXException;
+import org.xml.sax.XMLReader;
+import org.xml.sax.helpers.DefaultHandler;
+
+import nl.inl.blacklab.index.HookableSaxHandler.ContentCapturingHandler;
+import nl.inl.blacklab.index.HookableSaxHandler.ElementHandler;
+import nl.inl.blacklab.index.complex.ComplexField;
+import nl.inl.blacklab.index.complex.ComplexFieldProperty;
+import nl.inl.blacklab.index.complex.ComplexFieldProperty.SensitivitySetting;
+import nl.inl.blacklab.index.complex.ComplexFieldUtil;
+import nl.inl.blacklab.search.Searcher;
+import nl.inl.blacklab.search.indexstructure.IndexStructure;
+import nl.inl.blacklab.search.indexstructure.MetadataFieldDesc;
+import nl.inl.blacklab.search.indexstructure.MetadataFieldDesc.UnknownCondition;
+import nl.inl.util.ExUtil;
+import nl.inl.util.StringUtil;
+
+/**
+ * Abstract base class for a DocIndexer processing XML files using the hookable
+ * SAX parser.
+ */
+public abstract class DocIndexerXmlHandlers extends DocIndexerAbstract {
+
+    /**
+     * Max. length of captured character content. Should only be used for short
+     * strings, such as a word, or the value of a metadata field.
+     */
+    private static final int MAX_CHARACTER_CONTENT_CAPTURE_LENGTH = 4000;
+
+<span class="fc" id="L68">    private HookableSaxHandler hookableHandler = new HookableSaxHandler();</span>
+
+<span class="fc" id="L70">    private SaxParseHandler saxParseHandler = new SaxParseHandler();</span>
+
+    /**
+     * What namespace prefix mappings have we encountered but not output in a
+     * start tag yet? (used to make sure the stored XML contains all the
+     * required mappings)
+     */
+<span class="fc" id="L77">    final protected static Map&lt;String, String&gt; outputPrefixMapping = new HashMap&lt;&gt;();</span>
+
+    /**
+     * Handle Document element. Starts a new Lucene document and adds the
+     * attributes of this element (if any) as metadata fields.
+     */
+<span class="fc" id="L83">    public class DocumentElementHandler extends ElementHandler {</span>
+
+        /** Open tag: start indexing this document */
+        @Override
+        public void startElement(String uri, String localName, String qName,
+                Attributes attributes) {
+<span class="fc" id="L89">            startCaptureContent(contentsField.getName());</span>
+
+<span class="fc" id="L91">            currentLuceneDoc = new Document();</span>
+            // Store attribute values from the tag as metadata fields
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">            for (int i = 0; i &lt; attributes.getLength(); i++) {</span>
+<span class="nc" id="L94">                addMetadataField(attributes.getLocalName(i),</span>
+<span class="nc" id="L95">                        attributes.getValue(i));</span>
+            }
+<span class="fc" id="L97">            currentLuceneDoc.add(new Field(&quot;fromInputFile&quot;, documentName, indexer.getMetadataFieldType(false)));</span>
+<span class="fc" id="L98">            addMetadataFieldsFromParameters();</span>
+<span class="fc" id="L99">            indexer.getListener().documentStarted(documentName);</span>
+<span class="fc" id="L100">        }</span>
+
+        /** Open tag: end indexing the document */
+        @Override
+        public void endElement(String uri, String localName, String qName) {
+            // Make sure all the properties have an equal number of values.
+            // See what property has the highest position
+            // (in practice, only starttags and endtags should be able to have
+            // a position one higher than the rest)
+<span class="fc" id="L109">            int lastValuePos = 0;</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">            for (ComplexFieldProperty prop: contentsField.getProperties()) {</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">                if (prop.lastValuePosition() &gt; lastValuePos)</span>
+<span class="fc" id="L112">                    lastValuePos = prop.lastValuePosition();</span>
+<span class="fc" id="L113">            }</span>
+
+            // Make sure we always have one more token than the number of
+            // words, so there's room for any tags after the last word, and we
+            // know we should always skip the last token when matching.
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">            if (propMain.lastValuePosition() == lastValuePos)</span>
+<span class="fc" id="L119">                lastValuePos++;</span>
+
+            // Add empty values to all lagging properties
+<span class="fc bfc" id="L122" title="All 2 branches covered.">            for (ComplexFieldProperty prop: contentsField.getProperties()) {</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">                while (prop.lastValuePosition() &lt; lastValuePos) {</span>
+<span class="fc" id="L124">                    prop.addValue(&quot;&quot;);</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">                    if (prop.hasPayload())</span>
+<span class="fc" id="L126">                        prop.addPayload(null);</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">                    if (prop == propMain) {</span>
+<span class="fc" id="L128">                        contentsField.addStartChar(getCharacterPosition());</span>
+<span class="fc" id="L129">                        contentsField.addEndChar(getCharacterPosition());</span>
+                    }
+                }
+<span class="fc" id="L132">            }</span>
+
+            // Finish storing the document in the document store (parts of it
+            // may already have been written because we write in chunks to save memory),
+            // retrieve the content id, and store that in Lucene.
+            // (Note that we do this after adding the dummy token, so the character
+            // positions for the dummy token still make (some) sense)
+<span class="fc" id="L139">            int contentId = storeCapturedContent();</span>
+<span class="fc" id="L140">            currentLuceneDoc.add(new IntField(ComplexFieldUtil</span>
+<span class="fc" id="L141">                    .contentIdField(contentsField.getName()), contentId,</span>
+                    Store.YES));
+
+            // Store the different properties of the complex contents field that
+            // were gathered in
+            // lists while parsing.
+<span class="fc" id="L147">            contentsField.addToLuceneDoc(currentLuceneDoc);</span>
+
+            // Add all properties to forward index
+<span class="fc bfc" id="L150" title="All 2 branches covered.">            for (ComplexFieldProperty prop: contentsField.getProperties()) {</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">                if (!prop.hasForwardIndex())</span>
+<span class="fc" id="L152">                    continue;</span>
+
+                // Add property (case-sensitive tokens) to forward index and add
+                // id to Lucene doc
+<span class="fc" id="L156">                String propName = prop.getName();</span>
+<span class="fc" id="L157">                String fieldName = ComplexFieldUtil.propertyField(</span>
+<span class="fc" id="L158">                        contentsField.getName(), propName);</span>
+<span class="fc" id="L159">                int fiid = indexer.addToForwardIndex(fieldName, prop);</span>
+<span class="fc" id="L160">                currentLuceneDoc.add(new IntField(ComplexFieldUtil</span>
+<span class="fc" id="L161">                        .forwardIndexIdField(fieldName), fiid, Store.YES));</span>
+<span class="fc" id="L162">            }</span>
+
+            // If there's an external metadata fetcher, call it now so it can
+            // add the metadata for this document and (optionally) store the
+            // metadata
+            // document in the content store (and the corresponding id in the
+            // Lucene doc)
+<span class="fc" id="L169">            MetadataFetcher m = getMetadataFetcher();</span>
+<span class="pc bpc" id="L170" title="1 of 2 branches missed.">            if (m != null) {</span>
+<span class="nc" id="L171">                m.addMetadata();</span>
+            }
+
+            // See what metadatafields are missing or empty and add unknown value
+            // if desired.
+<span class="fc" id="L176">            IndexStructure struct = indexer.getSearcher().getIndexStructure();</span>
+<span class="pc bpc" id="L177" title="1 of 2 branches missed.">            for (String fieldName: struct.getMetadataFields()) {</span>
+<span class="nc" id="L178">                MetadataFieldDesc fd = struct.getMetadataFieldDesc(fieldName);</span>
+<span class="nc" id="L179">                boolean missing = false, empty = false;</span>
+<span class="nc" id="L180">                String currentValue = currentLuceneDoc.get(fieldName);</span>
+<span class="nc bnc" id="L181" title="All 2 branches missed.">                if (currentValue == null)</span>
+<span class="nc" id="L182">                    missing = true;</span>
+<span class="nc bnc" id="L183" title="All 2 branches missed.">                else if (currentValue.length() == 0)</span>
+<span class="nc" id="L184">                    empty = true;</span>
+<span class="nc" id="L185">                UnknownCondition cond = fd.getUnknownCondition();</span>
+<span class="nc" id="L186">                boolean useUnknownValue = false;</span>
+<span class="nc bnc" id="L187" title="All 5 branches missed.">                switch (cond) {</span>
+                case EMPTY:
+<span class="nc" id="L189">                    useUnknownValue = empty;</span>
+<span class="nc" id="L190">                    break;</span>
+                case MISSING:
+<span class="nc" id="L192">                    useUnknownValue = missing;</span>
+<span class="nc" id="L193">                    break;</span>
+                case MISSING_OR_EMPTY:
+<span class="nc" id="L195">                    useUnknownValue = missing | empty;</span>
+<span class="nc" id="L196">                    break;</span>
+                case NEVER:
+<span class="nc" id="L198">                    useUnknownValue = false;</span>
+                    break;
+                }
+<span class="nc bnc" id="L201" title="All 2 branches missed.">                if (useUnknownValue)</span>
+<span class="nc" id="L202">                    addMetadataField(fieldName, fd.getUnknownValue());</span>
+<span class="nc" id="L203">            }</span>
+
+            try {
+                // Add Lucene doc to indexer
+<span class="fc" id="L207">                indexer.add(currentLuceneDoc);</span>
+<span class="nc" id="L208">            } catch (Exception e) {</span>
+<span class="nc" id="L209">                throw ExUtil.wrapRuntimeException(e);</span>
+<span class="fc" id="L210">            }</span>
+
+            // Report progress
+<span class="fc" id="L213">            reportCharsProcessed();</span>
+<span class="fc" id="L214">            reportTokensProcessed();</span>
+
+<span class="fc" id="L216">            indexer.getListener().documentDone(documentName);</span>
+
+            // Reset contents field for next document
+<span class="fc" id="L219">            contentsField.clear(true);</span>
+<span class="fc" id="L220">            currentLuceneDoc = null;</span>
+
+            // Stop if required
+<span class="pc bpc" id="L223" title="1 of 2 branches missed.">            if (!indexer.continueIndexing())</span>
+<span class="nc" id="L224">                throw new MaxDocsReachedException();</span>
+<span class="fc" id="L225">        }</span>
+    }
+
+    /**
+     * Stores metadata field with element name as name and element content as
+     * value.
+     */
+<span class="nc" id="L232">    public class MetadataElementHandler extends ContentCapturingHandler {</span>
+        /** Close tag: store the value of this metadata field */
+        @Override
+        public void endElement(String uri, String localName, String qName) {
+<span class="nc" id="L236">            super.endElement(uri, localName, qName);</span>
+
+            // Header element ended; index the element with the character
+            // content captured
+            // (this is stuff like title, yearFrom, yearTo, etc.)
+<span class="nc" id="L241">            addMetadataField(localName, getElementContent().trim());</span>
+<span class="nc" id="L242">        }</span>
+    }
+
+    /** Add element attributes as metadata. */
+<span class="nc" id="L246">    public class MetadataAttributesHandler extends ContentCapturingHandler {</span>
+
+        /** Open tag: add attributes as metadata */
+        @Override
+        public void startElement(String uri, String localName, String qName,
+                Attributes attributes) {
+<span class="nc" id="L252">            super.startElement(uri, localName, qName, attributes);</span>
+
+            // Store attribute values from the tag as fields
+<span class="nc bnc" id="L255" title="All 2 branches missed.">            for (int i = 0; i &lt; attributes.getLength(); i++) {</span>
+<span class="nc" id="L256">                addMetadataField(attributes.getLocalName(i),</span>
+<span class="nc" id="L257">                        attributes.getValue(i));</span>
+            }
+<span class="nc" id="L259">        }</span>
+    }
+
+    /**
+     * Add a metadatafield based on two attributes of an element, a name
+     * attribute (giving the field name) and a value attribute (giving the field
+     * value).
+     */
+    public class MetadataNameValueAttributeHandler extends
+            ContentCapturingHandler {
+
+        private String nameAttribute;
+
+        private String valueAttribute;
+
+        public MetadataNameValueAttributeHandler(String nameAttribute,
+<span class="nc" id="L275">                String valueAttribute) {</span>
+<span class="nc" id="L276">            this.nameAttribute = nameAttribute;</span>
+<span class="nc" id="L277">            this.valueAttribute = valueAttribute;</span>
+<span class="nc" id="L278">        }</span>
+
+        public MetadataNameValueAttributeHandler() {
+<span class="nc" id="L281">            this(&quot;name&quot;, &quot;value&quot;);</span>
+<span class="nc" id="L282">        }</span>
+
+        /** Open tag: add metadata field */
+        @Override
+        public void startElement(String uri, String localName, String qName,
+                Attributes attributes) {
+<span class="nc" id="L288">            super.startElement(uri, localName, qName, attributes);</span>
+<span class="nc" id="L289">            String name = attributes.getValue(nameAttribute);</span>
+<span class="nc" id="L290">            String value = attributes.getValue(valueAttribute);</span>
+<span class="nc bnc" id="L291" title="All 4 branches missed.">            if (name != null &amp;&amp; value != null)</span>
+<span class="nc" id="L292">                addMetadataField(name, value);</span>
+<span class="nc" id="L293">        }</span>
+    }
+
+    /* Position of start tags and their index in the property arrays, so we can add payload when we find the end tags */
+    class OpenTagInfo {
+        public int position;
+        public int index;
+
+<span class="fc" id="L301">        public OpenTagInfo(int position, int index) {</span>
+<span class="fc" id="L302">            this.position = position;</span>
+<span class="fc" id="L303">            this.index = index;</span>
+<span class="fc" id="L304">        }</span>
+    }
+
+<span class="fc" id="L307">    List&lt;OpenTagInfo&gt; openTags = new ArrayList&lt;&gt;();</span>
+
+    /** Handle tags. */
+<span class="fc" id="L310">    public class InlineTagHandler extends ElementHandler {</span>
+
+        /** Open tag: store the start tag location and the attribute values */
+        @Override
+        public void startElement(String uri, String localName, String qName,
+                Attributes attributes) {
+<span class="fc" id="L316">            int lastStartTagPos = propStartTag.lastValuePosition();</span>
+<span class="fc" id="L317">            int currentPos = propMain.lastValuePosition() + 1;</span>
+<span class="fc" id="L318">            int posIncrement = currentPos - lastStartTagPos;</span>
+<span class="fc" id="L319">            propStartTag.addValue(localName, posIncrement);</span>
+<span class="fc" id="L320">            propStartTag.addPayload(null);</span>
+<span class="fc" id="L321">            int startTagIndex = propStartTag.getLastValueIndex();</span>
+<span class="fc" id="L322">            openTags.add(new OpenTagInfo(currentPos, startTagIndex));</span>
+<span class="pc bpc" id="L323" title="1 of 2 branches missed.">            for (int i = 0; i &lt; attributes.getLength(); i++) {</span>
+                // Index element attribute values
+<span class="nc" id="L325">                String name = attributes.getLocalName(i);</span>
+<span class="nc" id="L326">                String value = attributes.getValue(i);</span>
+<span class="nc" id="L327">                propStartTag.addValue(&quot;@&quot; + name.toLowerCase() + &quot;__&quot; + value.toLowerCase(), 0);</span>
+<span class="nc" id="L328">                propStartTag.addPayload(null);</span>
+            }
+<span class="fc" id="L330">        }</span>
+
+        /** Close tag: store the end tag location */
+        @Override
+        public void endElement(String uri, String localName, String qName) {
+<span class="fc" id="L335">            int currentPos = propMain.lastValuePosition() + 1;</span>
+
+            // Add payload to start tag property indicating end position
+<span class="fc" id="L338">            OpenTagInfo openTag = openTags.remove(openTags.size() - 1);</span>
+<span class="fc" id="L339">            byte[] payload = ByteBuffer.allocate(4).putInt(currentPos).array();</span>
+<span class="fc" id="L340">            propStartTag.setPayloadAtIndex(openTag.index, new BytesRef(payload));</span>
+<span class="fc" id="L341">        }</span>
+    }
+
+    /**
+     * Base handler for word tags: adds start and end positions around the
+     * element.
+     */
+<span class="fc" id="L348">    public class WordHandlerBase extends ElementHandler {</span>
+
+        /** Open tag: save start character position */
+        @Override
+        public void startElement(String uri, String localName, String qName,
+                Attributes attributes) {
+<span class="fc" id="L354">            super.startElement(uri, localName, qName, attributes);</span>
+<span class="fc" id="L355">            contentsField.addStartChar(getCharacterPosition());</span>
+<span class="fc" id="L356">        }</span>
+
+        /**
+         * Close tag: save end character position, add token to contents field
+         * and report progress.
+         */
+        @Override
+        public void endElement(String uri, String localName, String qName) {
+<span class="fc" id="L364">            super.endElement(uri, localName, qName);</span>
+<span class="fc" id="L365">            contentsField.addEndChar(getCharacterPosition());</span>
+
+            // Report progress regularly but not too often
+<span class="fc" id="L368">            wordsDone++;</span>
+<span class="pc bpc" id="L369" title="2 of 4 branches missed.">            if (wordsDone != 0 &amp;&amp; wordsDone % 5000 == 0) {</span>
+<span class="nc" id="L370">                reportCharsProcessed();</span>
+<span class="nc" id="L371">                reportTokensProcessed();</span>
+            }
+<span class="fc" id="L373">        }</span>
+    }
+
+    /** Handle &amp;lt;Word&amp;gt; tags (word tokens). */
+<span class="nc" id="L377">    public class DefaultWordHandler extends WordHandlerBase {</span>
+
+        /** Open tag: save start character position */
+        @Override
+        public void startElement(String uri, String localName, String qName,
+                Attributes attributes) {
+<span class="nc" id="L383">            super.startElement(uri, localName, qName, attributes);</span>
+<span class="nc" id="L384">            propPunct.addValue(StringUtil</span>
+<span class="nc" id="L385">                    .normalizeWhitespace(consumeCharacterContent()));</span>
+<span class="nc" id="L386">        }</span>
+
+        /**
+         * Close tag: save end character position, add token to contents field
+         * and report progress.
+         */
+        @Override
+        public void endElement(String uri, String localName, String qName) {
+<span class="nc" id="L394">            super.endElement(uri, localName, qName);</span>
+<span class="nc" id="L395">            propMain.addValue(getWord());</span>
+<span class="nc" id="L396">        }</span>
+
+        protected String getWord() {
+<span class="nc" id="L399">            return consumeCharacterContent();</span>
+        }
+
+    }
+
+    /** Handle &amp;lt;Word&amp;gt; tags (word tokens). */
+    public class WordInAttributeHandler extends DefaultWordHandler {
+
+        private String attName;
+
+        protected String currentWord;
+
+<span class="nc" id="L411">        public WordInAttributeHandler(String attName) {</span>
+<span class="nc" id="L412">            this.attName = attName;</span>
+<span class="nc" id="L413">        }</span>
+
+        /** Open tag: get word from attribute value */
+        @Override
+        public void startElement(String uri, String localName, String qName,
+                Attributes attributes) {
+<span class="nc" id="L419">            super.startElement(uri, localName, qName, attributes);</span>
+<span class="nc" id="L420">            currentWord = attributes.getValue(attName);</span>
+<span class="nc bnc" id="L421" title="All 2 branches missed.">            if (currentWord == null)</span>
+<span class="nc" id="L422">                currentWord = &quot;&quot;;</span>
+<span class="nc" id="L423">        }</span>
+
+        @Override
+        protected String getWord() {
+<span class="nc" id="L427">            return currentWord;</span>
+        }
+
+    }
+
+    /**
+     * Encountered a prefix to namespace mapping; now in effect.
+     *
+     * @param prefix
+     *            the prefix that is now in effect
+     * @param uri
+     *            the namespace the prefix refers to
+     */
+    public void startPrefixMapping(String prefix, String uri) {
+<span class="nc" id="L441">        outputPrefixMapping.put(prefix, uri);</span>
+<span class="nc" id="L442">    }</span>
+
+    /**
+     * A previously encountered namespace prefix mapping is no longer in effect.
+     *
+     * @param prefix
+     *            the prefix that's no longer in effect.
+     */
+    public void endPrefixMapping(String prefix) {
+        // System.out.println(&quot;END PREFIX MAPPING: &quot; + prefix);
+<span class="nc" id="L452">    }</span>
+
+    protected ComplexFieldProperty addProperty(String propName) {
+<span class="fc" id="L455">        return addProperty(propName, false);</span>
+    }
+
+    @SuppressWarnings(&quot;deprecation&quot;)
+    protected ComplexFieldProperty addProperty(String propName, boolean includePayloads) {
+<span class="fc" id="L460">        return contentsField.addProperty(propName, getSensitivitySetting(propName), includePayloads);</span>
+    }
+
+    public ComplexFieldProperty addProperty(String propName, SensitivitySetting sensitivity) {
+<span class="fc" id="L464">        return contentsField.addProperty(propName, sensitivity);</span>
+    }
+
+    @SuppressWarnings(&quot;deprecation&quot;)
+    public DocIndexerXmlHandlers(Indexer indexer, String fileName, Reader reader) {
+<span class="fc" id="L469">        super(indexer, fileName, reader);</span>
+
+        // Define the properties that make up our complex field
+<span class="fc" id="L472">        String mainPropName = ComplexFieldUtil.getDefaultMainPropName();</span>
+<span class="fc" id="L473">        contentsField = new ComplexField(Searcher.DEFAULT_CONTENTS_FIELD_NAME, mainPropName, getSensitivitySetting(mainPropName), false);</span>
+<span class="fc" id="L474">        propMain = contentsField.getMainProperty();</span>
+<span class="fc" id="L475">        propPunct = addProperty(ComplexFieldUtil.PUNCTUATION_PROP_NAME);</span>
+<span class="fc" id="L476">        propStartTag = addProperty(ComplexFieldUtil.START_TAG_PROP_NAME, true); // start tag</span>
+                                                                                // positions
+<span class="fc" id="L478">        propStartTag.setForwardIndex(false);</span>
+<span class="fc" id="L479">        IndexStructure indexStructure = indexer.getSearcher().getIndexStructure();</span>
+<span class="fc" id="L480">        indexStructure.registerComplexField(contentsField.getName(), propMain.getName());</span>
+
+        // If the indexmetadata file specified a list of properties that shouldn't get a forward
+        // index,
+        // make the new complex field aware of this.
+<span class="fc" id="L485">        Set&lt;String&gt; noForwardIndexProps = indexStructure.getComplexFieldDesc(Searcher.DEFAULT_CONTENTS_FIELD_NAME).getNoForwardIndexProps();</span>
+<span class="fc" id="L486">        contentsField.setNoForwardIndexProps(noForwardIndexProps);</span>
+<span class="fc" id="L487">    }</span>
+
+    /**
+     * StringBuffer re-used for building start/end tags and processing
+     * instructions.
+     */
+<span class="fc" id="L493">    StringBuilder elementBuilder = new StringBuilder();</span>
+
+    public void startElement(String uri, String localName, String qName,
+            Attributes attributes) {
+        // Call any hooks associated with this element
+<span class="fc" id="L498">        hookableHandler.startElement(uri, localName, qName, attributes);</span>
+
+<span class="fc" id="L500">        elementBuilder.setLength(0); // clear</span>
+<span class="fc" id="L501">        elementBuilder.append(&quot;&lt;&quot;).append(qName);</span>
+<span class="fc bfc" id="L502" title="All 2 branches covered.">        for (int i = 0; i &lt; attributes.getLength(); i++) {</span>
+<span class="fc" id="L503">            String value = escapeXmlChars(attributes.getValue(i));</span>
+<span class="fc" id="L504">            elementBuilder.append(&quot; &quot;).append(attributes.getQName(i))</span>
+<span class="fc" id="L505">                    .append(&quot;=\&quot;&quot;).append(value).append(&quot;\&quot;&quot;);</span>
+        }
+        // Append any namespace mapping not yet outputted
+<span class="pc bpc" id="L508" title="1 of 2 branches missed.">        if (!outputPrefixMapping.isEmpty()) {</span>
+<span class="nc bnc" id="L509" title="All 2 branches missed.">            for (Map.Entry&lt;String, String&gt; e: outputPrefixMapping.entrySet()) {</span>
+<span class="nc bnc" id="L510" title="All 2 branches missed.">                if (e.getKey().length() == 0)</span>
+<span class="nc" id="L511">                    elementBuilder.append(&quot; xmlns=\&quot;&quot;).append(e.getValue())</span>
+<span class="nc" id="L512">                            .append(&quot;\&quot;&quot;);</span>
+                else
+<span class="nc" id="L514">                    elementBuilder.append(&quot; xmlns:&quot;).append(e.getKey())</span>
+<span class="nc" id="L515">                            .append(&quot;=\&quot;&quot;).append(e.getValue()).append(&quot;\&quot;&quot;);</span>
+<span class="nc" id="L516">            }</span>
+<span class="nc" id="L517">            outputPrefixMapping.clear(); // outputted all prefix mappings for</span>
+                                         // now
+        }
+<span class="fc" id="L520">        elementBuilder.append(&quot;&gt;&quot;);</span>
+<span class="fc" id="L521">        processContent(elementBuilder.toString());</span>
+<span class="fc" id="L522">    }</span>
+
+    /**
+     * StringBuffer re-used for escaping XML chars
+     */
+<span class="fc" id="L527">    StringBuilder escapeBuilder = new StringBuilder();</span>
+
+    /**
+     * Escape the special XML chars (&lt;, &gt;, &amp;, &quot;) with their named entity
+     * equivalents.
+     *
+     * NOTE: copy of StringUtil.escapeXmlChars that re-uses its StringBuilder
+     * for increased memory efficiency.
+     *
+     * @param source
+     *            the source string
+     * @return the escaped string
+     */
+    public String escapeXmlChars(String source) {
+<span class="fc" id="L541">        escapeBuilder.setLength(0); // clear</span>
+<span class="fc" id="L542">        int start = 0;</span>
+<span class="fc" id="L543">        char[] srcArr = new char[source.length()];</span>
+<span class="fc" id="L544">        source.getChars(0, source.length(), srcArr, 0);</span>
+<span class="fc" id="L545">        int end = source.length();</span>
+<span class="fc bfc" id="L546" title="All 2 branches covered.">        for (int i = 0; i &lt; end; i++) {</span>
+<span class="fc" id="L547">            char c = srcArr[i]; // source.charAt(i);</span>
+<span class="pc bpc" id="L548" title="4 of 8 branches missed.">            if (c == '&lt;' || c == '&gt;' || c == '&amp;' || c == '&quot;') {</span>
+<span class="nc" id="L549">                escapeBuilder.append(srcArr, start, i - start); // source.substring(start,</span>
+                                                                // i));
+<span class="nc bnc" id="L551" title="All 5 branches missed.">                switch (c) {</span>
+                case '&lt;':
+<span class="nc" id="L553">                    escapeBuilder.append(&quot;&amp;lt;&quot;);</span>
+<span class="nc" id="L554">                    break;</span>
+                case '&gt;':
+<span class="nc" id="L556">                    escapeBuilder.append(&quot;&amp;gt;&quot;);</span>
+<span class="nc" id="L557">                    break;</span>
+                case '&amp;':
+<span class="nc" id="L559">                    escapeBuilder.append(&quot;&amp;amp;&quot;);</span>
+<span class="nc" id="L560">                    break;</span>
+                case '&quot;':
+<span class="nc" id="L562">                    escapeBuilder.append(&quot;&amp;quot;&quot;);</span>
+                    break;
+                }
+<span class="nc" id="L565">                start = i + 1;</span>
+            }
+        }
+<span class="fc" id="L568">        escapeBuilder.append(srcArr, start, end - start); // source.substring(start));</span>
+<span class="fc" id="L569">        return escapeBuilder.toString();</span>
+    }
+
+    /**
+     * Escape the special XML chars (&lt;, &gt;, &amp;, &quot;) with their named entity
+     * equivalents.
+     *
+     * NOTE: copy of StringUtil.escapeXmlChars that re-uses its StringBuilder
+     * for increased memory efficiency.
+     *
+     * @param source
+     *            the source string
+     * @param start
+     *            start index of the string to escape
+     * @param length
+     *            length of the string to escape
+     * @return the escaped string
+     */
+    public String escapeXmlChars(char[] source, int start, int length) {
+<span class="fc" id="L588">        escapeBuilder.setLength(0); // clear</span>
+<span class="fc" id="L589">        int end = start + length;</span>
+<span class="fc bfc" id="L590" title="All 2 branches covered.">        for (int i = start; i &lt; end; i++) {</span>
+<span class="fc" id="L591">            char c = source[i];</span>
+<span class="pc bpc" id="L592" title="4 of 8 branches missed.">            if (c == '&lt;' || c == '&gt;' || c == '&amp;' || c == '&quot;') {</span>
+<span class="nc" id="L593">                escapeBuilder.append(source, start, i - start);</span>
+<span class="nc bnc" id="L594" title="All 5 branches missed.">                switch (c) {</span>
+                case '&lt;':
+<span class="nc" id="L596">                    escapeBuilder.append(&quot;&amp;lt;&quot;);</span>
+<span class="nc" id="L597">                    break;</span>
+                case '&gt;':
+<span class="nc" id="L599">                    escapeBuilder.append(&quot;&amp;gt;&quot;);</span>
+<span class="nc" id="L600">                    break;</span>
+                case '&amp;':
+<span class="nc" id="L602">                    escapeBuilder.append(&quot;&amp;amp;&quot;);</span>
+<span class="nc" id="L603">                    break;</span>
+                case '&quot;':
+<span class="nc" id="L605">                    escapeBuilder.append(&quot;&amp;quot;&quot;);</span>
+                    break;
+                }
+<span class="nc" id="L608">                start = i + 1;</span>
+            }
+        }
+<span class="fc" id="L611">        escapeBuilder.append(source, start, end - start);</span>
+<span class="fc" id="L612">        return escapeBuilder.toString();</span>
+    }
+
+    /**
+     * Character content encountered in the XML document since the last call to
+     * consumeCharacterContent().
+     */
+<span class="fc" id="L619">    StringBuilder characterContent = new StringBuilder();</span>
+
+    /**
+     * Returns and resets the character content captured since the last call to
+     * this method.
+     *
+     * @return the captured character content.
+     */
+    public String consumeCharacterContent() {
+<span class="fc" id="L628">        String content = characterContent.toString();</span>
+<span class="fc" id="L629">        characterContent.setLength(0);</span>
+<span class="fc" id="L630">        return content;</span>
+    }
+
+    public void characters(char[] buffer, int start, int length) {
+        // Capture character content in string builder
+<span class="pc bpc" id="L635" title="1 of 2 branches missed.">        if (characterContent.length() &lt; MAX_CHARACTER_CONTENT_CAPTURE_LENGTH)</span>
+<span class="fc" id="L636">            characterContent.append(buffer, start, length);</span>
+
+<span class="fc" id="L638">        String s = escapeXmlChars(buffer, start, length);</span>
+<span class="fc" id="L639">        processContent(s);</span>
+
+        // Call any hooks associated with this element
+<span class="fc" id="L642">        hookableHandler.characters(buffer, start, length);</span>
+<span class="fc" id="L643">    }</span>
+
+    /**
+     * Complex field where different aspects (word form, named entity status,
+     * etc.) of the main content of the document are captured for indexing.
+     */
+    ComplexField contentsField;
+
+    /** The main property (usually &quot;word&quot;) */
+    ComplexFieldProperty propMain;
+
+    /** The punctuation property */
+    ComplexFieldProperty propPunct;
+
+    /** The start tag property. Also contains tag length in payload. */
+    ComplexFieldProperty propStartTag;
+
+    /**
+     * Our external metadata fetcher (if any), responsible for looking up the
+     * metadata and adding it to the Lucene document.
+     */
+    MetadataFetcher metadataFetcher;
+
+    /**
+     * Get the external metadata fetcher for this indexer, if any.
+     *
+     * The metadata fetcher can be configured through the &quot;metadataFetcherClass&quot;
+     * parameter.
+     *
+     * @return the metadata fetcher if any, or null if there is none.
+     */
+    MetadataFetcher getMetadataFetcher() {
+<span class="pc bpc" id="L675" title="1 of 2 branches missed.">        if (metadataFetcher == null) {</span>
+            @SuppressWarnings(&quot;deprecation&quot;)
+<span class="fc" id="L677">            String metadataFetcherClassName = getParameter(&quot;metadataFetcherClass&quot;);</span>
+<span class="pc bpc" id="L678" title="1 of 2 branches missed.">            if (metadataFetcherClassName != null) {</span>
+                try {
+<span class="nc" id="L680">                    Class&lt;? extends MetadataFetcher&gt; metadataFetcherClass = Class.forName(metadataFetcherClassName)</span>
+<span class="nc" id="L681">                            .asSubclass(MetadataFetcher.class);</span>
+<span class="nc" id="L682">                    Constructor&lt;? extends MetadataFetcher&gt; ctor = metadataFetcherClass.getConstructor(DocIndexer.class);</span>
+<span class="nc" id="L683">                    metadataFetcher = ctor.newInstance(this);</span>
+<span class="nc" id="L684">                } catch (Exception e) {</span>
+<span class="nc" id="L685">                    throw new RuntimeException(e);</span>
+<span class="nc" id="L686">                }</span>
+            }
+        }
+<span class="fc" id="L689">        return metadataFetcher;</span>
+    }
+
+    public ComplexFieldProperty getPropPunct() {
+<span class="fc" id="L693">        return propPunct;</span>
+    }
+
+    public ComplexFieldProperty getPropStartTag() {
+<span class="nc" id="L697">        return propStartTag;</span>
+    }
+
+    public ComplexFieldProperty getMainProperty() {
+<span class="fc" id="L701">        return propMain;</span>
+    }
+
+    public ComplexField getContentsField() {
+<span class="nc" id="L705">        return contentsField;</span>
+    }
+
+    /**
+     * Returns the current word in the content.
+     *
+     * This is the position the next word will be stored at.
+     *
+     * @return the current word position
+     */
+    public int getWordPosition() {
+<span class="nc" id="L716">        return propMain.lastValuePosition() + 1;</span>
+    }
+
+    public void endElement(String uri, String localName, String qName) {
+<span class="fc" id="L720">        elementBuilder.setLength(0); // clear</span>
+<span class="fc" id="L721">        elementBuilder.append(&quot;&lt;/&quot;).append(qName).append(&quot;&gt;&quot;);</span>
+<span class="fc" id="L722">        processContent(elementBuilder.toString());</span>
+
+        // Call any hooks associated with this element
+<span class="fc" id="L725">        hookableHandler.endElement(uri, localName, qName);</span>
+<span class="fc" id="L726">    }</span>
+
+    public void processingInstruction(String target, String data) {
+<span class="nc" id="L729">        elementBuilder.setLength(0); // clear</span>
+<span class="nc" id="L730">        elementBuilder.append(&quot;&lt;?&quot;).append(target).append(&quot; &quot;).append(data).append(&quot;?&gt;&quot;);</span>
+<span class="nc" id="L731">        processContent(elementBuilder.toString());</span>
+<span class="nc" id="L732">    }</span>
+
+    public ElementHandler addHandler(String condition,
+            boolean callHandlerForAllDescendants, ElementHandler handler) {
+<span class="nc" id="L736">        hookableHandler.addHook(condition, handler, callHandlerForAllDescendants);</span>
+<span class="nc" id="L737">        return handler;</span>
+    }
+
+    public ElementHandler addHandler(String condition, ElementHandler handler) {
+<span class="fc" id="L741">        hookableHandler.addHook(condition, handler);</span>
+<span class="fc" id="L742">        return handler;</span>
+    }
+
+    @Override
+    public void index() throws IOException, MalformedInputFileException {
+<span class="fc" id="L747">        SAXParserFactory factory = SAXParserFactory.newInstance();</span>
+<span class="fc" id="L748">        factory.setNamespaceAware(true);</span>
+        SAXParser parser;
+        try {
+<span class="fc" id="L751">            parser = factory.newSAXParser();</span>
+<span class="nc" id="L752">        } catch (Exception e1) {</span>
+            // Unrecoverable error, throw runtime exception
+<span class="nc" id="L754">            throw new RuntimeException(e1);</span>
+<span class="fc" id="L755">        }</span>
+        try {
+<span class="fc" id="L757">            InputSource is = new InputSource(reader);</span>
+<span class="fc" id="L758">            XMLReader xmlReader = parser.getXMLReader();</span>
+<span class="fc" id="L759">            xmlReader.setEntityResolver(new DummyEntityResolver());</span>
+<span class="fc" id="L760">            xmlReader.setContentHandler(saxParseHandler);</span>
+<span class="fc" id="L761">            xmlReader.parse(is);</span>
+<span class="nc" id="L762">        } catch (IOException e) {</span>
+<span class="nc" id="L763">            throw e;</span>
+<span class="nc" id="L764">        } catch (SAXException e) {</span>
+<span class="nc" id="L765">            throw new MalformedInputFileException(e);</span>
+<span class="nc" id="L766">        } catch (DocIndexer.MaxDocsReachedException e) {</span>
+            // OK; just stop indexing prematurely
+<span class="fc" id="L768">        }</span>
+
+<span class="pc bpc" id="L770" title="1 of 2 branches missed.">        if (nDocumentsSkipped &gt; 0)</span>
+<span class="nc" id="L771">            System.err.println(&quot;Skipped &quot; + nDocumentsSkipped + &quot; large documents&quot;);</span>
+<span class="fc" id="L772">    }</span>
+
+    public String describePosition() {
+<span class="nc" id="L775">        return saxParseHandler.describePosition();</span>
+    }
+
+<span class="fc" id="L778">    class SaxParseHandler extends DefaultHandler {</span>
+        /** to keep track of the position within the document */
+        protected Locator locator;
+
+        @Override
+        public void setDocumentLocator(Locator locator) {
+<span class="fc" id="L784">            this.locator = locator;</span>
+<span class="fc" id="L785">        }</span>
+
+        @Override
+        public void characters(char[] buffer, int start, int length)
+                throws SAXException {
+<span class="fc" id="L790">            super.characters(buffer, start, length);</span>
+<span class="fc" id="L791">            DocIndexerXmlHandlers.this.characters(buffer, start, length);</span>
+<span class="fc" id="L792">        }</span>
+
+        @Override
+        public void endElement(String uri, String localName, String qName)
+                throws SAXException {
+<span class="fc" id="L797">            super.endElement(uri, localName, qName);</span>
+<span class="fc" id="L798">            DocIndexerXmlHandlers.this.endElement(uri, localName, qName);</span>
+<span class="fc" id="L799">        }</span>
+
+        @Override
+        public void startElement(String uri, String localName, String qName,
+                Attributes attributes) throws SAXException {
+<span class="fc" id="L804">            super.startElement(uri, localName, qName, attributes);</span>
+<span class="fc" id="L805">            DocIndexerXmlHandlers.this.startElement(uri, localName, qName,</span>
+                    attributes);
+<span class="fc" id="L807">        }</span>
+
+        @Override
+        public void processingInstruction(String target, String data)
+                throws SAXException {
+<span class="nc" id="L812">            super.processingInstruction(target, data);</span>
+<span class="nc" id="L813">            DocIndexerXmlHandlers.this.processingInstruction(target, data);</span>
+<span class="nc" id="L814">        }</span>
+
+        @Override
+        public void startPrefixMapping(String prefix, String uri)
+                throws SAXException {
+<span class="nc" id="L819">            super.startPrefixMapping(prefix, uri);</span>
+<span class="nc" id="L820">            DocIndexerXmlHandlers.this.startPrefixMapping(prefix, uri);</span>
+<span class="nc" id="L821">        }</span>
+
+        @Override
+        public void endPrefixMapping(String prefix) throws SAXException {
+<span class="nc" id="L825">            super.endPrefixMapping(prefix);</span>
+<span class="nc" id="L826">            DocIndexerXmlHandlers.this.endPrefixMapping(prefix);</span>
+<span class="nc" id="L827">        }</span>
+
+        public String describePosition() {
+<span class="nc" id="L830">            return &quot;line &quot; + locator.getLineNumber() + &quot;, position &quot; + locator.getColumnNumber();</span>
+        }
+
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

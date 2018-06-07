@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AbstractSynonymFilter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.filter</a> &gt; <span class="el_source">AbstractSynonymFilter.java</span></div><h1>AbstractSynonymFilter.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.filter;
+
+import java.io.IOException;
+import java.util.Stack;
+
+import org.apache.lucene.analysis.TokenFilter;
+import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
+import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
+import org.apache.lucene.analysis.tokenattributes.TypeAttribute;
+import org.apache.lucene.util.AttributeSource;
+
+/**
+ * Abstract base class for implementing synonym filters.
+ *
+ * This can be used for true synonyms, but also for alternative spellings for certain words, such as
+ * a version with accented characters transcribed to unaccented versions.
+ *
+ * This filter could be applied at either index time or search time.
+ *
+ * Subclasses should override the getSynonyms() method, and for example use a database to find the
+ * appropriate synonyms.
+ *
+ * (Adapted from sample code from Lucene in Action, 2nd ed.)
+ */
+public abstract class AbstractSynonymFilter extends TokenFilter {
+	/** Include the original token, or just the synonyms? */
+	private boolean includeOriginalTokens;
+
+	/**
+	 * Construct a synonym filter.
+	 *
+	 * @param input
+	 *            the input tokens to find synonyms for
+	 * @param includeOriginalTokens
+	 *            Include the original tokens, or just the synonyms?
+	 */
+	public AbstractSynonymFilter(TokenStream input, boolean includeOriginalTokens) {
+<span class="fc" id="L54">		super(input);</span>
+<span class="fc" id="L55">		this.includeOriginalTokens = includeOriginalTokens;</span>
+<span class="fc" id="L56">		synonymStack = new Stack&lt;&gt;();</span>
+<span class="fc" id="L57">		termAttr = addAttribute(CharTermAttribute.class);</span>
+<span class="fc" id="L58">		addAttribute(PositionIncrementAttribute.class);</span>
+<span class="fc" id="L59">		addAttribute(TypeAttribute.class);</span>
+<span class="fc" id="L60">		helperAttSource = input.cloneAttributes();</span>
+<span class="fc" id="L61">	}</span>
+
+	/**
+	 * Construct a synonym filter that includes the original tokens.
+	 *
+	 * @param input
+	 *            the input tokens to find synonyms for
+	 */
+	public AbstractSynonymFilter(TokenStream input) {
+<span class="fc" id="L70">		this(input, true);</span>
+<span class="fc" id="L71">	}</span>
+
+	/**
+	 * Token type for synonyms
+	 */
+	public static final String TOKEN_TYPE_SYNONYM = &quot;SYNONYM&quot;;
+
+	/**
+	 * Get a list of synonyms
+	 * @param s word to get synonyms for
+	 * @return the list
+	 */
+	public abstract String[] getSynonyms(String s);
+
+	private Stack&lt;State&gt; synonymStack;
+
+	private CharTermAttribute termAttr;
+
+	/**
+	 * A copy of the input attributes. Used to construct the states we push on the stack.
+	 */
+	private AttributeSource helperAttSource;
+
+	@Override
+	final public boolean incrementToken() throws IOException {
+		// If we don't want the original token but just the synonyms,
+		// we may have to loop to the first synonym. See end of loop.
+		do {
+			// Do we have any synonyms left?
+<span class="fc bfc" id="L100" title="All 2 branches covered.">			if (!synonymStack.isEmpty()) {</span>
+				// Yes, shift one in.
+<span class="fc" id="L102">				State syn = synonymStack.pop();</span>
+<span class="fc" id="L103">				restoreState(syn);</span>
+
+				// We're at a synonym. This is always ok (regardless of the
+				// value of includeOriginalTokens), so exit the loop.
+<span class="fc" id="L107">				break;</span>
+			}
+
+<span class="fc bfc" id="L110" title="All 2 branches covered.">			if (!input.incrementToken()) {</span>
+				// We're done.
+<span class="fc" id="L112">				return false;</span>
+			}
+
+<span class="fc" id="L115">			addAliasesToStack();</span>
+
+			// Now we're at the original token. This is only ok if
+			// includeOriginalTokens == true; hence the loop.
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">		} while (!includeOriginalTokens);</span>
+
+<span class="fc" id="L121">		return true; // We're at a desired token (original or synonym)</span>
+	}
+
+	private void addAliasesToStack() {
+<span class="fc" id="L125">		String[] synonyms = getSynonyms(new String(termAttr.buffer(), 0, termAttr.length()));</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">		if (synonyms == null)</span>
+<span class="fc" id="L127">			return;</span>
+<span class="fc" id="L128">		State current = captureState();</span>
+
+<span class="fc bfc" id="L130" title="All 2 branches covered.">		for (int i = 0; i &lt; synonyms.length; i++) {</span>
+<span class="fc" id="L131">			helperAttSource.restoreState(current);</span>
+<span class="fc" id="L132">			setTerm(helperAttSource, synonyms[i]);</span>
+<span class="fc" id="L133">			setType(helperAttSource, TOKEN_TYPE_SYNONYM);</span>
+<span class="fc" id="L134">			setPositionIncrement(helperAttSource, 0);</span>
+<span class="fc" id="L135">			synonymStack.push(helperAttSource.captureState());</span>
+		}
+<span class="fc" id="L137">	}</span>
+
+	static void setPositionIncrement(AttributeSource source, int posIncr) {
+<span class="fc" id="L140">		PositionIncrementAttribute attr = source.addAttribute(PositionIncrementAttribute.class);</span>
+<span class="fc" id="L141">		attr.setPositionIncrement(posIncr);</span>
+<span class="fc" id="L142">	}</span>
+
+	static void setTerm(AttributeSource source, String term) {
+<span class="fc" id="L145">		CharTermAttribute attr = source.addAttribute(CharTermAttribute.class);</span>
+<span class="fc" id="L146">		attr.copyBuffer(term.toCharArray(), 0, term.length());</span>
+<span class="fc" id="L147">	}</span>
+
+	static void setType(AttributeSource source, String type) {
+<span class="fc" id="L150">		TypeAttribute attr = source.addAttribute(TypeAttribute.class);</span>
+<span class="fc" id="L151">		attr.setType(type);</span>
+<span class="fc" id="L152">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

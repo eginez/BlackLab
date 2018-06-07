@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SpansCaptureGroup.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">SpansCaptureGroup.java</span></div><h1>SpansCaptureGroup.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.lucene;
+
+import java.io.IOException;
+
+import org.apache.lucene.search.spans.SpanCollector;
+import nl.inl.blacklab.search.Span;
+
+/**
+ * Captures its clause as a captured group.
+ *
+ * Registers itself with the HitQueryContext so others can
+ * access its start() and end() when they want to.
+ */
+class SpansCaptureGroup extends BLSpans {
+
+	/** clause to capture as a group */
+	private BLSpans clause;
+
+	/** group name */
+	private String name;
+
+	/** group index (where in the Spans[] to place our start/end position in getCapturedGroups()) */
+	private int groupIndex;
+
+	/** How to adjust the left edge of the captured hits while matching.
+	 *  (necessary because we try to internalize constant-length neighbouring clauses 
+	 *   into our clause to speed up matching)
+	 */
+	int leftAdjust;
+
+	/** How to adjust the right edge of the captured hits while matching.
+	 *  (necessary because we try to internalize constant-length neighbouring clauses 
+	 *   into our clause to speed up matching)
+	 */
+	private int rightAdjust;
+
+	/**
+	 * Constructs a SpansCaptureGroup.
+	 * @param clause the clause to capture
+	 * @param name group name
+	 * @param rightAdjust 
+	 * @param leftAdjust 
+	 */
+<span class="fc" id="L59">	public SpansCaptureGroup(BLSpans clause, String name, int leftAdjust, int rightAdjust) {</span>
+<span class="fc" id="L60">		this.clause = clause;</span>
+<span class="fc" id="L61">		this.name = name;</span>
+<span class="fc" id="L62">		this.leftAdjust = leftAdjust;</span>
+<span class="fc" id="L63">		this.rightAdjust = rightAdjust;</span>
+<span class="fc" id="L64">	}</span>
+
+	/**
+	 * @return the Lucene document id of the current hit
+	 */
+	@Override
+	public int docID() {
+<span class="fc" id="L71">		return clause.docID();</span>
+	}
+
+	/**
+	 * @return start position of current hit
+	 */
+	@Override
+	public int startPosition() {
+<span class="fc" id="L79">		return clause.startPosition();</span>
+	}
+
+	/**
+	 * @return end position of current hit
+	 */
+	@Override
+	public int endPosition() {
+<span class="fc" id="L87">		return clause.endPosition();</span>
+	}
+
+	@Override
+	public int nextDoc() throws IOException {
+<span class="fc" id="L92">		return clause.nextDoc();</span>
+	}
+
+	@Override
+	public int nextStartPosition() throws IOException {
+<span class="fc" id="L97">		return clause.nextStartPosition();</span>
+	}
+
+	@Override
+	public int advanceStartPosition(int target) throws IOException {
+<span class="fc" id="L102">		return clause.advanceStartPosition(target);</span>
+	}
+
+	/**
+	 * Skip to the specified document (or the first document after it containing hits).
+	 *
+	 * @param doc
+	 *            the doc number to skip to (or past)
+	 * @return true if we're still pointing to a valid hit, false if we're done
+	 * @throws IOException
+	 */
+	@Override
+	public int advance(int doc) throws IOException {
+<span class="nc" id="L115">		return clause.advance(doc);</span>
+	}
+
+	@Override
+	public String toString() {
+<span class="nc bnc" id="L120" title="All 4 branches missed.">		String adj = (leftAdjust != 0 || rightAdjust != 0 ? &quot;, &quot; + leftAdjust + &quot;, &quot; + rightAdjust : &quot;&quot;);</span>
+<span class="nc" id="L121">		return &quot;CAPTURE(&quot; + clause + &quot;, &quot; + name + adj + &quot;)&quot;;</span>
+	}
+
+	@Override
+	public void setHitQueryContext(HitQueryContext context) {
+<span class="fc" id="L126">		super.setHitQueryContext(context);</span>
+<span class="fc" id="L127">		this.groupIndex = context.registerCapturedGroup(name);</span>
+<span class="fc" id="L128">	}</span>
+
+	@Override
+	protected void passHitQueryContextToClauses(HitQueryContext context) {
+<span class="fc" id="L132">		clause.setHitQueryContext(context);</span>
+<span class="fc" id="L133">	}</span>
+
+	@Override
+	public void getCapturedGroups(Span[] capturedGroups) {
+<span class="fc bfc" id="L137" title="All 2 branches covered.">		if (childClausesCaptureGroups)</span>
+<span class="fc" id="L138">			clause.getCapturedGroups(capturedGroups);</span>
+
+		// Place our start and end position at the correct index in the array
+<span class="fc" id="L141">		capturedGroups[groupIndex] = new Span(startPosition() + leftAdjust, endPosition() + rightAdjust);</span>
+<span class="fc" id="L142">	}</span>
+
+	@Override
+	public int width() {
+<span class="nc" id="L146">		return clause.width();</span>
+	}
+
+	@Override
+	public void collect(SpanCollector collector) throws IOException {
+<span class="nc" id="L151">		clause.collect(collector);</span>
+<span class="nc" id="L152">	}</span>
+
+	@Override
+	public float positionsCost() {
+<span class="nc" id="L156">		return clause.positionsCost();</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

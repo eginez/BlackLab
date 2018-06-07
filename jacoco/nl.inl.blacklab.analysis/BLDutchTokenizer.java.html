@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BLDutchTokenizer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.analysis</a> &gt; <span class="el_source">BLDutchTokenizer.java</span></div><h1>BLDutchTokenizer.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.analysis;
+
+import org.apache.lucene.analysis.util.CharTokenizer;
+import org.apache.lucene.util.AttributeFactory;
+
+/**
+ * A simple tokenizer for Dutch texts. Basically the whitespace tokenizer
+ * with a few exceptional punctuation characters that are included in tokens.
+ *
+ * These are the exceptions:
+ * * apostrophes (e.g. zo'n, da's: apostrophes at the beginning or end of a token will be filtered out later)
+ * * dashes (e.g. ex-man, multi-)
+ * * periods (e.g. a.u.b., N.B.; will be filtered out later)
+ * * parens and brackets (e.g. bel(len), (pre)cursor; will be filtered out later)
+ */
+public class BLDutchTokenizer extends CharTokenizer {
+
+	public BLDutchTokenizer() {
+<span class="fc" id="L19">		super();</span>
+<span class="fc" id="L20">	}</span>
+
+	public BLDutchTokenizer(AttributeFactory factory) {
+<span class="nc" id="L23">		super(factory);</span>
+<span class="nc" id="L24">	}</span>
+
+	@Override
+	protected boolean isTokenChar(int c) {
+
+<span class="fc bfc" id="L29" title="All 2 branches covered.">		if (Character.isWhitespace(c))</span>
+<span class="fc" id="L30">			return false;</span>
+
+<span class="fc bfc" id="L32" title="All 4 branches covered.">		if (Character.isLetter(c) || Character.isDigit(c))</span>
+<span class="fc" id="L33">			return true;</span>
+
+<span class="fc bfc" id="L35" title="All 14 branches covered.">		if (c == '\'' || c == '-' || c == '.' || c == '(' || c == '[' || c == ')' || c == ']') {</span>
+			/* These are exceptions to the rule that non-letters are not token chars.
+			 *
+			 * An example of each:
+			 * * zo'n, da's     (apostrophes at the beginning or end of a token will be filtered out later)
+			 * * ex-man, multi-
+			 * * a.u.b., N.B.   (periods will be filtered out later)
+			 * * bel(len),      (pre)cursor (parens and brackets will be filtered out later)
+			 */
+<span class="fc" id="L44">			return true;</span>
+		}
+
+		// Some non-exceptional punctuation character. Not part of the token.
+<span class="fc" id="L48">		return false;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

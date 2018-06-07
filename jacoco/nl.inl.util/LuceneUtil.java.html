@@ -1,0 +1,453 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LuceneUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.util</a> &gt; <span class="el_source">LuceneUtil.java</span></div><h1>LuceneUtil.java</h1><pre class="source lang-java linenums">package nl.inl.util;
+
+import java.io.IOException;
+import java.nio.charset.Charset;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.IndexWriterConfig.OpenMode;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.LogMergePolicy;
+import org.apache.lucene.index.MergePolicy;
+import org.apache.lucene.index.PostingsEnum;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.index.Terms;
+import org.apache.lucene.index.TermsEnum;
+import org.apache.lucene.queryparser.classic.ParseException;
+import org.apache.lucene.queryparser.classic.QueryParser;
+import org.apache.lucene.search.BooleanClause.Occur;
+import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.search.FuzzyQuery;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.Scorer;
+import org.apache.lucene.search.Weight;
+import org.apache.lucene.search.highlight.QueryTermExtractor;
+import org.apache.lucene.search.highlight.WeightedTerm;
+import org.apache.lucene.util.BytesRef;
+
+import nl.inl.blacklab.index.complex.ComplexFieldUtil;
+
+public class LuceneUtil {
+
+<span class="fc" id="L46">	static final Charset LUCENE_DEFAULT_CHARSET = Charset.forName(&quot;utf-8&quot;);</span>
+<span class="fc" id="L47">        private static final Logger logger = LogManager.getLogger(LuceneUtil.class);</span>
+
+<span class="nc" id="L49">	private LuceneUtil() {</span>
+<span class="nc" id="L50">	}</span>
+
+	/**
+	 * Get all the terms in the index with low edit distance from the supplied term
+	 * @param reader the index
+	 * @param luceneName
+	 *            the field to search in
+	 * @param searchTerms
+	 *            search terms
+	 * @param maxEdits
+	 *            maximum edit distance (Levenshtein algorithm) for matches
+	 *            (i.e. lower is more similar)
+	 * @return the set of terms in the index that are close to our search term
+	 * @throws BooleanQuery.TooManyClauses
+	 *             if the expansion resulted in too many terms
+	 */
+	public static Set&lt;String&gt; getMatchingTermsFromIndex(IndexReader reader, String luceneName,
+			Collection&lt;String&gt; searchTerms, int maxEdits) {
+<span class="nc" id="L68">		boolean doFuzzy = true;</span>
+<span class="nc bnc" id="L69" title="All 2 branches missed.">		if (maxEdits == 0) {</span>
+			// Exact match; don't use fuzzy query (slow)
+<span class="nc" id="L71">			Set&lt;String&gt; result = new HashSet&lt;&gt;();</span>
+			try {
+<span class="nc bnc" id="L73" title="All 2 branches missed.">				for (String term: searchTerms) {</span>
+<span class="nc bnc" id="L74" title="All 2 branches missed.">					if (reader.docFreq(new Term(luceneName, term)) &gt; 0)</span>
+<span class="nc" id="L75">						result.add(term);</span>
+<span class="nc" id="L76">				}</span>
+<span class="nc" id="L77">			} catch (IOException e) {</span>
+<span class="nc" id="L78">				throw new RuntimeException(e);</span>
+<span class="nc" id="L79">			}</span>
+<span class="nc" id="L80">			return result;</span>
+		}
+
+<span class="nc" id="L83">		BooleanQuery.Builder bb = new BooleanQuery.Builder();</span>
+<span class="nc bnc" id="L84" title="All 2 branches missed.">		for (String s: searchTerms) {</span>
+<span class="nc" id="L85">			FuzzyQuery fq = new FuzzyQuery(new Term(luceneName, s), maxEdits);</span>
+<span class="nc" id="L86">			bb.add(fq, Occur.SHOULD);</span>
+<span class="nc" id="L87">		}</span>
+<span class="nc" id="L88">		BooleanQuery q = bb.build();</span>
+
+		try {
+<span class="nc" id="L91">			Query rewritten = q.rewrite(reader);</span>
+<span class="nc" id="L92">			WeightedTerm[] wts = QueryTermExtractor.getTerms(rewritten);</span>
+<span class="nc" id="L93">			Set&lt;String&gt; terms = new HashSet&lt;&gt;();</span>
+<span class="nc bnc" id="L94" title="All 2 branches missed.">			for (WeightedTerm wt: wts) {</span>
+<span class="nc bnc" id="L95" title="All 4 branches missed.">				if (doFuzzy || searchTerms.contains(wt.getTerm())) {</span>
+<span class="nc" id="L96">					terms.add(wt.getTerm());</span>
+				}
+			}
+<span class="nc" id="L99">			return terms;</span>
+<span class="nc" id="L100">		} catch (IOException e) {</span>
+<span class="nc" id="L101">			throw new RuntimeException(e);</span>
+		}
+	}
+
+	/**
+	 * Parse a query in the Lucene query language format (QueryParser supplied with Lucene).
+	 *
+	 * @param luceneQuery the query string
+	 * @param analyzer analyzer to use
+	 * @param defaultField default search field
+	 * @return the query
+	 * @throws ParseException on syntax error
+	 */
+	public static Query parseLuceneQuery(String luceneQuery, Analyzer analyzer, String defaultField)
+			throws ParseException {
+<span class="nc" id="L116">		QueryParser qp = new QueryParser(defaultField, analyzer);</span>
+<span class="nc" id="L117">		return qp.parse(luceneQuery);</span>
+	}
+
+	/**
+	 * Get all words between the specified start and end positions from the term vector.
+	 *
+	 * NOTE: this may return an array of less than the size requested, if the document ends before
+	 * the requested end position.
+	 * @param reader the index
+	 * @param doc
+	 *            doc id
+	 * @param luceneName
+	 *            the index field from which to use the term vector
+	 * @param start
+	 *            start position (first word we want to request)
+	 * @param end
+	 *            end position (last word we want to request)
+	 * @return the words found, in order
+	 */
+	public static String[] getWordsFromTermVector(IndexReader reader, int doc,
+			String luceneName, int start, int end) {
+<span class="nc" id="L138">		return getWordsFromTermVector(reader, doc, luceneName, start, end, false);</span>
+	}
+
+	/**
+	 * Get all words between the specified start and end positions from the term vector.
+	 *
+	 * NOTE: this may return an array of less than the size requested, if the document ends before
+	 * the requested end position.
+	 * @param reader the index
+	 * @param doc
+	 *            doc id
+	 * @param luceneName
+	 *            the index field from which to use the term vector
+	 * @param start
+	 *            start position (first word we want to request)
+	 * @param end
+	 *            end position (last word we want to request)
+	 * @param partialOk
+	 *   is it okay if we're missing words in the middle, or do we need them all?
+	 *   (debug)
+	 * @return the words found, in order
+	 */
+	public static String[] getWordsFromTermVector(IndexReader reader, int doc,
+			String luceneName, int start, int end, boolean partialOk) {
+
+		// Retrieve the term position vector of the contents of this document.
+		// NOTE: might be faster to retrieve all term vectors at once
+
+		try {
+<span class="nc" id="L167">			org.apache.lucene.index.Terms terms = reader.getTermVector(doc, luceneName);</span>
+<span class="nc bnc" id="L168" title="All 2 branches missed.">			if (terms == null) {</span>
+<span class="nc" id="L169">				throw new IllegalArgumentException(&quot;Field &quot; + luceneName + &quot; has no Terms&quot;);</span>
+			}
+<span class="nc bnc" id="L171" title="All 2 branches missed.">			if (!terms.hasPositions())</span>
+<span class="nc" id="L172">				throw new IllegalArgumentException(&quot;Field &quot; + luceneName + &quot; has no character postion information&quot;);</span>
+			// String[] docTerms = new String[(int) terms.size()];
+			// final List&lt;BytesRef&gt; termsList = new ArrayList&lt;BytesRef&gt;();
+<span class="nc" id="L175">			TermsEnum termsEnum = terms.iterator();</span>
+
+			// Verzamel concordantiewoorden uit term vector
+<span class="nc" id="L178">			PostingsEnum docPosEnum = null;</span>
+<span class="nc" id="L179">			int numFound = 0;</span>
+<span class="nc" id="L180">			String[] concordanceWords = new String[end - start + 1];</span>
+<span class="nc bnc" id="L181" title="All 2 branches missed.">			while (termsEnum.next() != null) {</span>
+<span class="nc" id="L182">				docPosEnum = termsEnum.postings(docPosEnum, PostingsEnum.POSITIONS);</span>
+<span class="nc bnc" id="L183" title="All 2 branches missed.">				while (docPosEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {</span>
+					// NOTE: .docId() will always return 0 in this case
+					//if (docPosEnum.docID() != doc)
+					//	throw new RuntimeException(&quot;Wrong doc id: &quot; + docPosEnum.docID() + &quot; (expected &quot; + doc + &quot;)&quot;);
+<span class="nc bnc" id="L187" title="All 2 branches missed.">					for (int i = 0; i &lt; docPosEnum.freq(); i++)  {</span>
+<span class="nc" id="L188">						int position = docPosEnum.nextPosition();</span>
+<span class="nc bnc" id="L189" title="All 2 branches missed.">						if (position == -1)</span>
+<span class="nc" id="L190">							throw new RuntimeException(&quot;Unexpected missing position (i=&quot; + i + &quot;, docPosEnum.freq() = &quot; + docPosEnum.freq() + &quot;)&quot;);</span>
+<span class="nc bnc" id="L191" title="All 4 branches missed.">						if (position &gt;= start &amp;&amp; position &lt;= end) {</span>
+<span class="nc bnc" id="L192" title="All 2 branches missed.">							if (concordanceWords[position - start] == null)</span>
+<span class="nc" id="L193">								concordanceWords[position - start] = termsEnum.term().utf8ToString();</span>
+							else
+<span class="nc" id="L195">								concordanceWords[position - start] += &quot;|&quot; + termsEnum.term().utf8ToString();</span>
+<span class="nc" id="L196">							numFound++;</span>
+						}
+					}
+<span class="nc bnc" id="L199" title="All 2 branches missed.">					if (numFound == concordanceWords.length)</span>
+<span class="nc" id="L200">						return concordanceWords;</span>
+				}
+			}
+
+<span class="nc bnc" id="L204" title="All 4 branches missed.">			if (numFound &lt; concordanceWords.length &amp;&amp; !partialOk) {</span>
+				// If we simply ran into the end of the document, that's okay;
+				// but if words are missing in the middle, that's not.
+<span class="nc" id="L207">				String[] partial = new String[numFound];</span>
+<span class="nc bnc" id="L208" title="All 2 branches missed.">				for (int i = 0; i &lt; numFound; i++) {</span>
+<span class="nc" id="L209">					partial[i] = concordanceWords[i];</span>
+<span class="nc bnc" id="L210" title="All 2 branches missed.">					if (partial[i] == null) {</span>
+<span class="nc" id="L211">						throw new RuntimeException(&quot;Not all words found (&quot; + numFound + &quot; out of &quot;</span>
+								+ concordanceWords.length
+								+ &quot;); missing words in the middle of concordance!&quot;);
+					}
+				}
+<span class="nc" id="L216">				return partial;</span>
+			}
+<span class="nc" id="L218">			return concordanceWords;</span>
+<span class="nc" id="L219">		} catch (Exception e) {</span>
+<span class="nc" id="L220">			throw ExUtil.wrapRuntimeException(e);</span>
+		}
+	}
+
+	/**
+	 * Add term frequencies for a single document to a frequency map.
+	 *
+	 * @param reader the index
+	 * @param doc doc id
+	 * @param luceneName the index field from which to use the term vector
+	 * @param freq where to add to the token frequencies
+	 */
+	public static void getFrequenciesFromTermVector(IndexReader reader, int doc,
+			String luceneName, Map&lt;String, Integer&gt; freq) {
+		try {
+<span class="nc" id="L235">			org.apache.lucene.index.Terms terms = reader.getTermVector(doc, luceneName);</span>
+<span class="nc bnc" id="L236" title="All 2 branches missed.">			if (terms == null) {</span>
+<span class="nc" id="L237">				throw new IllegalArgumentException(&quot;Field &quot; + luceneName + &quot; has no Terms&quot;);</span>
+			}
+<span class="nc" id="L239">			TermsEnum termsEnum = terms.iterator();</span>
+
+			// Verzamel concordantiewoorden uit term vector
+<span class="nc" id="L242">			PostingsEnum postingsEnum = null;</span>
+<span class="nc bnc" id="L243" title="All 2 branches missed.">			while (termsEnum.next() != null) {</span>
+<span class="nc" id="L244">				postingsEnum = termsEnum.postings(postingsEnum, PostingsEnum.FREQS);</span>
+<span class="nc" id="L245">				String term = termsEnum.term().utf8ToString();</span>
+<span class="nc" id="L246">				Integer n = freq.get(term);</span>
+<span class="nc bnc" id="L247" title="All 2 branches missed.">				if (n == null) {</span>
+<span class="nc" id="L248">					n = 0;</span>
+				}
+<span class="nc bnc" id="L250" title="All 2 branches missed.">				while (postingsEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {</span>
+<span class="nc" id="L251">					n += termsEnum.docFreq();</span>
+				}
+<span class="nc" id="L253">				freq.put(term, n);</span>
+<span class="nc" id="L254">			}</span>
+<span class="nc" id="L255">		} catch (Exception e) {</span>
+<span class="nc" id="L256">			throw ExUtil.wrapRuntimeException(e);</span>
+<span class="nc" id="L257">		}</span>
+<span class="nc" id="L258">	}</span>
+
+	/**
+	 * Return the list of terms that occur in a field.
+	 * @param index the index
+	 * @param fieldName the field
+	 * @return the matching terms
+	 */
+	public static List&lt;String&gt; getFieldTerms(IndexReader index, String fieldName) {
+<span class="nc" id="L267">		return findTermsByPrefix(index, fieldName, null, true, -1);</span>
+	}
+
+	/**
+	 * Return the list of terms that occur in a field.
+	 * @param index the index
+	 * @param fieldName the field
+	 * @param maxResults maximum number to return (or -1 for no limit)
+	 * @return the matching terms
+	 */
+	public static List&lt;String&gt; getFieldTerms(IndexReader index, String fieldName, int maxResults) {
+<span class="nc" id="L278">		return findTermsByPrefix(index, fieldName, null, true, maxResults);</span>
+	}
+
+	/**
+	 * Find terms in the index based on a prefix. Useful for autocomplete. NOTE: no limit on the number of results!
+	 * @param index the index
+	 * @param fieldName the field
+	 * @param prefix the prefix we're looking for
+	 * @param sensitive match case-sensitively or not?
+	 * @return the matching terms
+	 */
+	public static List&lt;String&gt; findTermsByPrefix(IndexReader index, String fieldName,
+			String prefix, boolean sensitive) {
+<span class="nc" id="L291">		return findTermsByPrefix(index, fieldName, prefix, sensitive, -1);</span>
+	}
+
+	/**
+	 * Find terms in the index based on a prefix. Useful for autocomplete.
+	 * @param index the index
+	 * @param fieldName the field
+	 * @param prefix the prefix we're looking for (null or empty string for all terms)
+	 * @param sensitive match case-sensitively or not?
+	 * @param maxResults max. number of results to return (or -1 for all)
+	 * @return the matching terms
+	 */
+	public static List&lt;String&gt; findTermsByPrefix(IndexReader index, String fieldName,
+			String prefix, boolean sensitive, int maxResults) {
+<span class="nc bnc" id="L305" title="All 4 branches missed.">		boolean allTerms = prefix == null || prefix.length() == 0;</span>
+<span class="nc bnc" id="L306" title="All 2 branches missed.">		if (allTerms) {</span>
+<span class="nc" id="L307">			prefix = &quot;&quot;;</span>
+<span class="nc" id="L308">			sensitive = true; // don't do unnecessary work in this case</span>
+		}
+		try {
+<span class="nc bnc" id="L311" title="All 2 branches missed.">			if (!sensitive)</span>
+<span class="nc" id="L312">				prefix = StringUtil.stripAccents(prefix).toLowerCase();</span>
+<span class="nc" id="L313">			Set&lt;String&gt; results = new TreeSet&lt;&gt;();</span>
+<span class="nc bnc" id="L314" title="All 2 branches missed.">			for (LeafReaderContext leafReader: index.leaves()) {</span>
+<span class="nc" id="L315">				Terms terms = leafReader.reader().terms(fieldName);</span>
+<span class="nc bnc" id="L316" title="All 2 branches missed.">                                if (terms == null) {</span>
+<span class="nc bnc" id="L317" title="All 2 branches missed.">                                    if (logger.isDebugEnabled()) logger.debug(&quot;no terms for field &quot; + fieldName + &quot; in leafReader, skipping&quot;);</span>
+                                    continue;
+                                }
+<span class="nc" id="L320">				TermsEnum termsEnum = terms.iterator();</span>
+<span class="nc" id="L321">				BytesRef brPrefix = new BytesRef(prefix.getBytes(LUCENE_DEFAULT_CHARSET));</span>
+<span class="nc" id="L322">				TermsEnum.SeekStatus seekStatus = termsEnum.seekCeil(brPrefix);</span>
+
+<span class="nc bnc" id="L324" title="All 2 branches missed.">				if (seekStatus == TermsEnum.SeekStatus.END) {</span>
+<span class="nc" id="L325">					continue;</span>
+				}
+<span class="nc bnc" id="L327" title="All 2 branches missed.">				for (BytesRef term = termsEnum.term(); term != null; term = termsEnum.next()) {</span>
+<span class="nc bnc" id="L328" title="All 4 branches missed.">					if (maxResults &lt; 0 || results.size() &lt; maxResults) {</span>
+<span class="nc" id="L329">						String termText = term.utf8ToString();</span>
+<span class="nc bnc" id="L330" title="All 2 branches missed.">						boolean startsWithPrefix = sensitive ? StringUtil.stripAccents(termText).startsWith(prefix)</span>
+<span class="nc" id="L331">								: termText.startsWith(prefix);</span>
+<span class="nc bnc" id="L332" title="All 4 branches missed.">						if (!allTerms &amp;&amp; !startsWithPrefix) {</span>
+							// Doesn't match prefix or different field; no more matches
+<span class="nc" id="L334">							break;</span>
+						}
+						// Match, add term
+<span class="nc bnc" id="L337" title="All 2 branches missed.">						if (!results.contains(termText))</span>
+<span class="nc" id="L338">							results.add(termText);</span>
+					}
+				}
+<span class="nc" id="L341">			}</span>
+<span class="nc" id="L342">			return new ArrayList&lt;&gt;(results);</span>
+<span class="nc" id="L343">		} catch (IOException e) {</span>
+<span class="nc" id="L344">			throw new RuntimeException(e);</span>
+		}
+	}
+    
+
+	public static Map&lt;String, Integer&gt; termFrequencies(IndexSearcher indexSearcher, Query documentFilterQuery, String fieldName, String propName, String altName) {
+		try {
+<span class="nc" id="L351">			String luceneField = ComplexFieldUtil.propertyField(fieldName, propName, altName);</span>
+<span class="nc" id="L352">			Weight weight = indexSearcher.createNormalizedWeight(documentFilterQuery, false);</span>
+<span class="nc" id="L353">			Map&lt;String, Integer&gt; freq = new HashMap&lt;&gt;();</span>
+<span class="nc" id="L354">			IndexReader indexReader = indexSearcher.getIndexReader();</span>
+<span class="nc bnc" id="L355" title="All 2 branches missed.">			for (LeafReaderContext arc: indexReader.leaves()) {</span>
+<span class="nc bnc" id="L356" title="All 2 branches missed.">				if (weight == null)</span>
+<span class="nc" id="L357">					throw new RuntimeException(&quot;weight == null&quot;);</span>
+<span class="nc bnc" id="L358" title="All 2 branches missed.">				if (arc == null)</span>
+<span class="nc" id="L359">					throw new RuntimeException(&quot;arc == null&quot;);</span>
+<span class="nc bnc" id="L360" title="All 2 branches missed.">				if (arc.reader() == null)</span>
+<span class="nc" id="L361">					throw new RuntimeException(&quot;arc.reader() == null&quot;);</span>
+<span class="nc" id="L362">				Scorer scorer = weight.scorer(arc);</span>
+<span class="nc bnc" id="L363" title="All 2 branches missed.">				if (scorer != null) {</span>
+<span class="nc" id="L364">					DocIdSetIterator it = scorer.iterator();</span>
+<span class="nc bnc" id="L365" title="All 2 branches missed.">					while (it.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {</span>
+<span class="nc" id="L366">						getFrequenciesFromTermVector(indexReader, it.docID() + arc.docBase, luceneField, freq);</span>
+					}
+				}
+<span class="nc" id="L369">			}</span>
+<span class="nc" id="L370">			return freq;</span>
+<span class="nc" id="L371">		} catch (IOException e) {</span>
+<span class="nc" id="L372">			throw ExUtil.wrapRuntimeException(e);</span>
+		}
+	}
+
+	public static IndexWriterConfig getIndexWriterConfig(Analyzer analyzer, boolean create) {
+<span class="fc" id="L377">		IndexWriterConfig config = new IndexWriterConfig(analyzer);</span>
+<span class="pc bpc" id="L378" title="1 of 2 branches missed.">		config.setOpenMode(create ? OpenMode.CREATE : OpenMode.CREATE_OR_APPEND);</span>
+<span class="fc" id="L379">		config.setRAMBufferSizeMB(150); // faster indexing</span>
+
+		// Set merge factor (if using LogMergePolicy, which is the default up to version LUCENE_32,
+		// so yes)
+<span class="fc" id="L383">		MergePolicy mp = config.getMergePolicy();</span>
+<span class="pc bpc" id="L384" title="1 of 2 branches missed.">		if (mp instanceof LogMergePolicy) {</span>
+<span class="nc" id="L385">			((LogMergePolicy) mp).setMergeFactor(40); // faster indexing</span>
+		}
+<span class="fc" id="L387">		return config;</span>
+	}
+
+	public static long getSumTotalTermFreq(IndexReader reader, String luceneField) {
+<span class="fc" id="L391">		long totalTerms = 0;</span>
+		try {
+<span class="fc bfc" id="L393" title="All 2 branches covered.">			for (LeafReaderContext ctx: reader.leaves()) {</span>
+<span class="fc" id="L394">				Terms terms = ctx.reader().terms(luceneField);</span>
+<span class="pc bpc" id="L395" title="1 of 2 branches missed.">                if (terms == null) {</span>
+                    // if this LeafReader doesn't include this field, just skip it
+<span class="nc" id="L397">                    continue;</span>
+                }
+//				if (terms == null)
+//					throw new RuntimeException(&quot;Field &quot; + luceneField + &quot; does not exist!&quot;);
+<span class="fc" id="L401">				totalTerms += terms.getSumTotalTermFreq();</span>
+<span class="fc" id="L402">			}</span>
+<span class="fc" id="L403">			return totalTerms;</span>
+<span class="nc" id="L404">		} catch (IOException e) {</span>
+<span class="nc" id="L405">			throw new RuntimeException(e);</span>
+		}
+	}
+
+	/**
+	 * Enumerate all the terms in the given Lucene field, collecting all the subproperty
+	 * names and values. Usually used for part of speech, where all the features are stored
+	 * as separate subproperties.
+	 *
+	 * @param index our index
+	 * @param fieldName field in the Lucene index to enumerate terms from
+	 * @return subproperties and their values
+	 */
+	public static Map&lt;String, Set&lt;String&gt;&gt; getSubprops(IndexReader index, String fieldName) {
+<span class="nc" id="L419">		Map&lt;String, Set&lt;String&gt;&gt; results = new TreeMap&lt;&gt;();</span>
+		try {
+<span class="nc bnc" id="L421" title="All 2 branches missed.">			for (LeafReaderContext leafReader: index.leaves()) {</span>
+<span class="nc" id="L422">				Terms terms = leafReader.reader().terms(fieldName);</span>
+<span class="nc bnc" id="L423" title="All 2 branches missed.">                if (terms == null) {</span>
+                    // if this LeafReader doesn't include this field, just skip it
+<span class="nc" id="L425">                    continue;</span>
+                }
+<span class="nc" id="L427">				TermsEnum termsEnum = terms.iterator();</span>
+				while (true) {
+<span class="nc" id="L429">					BytesRef term = termsEnum.next();</span>
+<span class="nc bnc" id="L430" title="All 2 branches missed.">					if (term == null)</span>
+<span class="nc" id="L431">						break;</span>
+<span class="nc" id="L432">					String termText = term.utf8ToString();</span>
+<span class="nc bnc" id="L433" title="All 2 branches missed.">					if (termText.contains(ComplexFieldUtil.SUBPROPERTY_SEPARATOR)) {</span>
+<span class="nc" id="L434">						termText = StringUtil.stripAccents(termText).toLowerCase();</span>
+<span class="nc" id="L435">						String[] parts = termText.split(ComplexFieldUtil.SUBPROPERTY_SEPARATOR);</span>
+<span class="nc" id="L436">						String subpropName = parts[1];</span>
+<span class="nc" id="L437">						Set&lt;String&gt; resultList = results.get(subpropName);</span>
+<span class="nc bnc" id="L438" title="All 2 branches missed.">						if (resultList == null) {</span>
+<span class="nc" id="L439">							resultList = new TreeSet&lt;&gt;();</span>
+<span class="nc" id="L440">							results.put(subpropName, resultList);</span>
+						}
+<span class="nc" id="L442">						String subpropValue = parts[2];</span>
+<span class="nc" id="L443">						resultList.add(subpropValue);</span>
+					}
+<span class="nc" id="L445">				}</span>
+<span class="nc" id="L446">			}</span>
+<span class="nc" id="L447">			return results;</span>
+<span class="nc" id="L448">		} catch (IOException e) {</span>
+<span class="nc" id="L449">			throw new RuntimeException(e);</span>
+		}
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

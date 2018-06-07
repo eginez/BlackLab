@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TarGzipReader.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.util</a> &gt; <span class="el_source">TarGzipReader.java</span></div><h1>TarGzipReader.java</h1><pre class="source lang-java linenums">package nl.inl.util;
+
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
+import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
+import org.apache.commons.compress.utils.IOUtils;
+import org.apache.commons.io.FilenameUtils;
+
+
+/**
+ * Class for handling .tar.gz input streams. It will call the supplied handler for each &quot;normal&quot;
+ * file in the .tar.gz file.
+ */
+<span class="nc" id="L19">public class TarGzipReader {</span>
+
+	/**
+	 * Handles a file inside the .tar.gz archive.
+	 */
+    @FunctionalInterface
+	public interface FileHandler {
+		/**
+		 * Handle a file inside the .zip or .tar.gz archive.
+		 *
+		 * @param filePath path to the archive, concatenated with any path to this file inside the archive
+		 * @param contents file contents, this stream is separate from the stream being processed, and will always remain open until it is closed by the handler.
+		 * @return true if we should continue with the next file, false if not
+		 */
+		boolean handle(String filePath, InputStream contents);
+	}
+
+	/**
+	 * Process a .tar.gz file and call the handler for each normal file in the archive.
+	 *
+	 * @param fileName name/path to this file
+	 * @param tarGzipStream the .tar.gz input stream to decompress. The stream will be closed after processing.
+	 * @param fileHandler the handler to call for each regular file
+	 */
+	public static void processTarGzip(String fileName, InputStream tarGzipStream, FileHandler fileHandler) {
+<span class="nc" id="L44">		try (InputStream unzipped = new GzipCompressorInputStream(tarGzipStream)) {</span>
+<span class="nc" id="L45">			processTar(fileName, unzipped, fileHandler);</span>
+<span class="nc bnc" id="L46" title="All 8 branches missed.">		} catch (Exception e) {</span>
+<span class="nc" id="L47">			throw ExUtil.wrapRuntimeException(e);</span>
+<span class="nc" id="L48">		}</span>
+<span class="nc" id="L49">	}</span>
+
+	/**
+	 * Process a .gz file and call the file handler for its contents.
+	 *
+	 * @param fileName name/path to this file
+	 * @param gzipStream the .gz input stream to decompress. The stream will be closed after processing.
+	 * @param fileHandler the handler to call
+	 */
+	public static void processGzip(String fileName, InputStream gzipStream, FileHandler fileHandler) {
+<span class="nc" id="L59">		try (InputStream unzipped = new GzipCompressorInputStream(gzipStream)) {</span>
+			// Make a copy of the data, since the stream we pass into fileHandler.handle may be used within another thread
+			// so it (or any of its underlying streams) should not be closed by us inadvertantly
+<span class="nc" id="L62">			InputStream callbackStream = new ByteArrayInputStream(org.apache.commons.io.IOUtils.toByteArray(unzipped));</span>
+<span class="nc" id="L63">			fileHandler.handle(fileName.replaceAll(&quot;\\.gz$&quot;, &quot;&quot;), callbackStream); // TODO make filename handling uniform across all archives types?</span>
+<span class="nc bnc" id="L64" title="All 8 branches missed.">		} catch (Exception e) {</span>
+<span class="nc" id="L65">			throw ExUtil.wrapRuntimeException(e);</span>
+<span class="nc" id="L66">		}</span>
+<span class="nc" id="L67">	}</span>
+
+	/**
+	 * Process a .tar file and call the handler for each normal file in the archive.
+	 *
+	 * @param fileName name/path to this file
+	 * @param tarStream the .tar input stream to decompress. The stream will be closed after processing.
+	 * @param fileHandler the handler to call for each regular file
+	 */
+	public static void processTar(String fileName, InputStream tarStream, FileHandler fileHandler) {
+<span class="nc" id="L77">		try (TarArchiveInputStream s = new TarArchiveInputStream(tarStream)) {</span>
+<span class="nc bnc" id="L78" title="All 2 branches missed.">			for (TarArchiveEntry e = s.getNextTarEntry(); e != null; e = s.getNextTarEntry()) {</span>
+<span class="nc bnc" id="L79" title="All 2 branches missed.">				if (e.isDirectory())</span>
+<span class="nc" id="L80">					continue;</span>
+
+                // Make a copy of this file's data, since there is a real chance the returned stream will be processed by another thread.
+				// It makes sense too, the stream has a bunch of internal data about which entry is currently being processed
+				// and if we jump to the next entry in between reads in another thread things would go badly.
+	            // NOTE: InputStream is not closed, handler is responsible for closing its stream
+<span class="nc" id="L86">				ByteArrayInputStream decoded = new ByteArrayInputStream(IOUtils.toByteArray(s));</span>
+<span class="nc" id="L87">				boolean keepProcessing = fileHandler.handle(FilenameUtils.concat(fileName, e.getName()), decoded);</span>
+<span class="nc bnc" id="L88" title="All 2 branches missed.">				if (!keepProcessing)</span>
+<span class="nc" id="L89">					return;</span>
+			}
+<span class="nc bnc" id="L91" title="All 12 branches missed.">		} catch (Exception e) {</span>
+<span class="nc" id="L92">			throw ExUtil.wrapRuntimeException(e);</span>
+<span class="nc" id="L93">		}</span>
+<span class="nc" id="L94">	}</span>
+
+	/**
+	 * Process a .zip file and call the handler for each normal file in the archive.
+	 *
+	 * Note that directory structure inside the zip file is ignored; files are processed as if they
+	 * are one large directory.
+	 *
+	 * @param fileName name/path to this file
+	 * @param zipStream the .zip input stream to decompress. The stream will be closed after processing.
+	 * @param fileHandler the handler to call for each regular file
+	 */
+	public static void ProcessZip(String fileName, InputStream zipStream, FileHandler fileHandler) {
+<span class="pc" id="L107">	    try (ZipInputStream s = new ZipInputStream(zipStream)) {</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">            for (ZipEntry e = s.getNextEntry(); e != null; e = s.getNextEntry()) {</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">                if (e.isDirectory())</span>
+<span class="fc" id="L110">                    continue;</span>
+
+                // Make a copy of this file's data, since there is a real chance the returned stream will be processed by another thread.
+				// It makes sense too, the stream has a bunch of internal data about which entry is currently being processed
+				// and if we jump to the next entry in between reads in another thread things would go badly.
+	            // NOTE: InputStream is not closed, handler is responsible for closing its stream
+<span class="fc" id="L116">                ByteArrayInputStream decoded = new ByteArrayInputStream(IOUtils.toByteArray(s));</span>
+<span class="fc" id="L117">                boolean keepProcessing = fileHandler.handle(FilenameUtils.concat(fileName, e.getName()), decoded);</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">                if (!keepProcessing)</span>
+<span class="fc" id="L119">                	return;</span>
+            }
+<span class="pc bpc" id="L121" title="8 of 12 branches missed.">	    } catch (Exception e) {</span>
+<span class="nc" id="L122">	    	throw ExUtil.wrapRuntimeException(e);</span>
+<span class="fc" id="L123">        }</span>
+<span class="fc" id="L124">	}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

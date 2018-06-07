@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TextPatternRegex.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search</a> &gt; <span class="el_source">TextPatternRegex.java</span></div><h1>TextPatternRegex.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search;
+
+import java.util.regex.Pattern;
+
+import org.apache.lucene.index.Term;
+import org.apache.lucene.search.RegexpQuery;
+
+import nl.inl.blacklab.search.lucene.BLSpanMultiTermQueryWrapper;
+import nl.inl.blacklab.search.lucene.BLSpanQuery;
+
+
+/**
+ * A TextPattern matching a regular expression.
+ */
+public class TextPatternRegex extends TextPatternTerm {
+	/**
+	 * Instantiate a regex TextPattern.
+	 *
+	 * @param value
+	 */
+	public TextPatternRegex(String value) {
+<span class="fc" id="L37">		super(value);</span>
+<span class="fc" id="L38">	}</span>
+
+	@Override
+	public BLSpanQuery translate(QueryExecutionContext context) {
+<span class="fc" id="L42">		TextPattern result = rewrite();</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">		if (result != this)</span>
+<span class="fc" id="L44">			return result.translate(context);</span>
+<span class="fc" id="L45">		String valueNoStartEndMatch = optInsensitive(context, value).replaceAll(&quot;^\\^|\\$$&quot;, &quot;&quot;);</span>
+		try {
+<span class="fc" id="L47">			return new BLSpanMultiTermQueryWrapper&lt;&gt;(new RegexpQuery(</span>
+<span class="fc" id="L48">					new Term(context.luceneField(), context.subpropPrefix() + context.optDesensitize(valueNoStartEndMatch))));</span>
+<span class="nc" id="L49">		} catch (StackOverflowError e) {</span>
+			// If we pass in a really large regular expression, like a huge
+			// list of words combined with OR, stack overflow occurs inside
+			// Lucene's automaton building code and we may end up here.
+<span class="nc" id="L53">			throw new RegexpTooLargeException();</span>
+		}
+	}
+
+<span class="fc" id="L57">	static final Pattern onlyLettersAndDigits = Pattern.compile(&quot;[\\w\\d]+&quot;, Pattern.UNICODE_CHARACTER_CLASS);</span>
+
+	/**
+	 * Rewrite to TextPatternTerm if value only contains letters and numbers.
+	 *
+	 * Also looks at (?i), (?-i), (?c) at the start of the pattern and converts
+	 * that into an appropriate TextPatternSensitive() wrapper.
+	 *
+	 * In all other cases, we keep TextPatternRegex because Lucene's regex, wildcard
+	 * and prefix queries all work in the same basic way (are converted into AutomatonQuery's),
+	 * so they are equally fast.
+	 *
+	 * @return the TextPattern
+	 */
+	public TextPattern rewrite() {
+
+        // If there's a case-sensitivity toggle flag after a
+        // start-of-string match, put the flag first so we can
+		// easily detect it below.
+<span class="fc" id="L76">		String newValue = value.replaceAll(&quot;^\\^(\\(\\?\\-?\\w+\\))&quot;, &quot;$1^&quot;);</span>
+
+		// Do we want to force an (in)sensitive search?
+<span class="fc" id="L79">		boolean forceSensitive = false;</span>
+<span class="fc" id="L80">		boolean forceInsensitive = false;</span>
+<span class="fc bfc" id="L81" title="All 2 branches covered.">		if (newValue.startsWith(&quot;(?-i)&quot;)) {</span>
+<span class="fc" id="L82">			forceSensitive = true;</span>
+<span class="fc" id="L83">			newValue = newValue.substring(5);</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">		} else if (newValue.startsWith(&quot;(?c)&quot;)) {</span>
+<span class="fc" id="L85">			forceSensitive = true;</span>
+<span class="fc" id="L86">			newValue = newValue.substring(4);</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">		} else if (newValue.startsWith(&quot;(?i)&quot;)) {</span>
+<span class="fc" id="L88">			forceInsensitive = true;</span>
+<span class="fc" id="L89">			newValue = newValue.substring(4);</span>
+		}
+
+		// If this contains no funny characters, only (Unicode) letters and digits,
+		// surrounded by ^ and $, turn it into a TermQuery, which might be a little
+		// faster than doing it via RegexpQuery (which has to build an Automaton).
+<span class="fc" id="L95">		TextPattern result = null;</span>
+<span class="fc" id="L96">		String term = newValue;</span>
+<span class="pc bpc" id="L97" title="3 of 6 branches missed.">		if (term.length() &gt;= 2  &amp;&amp; term.charAt(0) == '^' &amp;&amp; term.charAt(term.length() - 1) == '$') {</span>
+<span class="fc" id="L98">			term = term.substring(1, term.length() - 1);</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">			if (onlyLettersAndDigits.matcher(term).matches())</span>
+<span class="fc" id="L100">				result = new TextPatternTerm(term);</span>
+		}
+<span class="fc bfc" id="L102" title="All 2 branches covered.">		if (result == null) {</span>
+			// Not a term query. Did we strip off a sensitivity flag above?
+<span class="fc bfc" id="L104" title="All 4 branches covered.">			if (!forceSensitive &amp;&amp; !forceInsensitive) {</span>
+				// Nope. Nothing to rewrite.
+<span class="fc" id="L106">				return this;</span>
+			}
+			// Yes. Create new TP from remaining regex, and add TextPatternSensitive below.
+<span class="fc" id="L109">			result = new TextPatternRegex(newValue);</span>
+		}
+
+<span class="fc bfc" id="L112" title="All 2 branches covered.">		if (forceSensitive) {</span>
+			// Pattern started with (?-i) or (?c) to force it to be sensitive
+<span class="fc" id="L114">			result = new TextPatternSensitive(true, true, result);</span>
+<span class="fc bfc" id="L115" title="All 2 branches covered.">		} else if (forceInsensitive) {</span>
+			// Pattern started with (?i) to force it to be insensitive
+<span class="fc" id="L117">			result = new TextPatternSensitive(false, false, result);</span>
+		}
+
+<span class="fc" id="L120">		return result;</span>
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+<span class="nc bnc" id="L125" title="All 2 branches missed.">		if (obj instanceof TextPatternRegex) {</span>
+<span class="nc" id="L126">			return super.equals(obj);</span>
+		}
+<span class="nc" id="L128">		return false;</span>
+	}
+
+	@Deprecated
+	@Override
+	public String toString(QueryExecutionContext context) {
+<span class="nc" id="L134">		return &quot;REGEX(&quot; + context.luceneField() + &quot;, &quot; + context.optDesensitize(value) + &quot;)&quot;;</span>
+	}
+
+	@Override
+	public String toString() {
+<span class="nc" id="L139">		return &quot;REGEX(&quot; + value + &quot;)&quot;;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

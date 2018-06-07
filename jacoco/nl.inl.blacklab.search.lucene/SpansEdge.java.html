@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SpansEdge.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">SpansEdge.java</span></div><h1>SpansEdge.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.lucene;
+
+import java.io.IOException;
+
+import org.apache.lucene.search.spans.SpanCollector;
+import nl.inl.blacklab.search.Span;
+
+/**
+ * Returns either the left edge or right edge of the specified query.
+ *
+ * Note that the results of this query are zero-length spans.
+ */
+class SpansEdge extends BLSpans {
+
+	/** query the query to determine edges from */
+	private BLSpans clause;
+
+	/** if true, return the right edges; if false, the left */
+	private boolean rightEdge;
+
+	/**
+	 * Constructs a SpansEdge.
+	 * @param clause the clause to get an edge from
+	 * @param rightEdge whether or not to get the right edge
+	 */
+<span class="fc" id="L41">	public SpansEdge(BLSpans clause, boolean rightEdge) {</span>
+<span class="fc" id="L42">		this.clause = clause;</span>
+<span class="fc" id="L43">		this.rightEdge = rightEdge;</span>
+<span class="fc" id="L44">	}</span>
+
+	@Override
+	public int docID() {
+<span class="fc" id="L48">		return clause.docID();</span>
+	}
+
+	@Override
+	public int startPosition() {
+<span class="pc bpc" id="L53" title="1 of 2 branches missed.">		return rightEdge ? clause.endPosition() : clause.startPosition();</span>
+	}
+
+	@Override
+	public int endPosition() {
+<span class="fc bfc" id="L58" title="All 2 branches covered.">		return rightEdge ? clause.endPosition() : clause.startPosition();</span>
+	}
+
+	@Override
+	public int nextDoc() throws IOException {
+<span class="fc" id="L63">		return clause.nextDoc();</span>
+	}
+
+	@Override
+	public int nextStartPosition() throws IOException {
+<span class="fc bfc" id="L68" title="All 2 branches covered.">		if (rightEdge) {</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">			if (clause.nextStartPosition() == NO_MORE_POSITIONS)</span>
+<span class="fc" id="L70">				return NO_MORE_POSITIONS;</span>
+<span class="fc" id="L71">			return clause.endPosition();</span>
+		}
+<span class="fc" id="L73">		return clause.nextStartPosition();</span>
+	}
+
+	@Override
+	public int advanceStartPosition(int target) throws IOException {
+<span class="nc bnc" id="L78" title="All 2 branches missed.">		if (rightEdge) {</span>
+			// We can't skip because we're looking at end positions
+<span class="nc" id="L80">			return super.advanceStartPosition(target);</span>
+		}
+<span class="nc" id="L82">		return clause.advanceStartPosition(target);</span>
+	}
+
+	@Override
+	public int advance(int doc) throws IOException {
+<span class="nc" id="L87">		return clause.advance(doc);</span>
+	}
+
+	@Override
+	public String toString() {
+<span class="nc bnc" id="L92" title="All 2 branches missed.">		return &quot;SpansEdge(&quot; + clause + &quot;, &quot; + (rightEdge ? &quot;RIGHT&quot; : &quot;LEFT&quot;) + &quot;)&quot;;</span>
+	}
+
+	@Override
+	public void passHitQueryContextToClauses(HitQueryContext context) {
+<span class="fc" id="L97">		clause.setHitQueryContext(context);</span>
+<span class="fc" id="L98">	}</span>
+
+	@Override
+	public void getCapturedGroups(Span[] capturedGroups) {
+<span class="nc bnc" id="L102" title="All 2 branches missed.">		if (!childClausesCaptureGroups)</span>
+<span class="nc" id="L103">			return;</span>
+<span class="nc" id="L104">		clause.getCapturedGroups(capturedGroups);</span>
+<span class="nc" id="L105">	}</span>
+
+	@Override
+	public int width() {
+<span class="nc" id="L109">		return clause.width();</span>
+	}
+
+	@Override
+	public void collect(SpanCollector collector) throws IOException {
+<span class="nc" id="L114">		clause.collect(collector);</span>
+<span class="nc" id="L115">	}</span>
+
+	@Override
+	public float positionsCost() {
+<span class="nc" id="L119">		return clause.positionsCost();</span>
+	}
+
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

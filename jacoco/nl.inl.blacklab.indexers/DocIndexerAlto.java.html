@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DocIndexerAlto.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.indexers</a> &gt; <span class="el_source">DocIndexerAlto.java</span></div><h1>DocIndexerAlto.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.indexers;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.IOException;
+import java.io.Reader;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.xml.sax.Attributes;
+
+import nl.inl.blacklab.index.DocIndexerXmlHandlers;
+import nl.inl.blacklab.index.HookableSaxHandler.ElementHandler;
+import nl.inl.blacklab.index.Indexer;
+import nl.inl.util.FileUtil;
+import nl.inl.util.StringUtil;
+
+/**
+ * Index a Alto (OCR'ed text) file.
+ * For information about Alto, see http://www.loc.gov/standards/alto/techcenter/elementSet/index.php
+ */
+public class DocIndexerAlto extends DocIndexerXmlHandlers {
+
+<span class="fc" id="L41">    public static String getDisplayName() { return &quot;ALTO (Analyzed Layout and Text Object)&quot;; }</span>
+<span class="fc" id="L42">    public static String getDescription() { return &quot;An XML format for the description of text OCR and layout information of pages for digitized material.&quot;; }</span>
+
+	/** Contains the image file name found in Description so we can add it to Page
+	 *  (NOTE: do we still use this now that we index the whole XML file?) */
+<span class="nc" id="L46">	String imageFileName = &quot;?&quot;;</span>
+
+	@SuppressWarnings(&quot;deprecation&quot;)
+    public DocIndexerAlto(Indexer indexer, final String fileName, Reader reader) {
+<span class="nc" id="L50">		super(indexer, fileName, reader);</span>
+
+		// Document element
+<span class="nc" id="L53">		addHandler(&quot;/alto&quot;, new DocumentElementHandler());</span>
+
+		// Description block: capture fileName
+<span class="nc" id="L56">		addHandler(&quot;/alto/Description/*&quot;, true, new ElementHandler() {</span>
+
+<span class="nc" id="L58">			String metadataField = null;</span>
+
+			@Override
+			public void startElement(String uri, String localName, String qName,
+					Attributes attributes) {
+<span class="nc" id="L63">				super.startElement(uri, localName, qName, attributes);</span>
+<span class="nc bnc" id="L64" title="All 2 branches missed.">				if (localName.equals(&quot;fileName&quot;)) {</span>
+<span class="nc" id="L65">					metadataField = &quot;imageFileName&quot;;</span>
+				}
+<span class="nc" id="L67">				consumeCharacterContent(); // clear</span>
+<span class="nc" id="L68">			}</span>
+
+			@Override
+			public void endElement(String uri, String localName, String qName) {
+<span class="nc bnc" id="L72" title="All 2 branches missed.">				if (metadataField != null) {</span>
+<span class="nc" id="L73">					String value = StringUtil.normalizeWhitespace(consumeCharacterContent().trim());</span>
+<span class="nc bnc" id="L74" title="All 2 branches missed.">					if (metadataField.equals(&quot;imageFileName&quot;)) {</span>
+<span class="nc" id="L75">						imageFileName = value;</span>
+
+<span class="nc bnc" id="L77" title="All 2 branches missed.">						if (externalMetadataAvailable) {</span>
+							// Process filename to get information from it
+							// and cross-reference it with external document index
+<span class="nc" id="L80">							String[] infoFromFileName = getInfoFromImageFileName(imageFileName);</span>
+<span class="nc" id="L81">							addMetadataField(&quot;title&quot;, infoFromFileName[0]);</span>
+<span class="nc" id="L82">							addMetadataField(&quot;author&quot;, infoFromFileName[1]);</span>
+<span class="nc" id="L83">							addMetadataField(&quot;year&quot;, infoFromFileName[2]);</span>
+<span class="nc" id="L84">							addMetadataField(&quot;page&quot;, infoFromFileName[3]);</span>
+						}
+					}
+<span class="nc" id="L87">					addMetadataField(metadataField, value);</span>
+<span class="nc" id="L88">					metadataField = null;</span>
+				}
+<span class="nc" id="L90">				super.endElement(uri, localName, qName);</span>
+<span class="nc" id="L91">			}</span>
+
+		});
+
+		// Page element: inject extra tag; clear content buffer
+<span class="nc" id="L96">		addHandler(&quot;/alto/Layout/Page&quot;, new ElementHandler() {</span>
+			@Override
+			public void startElement(String uri, String localName, String qName,
+					Attributes attributes) {
+
+				// Inject an extra element into the stored content at this position.
+<span class="nc" id="L102">				processContent(&quot;&lt;imageFileName&gt;&quot; + imageFileName + &quot;&lt;/imageFileName&gt;&quot;);</span>
+
+				// Clear content buffer for capturing punctuation
+<span class="nc" id="L105">				consumeCharacterContent();</span>
+<span class="nc" id="L106">			}</span>
+		});
+
+		// Word elements: index as main contents
+<span class="nc" id="L110">		addHandler(&quot;//String&quot;, new WordInAttributeHandler(&quot;CONTENT&quot;) {</span>
+			@Override
+			protected String getWord() {
+				// In Alto, punctuation and/or whitespace may be part of the word token.
+				// Strip it off before indexing the word.
+				// (TODO: instead of stripping it off, better to add it to punctuation index..?)
+<span class="nc" id="L116">				return StringUtil.trimWhitespaceAndPunctuation(super.getWord());</span>
+			}
+		});
+
+		// Named entity tags: index as tags in the content
+<span class="nc" id="L121">		addHandler(&quot;//NE&quot;, new InlineTagHandler());</span>
+
+		// Optionally read external metadata
+		// (OLD; replaced by MetadataFetcher system. This will be removed soon)
+<span class="nc bnc" id="L125" title="All 2 branches missed.">		if (!externalMetadataAvailable) {</span>
+<span class="nc" id="L126">			String file = getParameter(&quot;metadataFile&quot;);</span>
+<span class="nc bnc" id="L127" title="All 4 branches missed.">			if (file != null &amp;&amp; file.length() &gt; 0)</span>
+<span class="nc" id="L128">				readMetadata(new File(file));</span>
+		}
+
+<span class="nc" id="L131">	}</span>
+
+	/* ---- NOTE: all the following is only used for a specific dataset, to merge external metadata
+	 *      with the input XML. Can safely be ignored. ---- */
+
+	/** Document titles by DPO num (OLD; replaced by MetadataFetcher system. This will be removed soon) */
+	static Map&lt;String, String&gt; titles;
+	static Map&lt;String, String&gt; dates;
+	static Map&lt;String, String&gt; authors;
+
+	/** Read external metadatafile (OLD; replaced by MetadataFetcher system. This will be removed soon)
+	 * @param metadataFile the file */
+	private static void readMetadata(File metadataFile) {
+<span class="nc" id="L144">		titles = new HashMap&lt;&gt;();</span>
+<span class="nc" id="L145">		dates = new HashMap&lt;&gt;();</span>
+<span class="nc" id="L146">		authors = new HashMap&lt;&gt;();</span>
+		// File metadataFile = new File(&quot;c:\\temp\\dpo_metadata.txt&quot;);
+<span class="nc" id="L148">		BufferedReader r = FileUtil.openForReading(metadataFile);</span>
+		String l;
+		while (true) {
+			try {
+<span class="nc" id="L152">				l = r.readLine();</span>
+<span class="nc" id="L153">			} catch (IOException e) {</span>
+<span class="nc" id="L154">				throw new RuntimeException(e);</span>
+<span class="nc" id="L155">			}</span>
+<span class="nc bnc" id="L156" title="All 2 branches missed.">			if (l == null)</span>
+<span class="nc" id="L157">				break;</span>
+<span class="nc bnc" id="L158" title="All 2 branches missed.">			if (l.length() == 0)</span>
+<span class="nc" id="L159">				continue;</span>
+<span class="nc" id="L160">			String[] fields = l.split(&quot;\t&quot;, -1);</span>
+<span class="nc" id="L161">			titles.put(fields[0].trim(), fields[1].trim());</span>
+<span class="nc" id="L162">			dates.put(fields[0].trim(), fields[3].trim());</span>
+<span class="nc" id="L163">			authors.put(fields[0].trim(), fields[4].trim());</span>
+<span class="nc" id="L164">		}</span>
+<span class="nc" id="L165">		externalMetadataAvailable = true;</span>
+<span class="nc" id="L166">	}</span>
+
+	/** Pattern for getting DPO number and page number from image file name (OLD. Will be removed soon) */
+<span class="fc" id="L169">	private final static Pattern PATT_DPO_AND_PAGE = Pattern.compile(&quot;^dpo_(\\d+)_(\\d+)_&quot;);</span>
+
+	/** Whether or not the external metadata is available (OLD. Will be removed soon) */
+<span class="fc" id="L172">	static boolean externalMetadataAvailable = false;</span>
+
+	/** Get metadata from filename (OLD. Will be removed soon)
+	 * @param imageFileName the file name
+	 * @return the metadata (title, author, date, page) */
+	static String[] getInfoFromImageFileName(String imageFileName) {
+<span class="nc" id="L178">		Matcher m = PATT_DPO_AND_PAGE.matcher(imageFileName);</span>
+		String dpo;
+		String page;
+<span class="nc bnc" id="L181" title="All 2 branches missed.">		if (m.find()) {</span>
+<span class="nc" id="L182">			dpo = m.group(1);</span>
+<span class="nc" id="L183">			page = m.group(2);</span>
+		} else {
+<span class="nc" id="L185">			dpo = &quot;?&quot;;</span>
+<span class="nc" id="L186">			page = &quot;?&quot;;</span>
+<span class="nc" id="L187">			System.err.println(&quot;No DPO/page found: &quot; + imageFileName);</span>
+		}
+<span class="nc" id="L189">		return new String[] {</span>
+<span class="nc bnc" id="L190" title="All 2 branches missed.">			titles.containsKey(dpo) ? titles.get(dpo) : &quot;?&quot;,</span>
+<span class="nc bnc" id="L191" title="All 2 branches missed.">			authors.containsKey(dpo) ? authors.get(dpo) : &quot;?&quot;,</span>
+<span class="nc bnc" id="L192" title="All 2 branches missed.">			dates.containsKey(dpo) ? dates.get(dpo) : &quot;?&quot;,</span>
+			page
+		};
+	}
+
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ForwardIndexDocument.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.fimatch</a> &gt; <span class="el_source">ForwardIndexDocument.java</span></div><h1>ForwardIndexDocument.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.search.fimatch;
+
+/** Source of tokens for the forward index matching process. */
+<span class="fc" id="L4">public abstract class ForwardIndexDocument {</span>
+
+	/** Return token at specified position.
+	 *
+	 * @param propIndex property to read
+	 * @param pos position to read
+	 * @return token at this position
+	 */
+	public abstract int getToken(int propIndex, int pos);
+
+	/**
+	 * Return string for term id
+	 * @param propIndex property for which we want a term string
+	 * @param termId term id
+	 * @return corresponding term string
+	 */
+	public abstract String getTermString(int propIndex, int termId);
+
+	/**
+	 * Are all the specified term ids equal given these sensitivity settings?
+	 *
+	 * @param propIndex property we're looking at
+	 * @param termId term ids we're comparing
+	 * @param caseSensitive whether we're comparing case-sensitively
+	 * @param diacSensitive whether we're comparing diacritics-sensitively
+	 * @return true if all are equal, false if not
+	 */
+	public abstract boolean termsEqual(int propIndex, int[] termId, boolean caseSensitive, boolean diacSensitive);
+
+	/**
+	 * Is this position valid in this document?
+	 * @param pos position
+	 * @return true if valid, false if not
+	 */
+	public abstract boolean validPos(int pos);
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

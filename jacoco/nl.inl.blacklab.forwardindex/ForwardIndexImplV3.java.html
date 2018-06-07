@@ -1,0 +1,800 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ForwardIndexImplV3.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.forwardindex</a> &gt; <span class="el_source">ForwardIndexImplV3.java</span></div><h1>ForwardIndexImplV3.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.forwardindex;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.nio.ByteBuffer;
+import java.nio.IntBuffer;
+import java.nio.LongBuffer;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileChannel.MapMode;
+import java.util.AbstractSet;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Iterator;
+import java.util.List;
+import java.util.NoSuchElementException;
+import java.util.Set;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.apache.lucene.index.IndexReader;
+
+import nl.inl.util.ExUtil;
+
+/**
+ * Keeps a forward index of documents, to quickly answer the question
+ * &quot;what word occurs in doc X at position Y&quot;?
+ */
+class ForwardIndexImplV3 extends ForwardIndex {
+
+<span class="fc" id="L48">	protected static final Logger logger = LogManager.getLogger(ForwardIndexImplV3.class);</span>
+
+	/** The number of cached fiids we check to see if this field is set anywhere. */
+	static final int NUMBER_OF_CACHE_ENTRIES_TO_CHECK = 1000;
+
+	/** Java has as limit of 2GB for MappedByteBuffer.
+	 *  But this could be worked around using arrays of MappedByteBuffers, see:
+	 *  http://stackoverflow.com/questions/5675748/java-memorymapping-big-files
+	 */
+	private static final int MAX_DIRECT_BUFFER_SIZE = Integer.MAX_VALUE;
+
+	/** Desired chunk size. Usually just MAX_DIRECT_BUFFER_SIZE, but can be
+	 *  set to be smaller (for easier testing).
+	 *
+	 *  NOTE: using MAX_DIRECT_BUFFER_SIZE (2GB) failed on Linux 64 bit, so
+	 *  we're using 1GB for now.
+	 */
+<span class="fc" id="L65">	static int preferredChunkSizeBytes = MAX_DIRECT_BUFFER_SIZE / 2;</span>
+
+	/** Size of a long in bytes. */
+	private static final int SIZEOF_LONG = Long.SIZE / Byte.SIZE;
+
+	/** Size of an int in bytes. This will always be 4, according to the standard. */
+	private static final int SIZEOF_INT = Integer.SIZE / Byte.SIZE;
+
+	/** The number of integer positions to reserve when mapping the file for writing. */
+	final static int WRITE_MAP_RESERVE = 250000; // 250K integers = 1M bytes
+
+	/** The memory mapped write int buffer */
+	private IntBuffer writeBuffer;
+
+	/** Buffer offset (position in file of start of writeBuffer) in integer positions
+	 * (so we don't count bytes, we count ints) */
+	private long writeBufOffset;
+
+	/** The table of contents (where documents start in the tokens file and how long they are) */
+	ArrayList&lt;TocEntry&gt; toc;
+
+	/** Deleted TOC entries. Always sorted by size. */
+	ArrayList&lt;TocEntry&gt; deletedTocEntries;
+
+	/** The table of contents (TOC) file, docs.dat */
+	private File tocFile;
+
+	/** The tokens file (stores indexes into terms.dat) */
+	private File tokensFile;
+
+	/** The terms file (stores unique terms) */
+	private File termsFile;
+
+	/** The unique terms in our index */
+	private Terms terms;
+
+	/** Handle for the tokens file */
+	private RandomAccessFile writeTokensFp;
+
+	/** Mapping into the tokens file */
+<span class="fc" id="L105">	private List&lt;ByteBuffer&gt; tokensFileChunks = null;</span>
+
+	/** Offsets of the mappings into the token file */
+<span class="fc" id="L108">	private List&lt;Long&gt; tokensFileChunkOffsetBytes = null;</span>
+
+	/** File channel for the tokens file */
+	private FileChannel writeTokensFileChannel;
+
+	/** Has the table of contents been modified? */
+<span class="fc" id="L114">	private boolean tocModified = false;</span>
+
+	/** The position (in ints) in the tokens file after the last token written. Note that
+	 *  the actual file may be larger because we reserve space at the end. */
+<span class="fc" id="L118">	private long tokenFileEndPosition = 0;</span>
+
+	/** How we look up forward index id in the index. */
+	private FiidLookup fiidLookup;
+
+	/** Are we in index mode (i.e. writing to forward index) or not? */
+	private boolean indexMode;
+
+	/** If true, we use the new, block-based terms file, that can grow larger than 2 GB. */
+<span class="fc" id="L127">	private boolean useBlockBasedTermsFile = true;</span>
+
+	/** If true, our Terms can be used for NFA matching (Collator is consistent with other comparisons) */
+	private boolean canDoNfaMatching;
+
+	@Override
+	public void setIdTranslateInfo(IndexReader reader, String lucenePropFieldName) {
+<span class="fc" id="L134">		fiidLookup = new FiidLookup(reader, lucenePropFieldName);</span>
+<span class="fc" id="L135">	}</span>
+
+	@Override
+	public int luceneDocIdToFiid(int docId) {
+<span class="fc" id="L139">		return (int)fiidLookup.get(docId);</span>
+	}
+
+<span class="fc" id="L142">	ForwardIndexImplV3(File dir, boolean indexMode, Collators collators, boolean create, boolean largeTermsFileSupport) {</span>
+<span class="pc bpc" id="L143" title="1 of 2 branches missed.">		canDoNfaMatching = collators.getVersion() != CollatorVersion.V1;</span>
+
+<span class="pc bpc" id="L145" title="1 of 4 branches missed.">		if (!indexMode &amp;&amp; create) {</span>
+<span class="nc" id="L146">			throw new IllegalArgumentException(&quot;Tried to create new forward index, but not in index mode&quot;);</span>
+		}
+
+<span class="pc bpc" id="L149" title="1 of 2 branches missed.">		if (!dir.exists()) {</span>
+<span class="nc bnc" id="L150" title="All 2 branches missed.">			if (!create)</span>
+<span class="nc" id="L151">				throw new IllegalArgumentException(&quot;ForwardIndex doesn't exist: &quot; + dir);</span>
+<span class="nc" id="L152">			dir.mkdir();</span>
+		}
+
+<span class="fc" id="L155">		this.indexMode = indexMode;</span>
+
+<span class="fc" id="L157">		termsFile = new File(dir, &quot;terms.dat&quot;);</span>
+<span class="fc" id="L158">		tocFile = new File(dir, &quot;docs.dat&quot;);</span>
+<span class="fc" id="L159">		tokensFile = new File(dir, &quot;tokens.dat&quot;);</span>
+<span class="fc bfc" id="L160" title="All 2 branches covered.">		if (create) {</span>
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">			if (tokensFile.exists())</span>
+<span class="nc" id="L162">				tokensFile.delete();</span>
+<span class="pc bpc" id="L163" title="1 of 2 branches missed.">			if (tocFile.exists())</span>
+<span class="nc" id="L164">				tocFile.delete();</span>
+<span class="pc bpc" id="L165" title="1 of 2 branches missed.">			if (termsFile.exists())</span>
+<span class="nc" id="L166">				termsFile.delete();</span>
+		}
+<span class="fc" id="L168">		toc = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L169">		deletedTocEntries = new ArrayList&lt;&gt;();</span>
+		try {
+<span class="fc" id="L171">			setLargeTermsFileSupport(largeTermsFileSupport);</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">			if (tocFile.exists()) {</span>
+<span class="fc" id="L173">				readToc();</span>
+<span class="fc" id="L174">				terms = Terms.open(indexMode, collators, termsFile, useBlockBasedTermsFile);</span>
+<span class="fc" id="L175">				tocModified = false;</span>
+			} else {
+<span class="pc bpc" id="L177" title="1 of 2 branches missed.">				if (!indexMode) {</span>
+<span class="nc" id="L178">					throw new IllegalArgumentException(&quot;No TOC found, and not in index mode!&quot;);</span>
+				}
+<span class="fc" id="L180">				terms = Terms.open(indexMode, collators, null, true);</span>
+<span class="fc" id="L181">				tokensFile.createNewFile();</span>
+<span class="fc" id="L182">				tokensFileChunks = null;</span>
+<span class="fc" id="L183">				tocModified = true;</span>
+<span class="fc" id="L184">				terms.setBlockBasedFile(useBlockBasedTermsFile);</span>
+			}
+			// Tricks to speed up reading
+<span class="fc bfc" id="L187" title="All 2 branches covered.">			if (indexMode) {</span>
+				// Index mode. Open for writing.
+<span class="fc" id="L189">				openTokensFileForWriting();</span>
+			} else {
+				// Memory-map the file for reading.
+<span class="fc" id="L192">				openTokensFileForReading();</span>
+			}
+<span class="nc" id="L194">		} catch (IOException e) {</span>
+<span class="nc" id="L195">			throw new RuntimeException(e);</span>
+<span class="fc" id="L196">		}</span>
+
+<span class="fc bfc" id="L198" title="All 2 branches covered.">		if (create) {</span>
+<span class="fc" id="L199">			clear();</span>
+		}
+<span class="fc" id="L201">	}</span>
+
+	/**
+	 * Open the tokens file for writing.
+	 * @throws IOException on error
+	 */
+	protected void openTokensFileForWriting() throws IOException {
+<span class="fc" id="L208">		writeTokensFp = new RandomAccessFile(tokensFile, &quot;rw&quot;);</span>
+<span class="fc" id="L209">		writeTokensFileChannel = writeTokensFp.getChannel();</span>
+<span class="fc" id="L210">	}</span>
+
+	/**
+	 * Memory-map the tokens file for reading.
+	 * @throws IOException
+	 */
+	private void openTokensFileForReading() throws IOException {
+<span class="pc" id="L217">		try (RandomAccessFile tokensFp = new RandomAccessFile(tokensFile, &quot;r&quot;);</span>
+<span class="fc" id="L218">				FileChannel tokensFileChannel = tokensFp.getChannel()) {</span>
+			// Map the tokens file in chunks of 2GB each. When retrieving documents, we always
+			// read it from just one chunk, not multiple, but because each chunk begins at a
+			// document start, documents of up to 2G tokens can be processed. We could get around
+			// this limitation by reading from multiple chunks, but this would make the code
+			// more complex.
+<span class="fc" id="L224">			tokensFileChunks = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L225">			tokensFileChunkOffsetBytes = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L226">			long mappedBytes = 0;</span>
+<span class="fc" id="L227">			long tokenFileEndBytes = tokenFileEndPosition * SIZEOF_INT;</span>
+<span class="fc bfc" id="L228" title="All 2 branches covered.">			while (mappedBytes &lt; tokenFileEndBytes) {</span>
+				// Find the last TOC entry start point that's also in the previous mapping
+				// (or right the first byte after the previous mapping).
+
+				// Look for the largest entryOffset that's no larger than mappedBytes.
+<span class="fc" id="L233">				TocEntry mapNextChunkFrom = null;</span>
+<span class="fc bfc" id="L234" title="All 2 branches covered.">				for (TocEntry e: toc) {</span>
+<span class="pc bpc" id="L235" title="3 of 6 branches missed.">					if (e.offset &lt;= mappedBytes &amp;&amp; (mapNextChunkFrom == null || e.offset &gt; mapNextChunkFrom.offset))</span>
+<span class="fc" id="L236">						mapNextChunkFrom = e;</span>
+<span class="fc" id="L237">				}</span>
+
+				// Uses binary search.
+<span class="fc" id="L240">				int min = 0, max = toc.size();</span>
+<span class="fc bfc" id="L241" title="All 2 branches covered.">				while (max - min &gt; 1) {</span>
+<span class="fc" id="L242">					int middle = (min + max) / 2;</span>
+<span class="fc" id="L243">					long middleVal = toc.get(middle).offset * SIZEOF_INT;</span>
+<span class="pc bpc" id="L244" title="1 of 2 branches missed.">					if (middleVal &lt;= mappedBytes) {</span>
+<span class="nc" id="L245">						min = middle;</span>
+					} else {
+<span class="fc" id="L247">						max = middle;</span>
+					}
+<span class="fc" id="L249">				}</span>
+<span class="fc" id="L250">				long startOfNextMappingBytes = toc.get(min).offset * SIZEOF_INT;</span>
+
+				// Map this chunk
+<span class="fc" id="L253">				long sizeBytes = tokenFileEndBytes - startOfNextMappingBytes;</span>
+<span class="pc bpc" id="L254" title="1 of 2 branches missed.">				if (sizeBytes &gt; preferredChunkSizeBytes)</span>
+<span class="nc" id="L255">					sizeBytes = preferredChunkSizeBytes;</span>
+
+<span class="fc" id="L257">				ByteBuffer mapping = tokensFileChannel.map(FileChannel.MapMode.READ_ONLY, startOfNextMappingBytes, sizeBytes);</span>
+<span class="fc" id="L258">				tokensFileChunks.add(mapping);</span>
+<span class="fc" id="L259">				tokensFileChunkOffsetBytes.add(startOfNextMappingBytes);</span>
+<span class="fc" id="L260">				mappedBytes = startOfNextMappingBytes + sizeBytes;</span>
+<span class="fc" id="L261">			}</span>
+<span class="pc bpc" id="L262" title="12 of 16 branches missed.">		}</span>
+<span class="fc" id="L263">	}</span>
+
+	/**
+	 * Delete all content in the forward index
+	 */
+	private void clear() {
+<span class="pc bpc" id="L269" title="1 of 2 branches missed.">		if (!indexMode)</span>
+<span class="nc" id="L270">			throw new RuntimeException(&quot;Cannot clear, not in index mode&quot;);</span>
+
+		// delete data files and empty TOC
+		try {
+<span class="pc bpc" id="L274" title="1 of 2 branches missed.">			if (writeTokensFp == null) {</span>
+<span class="nc" id="L275">				openTokensFileForWriting();</span>
+			}
+
+<span class="pc bpc" id="L278" title="1 of 2 branches missed.">			if (File.separatorChar != '\\') // causes problems on Windows</span>
+<span class="fc" id="L279">				writeTokensFp.setLength(0);</span>
+
+<span class="nc" id="L281">		} catch (IOException e) {</span>
+<span class="nc" id="L282">			throw new RuntimeException(e);</span>
+<span class="fc" id="L283">		}</span>
+<span class="fc" id="L284">		termsFile.delete();</span>
+<span class="fc" id="L285">		tocFile.delete();</span>
+<span class="fc" id="L286">		toc.clear();</span>
+<span class="fc" id="L287">		deletedTocEntries.clear();</span>
+<span class="fc" id="L288">		tokenFileEndPosition = 0;</span>
+<span class="fc" id="L289">		tocModified = true;</span>
+<span class="fc" id="L290">	}</span>
+
+	/**
+	 * Read the table of contents from the file
+	 */
+	private void readToc() {
+<span class="fc" id="L296">		toc.clear();</span>
+<span class="fc" id="L297">		deletedTocEntries.clear();</span>
+<span class="pc" id="L298">		try (RandomAccessFile raf = new RandomAccessFile(tocFile, &quot;r&quot;);</span>
+<span class="fc" id="L299">			FileChannel fc = raf.getChannel()) {</span>
+<span class="fc" id="L300">			long fileSize = tocFile.length();</span>
+<span class="fc" id="L301">			MappedByteBuffer buf = fc.map(MapMode.READ_ONLY, 0, fileSize);</span>
+<span class="fc" id="L302">			int n = buf.getInt();</span>
+<span class="fc" id="L303">			long[] offset = new long[n];</span>
+<span class="fc" id="L304">			int[] length = new int[n];</span>
+<span class="fc" id="L305">			byte[] deleted = new byte[n];</span>
+<span class="fc" id="L306">			LongBuffer lb = buf.asLongBuffer();</span>
+<span class="fc" id="L307">			lb.get(offset);</span>
+<span class="fc" id="L308">			buf.position(buf.position() + SIZEOF_LONG * n);</span>
+<span class="fc" id="L309">			IntBuffer ib = buf.asIntBuffer();</span>
+<span class="fc" id="L310">			ib.get(length);</span>
+<span class="fc" id="L311">			buf.position(buf.position() + SIZEOF_INT * n);</span>
+<span class="fc" id="L312">			buf.get(deleted);</span>
+<span class="fc" id="L313">			toc.ensureCapacity(n);</span>
+<span class="fc bfc" id="L314" title="All 2 branches covered.">			for (int i = 0; i &lt; n; i++) {</span>
+<span class="pc bpc" id="L315" title="1 of 2 branches missed.">				TocEntry e = new TocEntry(offset[i], length[i], deleted[i] != 0);</span>
+<span class="fc" id="L316">				toc.add(e);</span>
+<span class="pc bpc" id="L317" title="1 of 2 branches missed.">				if (e.deleted) {</span>
+<span class="nc" id="L318">					deletedTocEntries.add(e);</span>
+				}
+<span class="fc" id="L320">				long end = e.offset + e.length;</span>
+<span class="pc bpc" id="L321" title="1 of 2 branches missed.">				if (end &gt; tokenFileEndPosition)</span>
+<span class="fc" id="L322">					tokenFileEndPosition = end;</span>
+			}
+<span class="fc" id="L324">			sortDeletedTocEntries();</span>
+<span class="pc bpc" id="L325" title="12 of 16 branches missed.">		} catch (Exception e) {</span>
+<span class="nc" id="L326">			throw ExUtil.wrapRuntimeException(e);</span>
+<span class="fc" id="L327">		}</span>
+<span class="fc" id="L328">		toc.trimToSize();</span>
+<span class="fc" id="L329">		deletedTocEntries.trimToSize();</span>
+<span class="fc" id="L330">	}</span>
+
+	private void sortDeletedTocEntries() {
+<span class="fc" id="L333">		Collections.sort(deletedTocEntries, new Comparator&lt;TocEntry&gt;() {</span>
+			@Override
+			public int compare(TocEntry o1, TocEntry o2) {
+<span class="fc" id="L336">				return o1.length - o2.length;</span>
+			}
+		});
+<span class="fc" id="L339">	}</span>
+
+	/**
+	 * Write the table of contents to the file
+	 */
+	private void writeToc() {
+
+<span class="pc bpc" id="L346" title="1 of 2 branches missed.">		if (!indexMode)</span>
+<span class="nc" id="L347">			throw new RuntimeException(&quot;Cannot write ToC, not in index mode&quot;);</span>
+
+		try {
+<span class="fc" id="L350">			int n = toc.size();</span>
+<span class="fc" id="L351">			long[] offset = new long[n];</span>
+<span class="fc" id="L352">			int[] length = new int[n];</span>
+<span class="fc" id="L353">			byte[] deleted = new byte[n];</span>
+<span class="fc" id="L354">			int i = 0;</span>
+<span class="fc bfc" id="L355" title="All 2 branches covered.">			for (TocEntry e: toc) {</span>
+<span class="fc" id="L356">				offset[i] = e.offset;</span>
+<span class="fc" id="L357">				length[i] = e.length;</span>
+<span class="fc bfc" id="L358" title="All 2 branches covered.">				deleted[i] = (byte) (e.deleted ? 1 : 0);</span>
+<span class="fc" id="L359">				i++;</span>
+<span class="fc" id="L360">			}</span>
+<span class="pc" id="L361">			try (RandomAccessFile raf = new RandomAccessFile(tocFile, &quot;rw&quot;);</span>
+<span class="fc" id="L362">				FileChannel fc = raf.getChannel()) {</span>
+<span class="fc" id="L363">				long fileSize = SIZEOF_INT + (SIZEOF_LONG + SIZEOF_INT + 1) * n;</span>
+<span class="fc" id="L364">				fc.truncate(fileSize);</span>
+<span class="fc" id="L365">				MappedByteBuffer buf = fc.map(MapMode.READ_WRITE, 0, fileSize);</span>
+<span class="fc" id="L366">				buf.putInt(n);</span>
+<span class="fc" id="L367">				LongBuffer lb = buf.asLongBuffer();</span>
+<span class="fc" id="L368">				lb.put(offset);</span>
+<span class="fc" id="L369">				buf.position(buf.position() + SIZEOF_LONG * n);</span>
+<span class="fc" id="L370">				IntBuffer ib = buf.asIntBuffer();</span>
+<span class="fc" id="L371">				ib.put(length);</span>
+<span class="fc" id="L372">				buf.position(buf.position() + SIZEOF_INT * n);</span>
+<span class="fc" id="L373">				buf.put(deleted);</span>
+<span class="pc bpc" id="L374" title="12 of 16 branches missed.">			}</span>
+<span class="nc" id="L375">		} catch (Exception e) {</span>
+<span class="nc" id="L376">			throw ExUtil.wrapRuntimeException(e);</span>
+<span class="fc" id="L377">		}</span>
+<span class="fc" id="L378">		tocModified = false;</span>
+<span class="fc" id="L379">	}</span>
+
+	@Override
+	public void close() {
+		try {
+<span class="fc bfc" id="L384" title="All 2 branches covered.">			if (tocModified) {</span>
+<span class="fc" id="L385">				writeToc();</span>
+<span class="fc" id="L386">				terms.write(termsFile);</span>
+			}
+
+			// Close the FileChannel and RandomAccessFile (indexMode only)
+<span class="fc bfc" id="L390" title="All 2 branches covered.">			if (writeTokensFileChannel != null) {</span>
+				// Cannot truncate if still mapped; cannot force demapping.
+				//tokensFileChannel.truncate(tokenFileEndPosition * SIZEOF_INT);
+<span class="fc" id="L393">				writeTokensFileChannel.close();</span>
+			}
+<span class="fc bfc" id="L395" title="All 2 branches covered.">			if (writeTokensFp != null)</span>
+<span class="fc" id="L396">				writeTokensFp.close();</span>
+
+<span class="nc" id="L398">		} catch (Exception e) {</span>
+<span class="nc" id="L399">			throw ExUtil.wrapRuntimeException(e);</span>
+<span class="fc" id="L400">		}</span>
+<span class="fc" id="L401">	}</span>
+
+	/**
+	 * Find the best-fitting deleted entry for the specified length
+	 * @param length length the entry should at least be
+	 * @return the best-fitting entry
+	 */
+	TocEntry findBestFittingGap(int length) {
+<span class="fc" id="L409">		int n = deletedTocEntries.size();</span>
+
+		// Are there any fitting gaps?
+<span class="fc bfc" id="L412" title="All 4 branches covered.">		if (n == 0 || deletedTocEntries.get(n - 1).length &lt; length)</span>
+<span class="fc" id="L413">			return null;</span>
+
+		// Does the smallest gap fit?
+<span class="fc bfc" id="L416" title="All 2 branches covered.">		if (deletedTocEntries.get(0).length &gt;= length)</span>
+<span class="fc" id="L417">			return deletedTocEntries.get(0);</span>
+
+		// Do a binary search to find the best fit
+<span class="fc" id="L420">		int doesntFit = 0, bestFitSoFar = n - 1;</span>
+<span class="fc bfc" id="L421" title="All 2 branches covered.">		while (bestFitSoFar - doesntFit &gt; 1) {</span>
+<span class="fc" id="L422">			int newTry = doesntFit + bestFitSoFar / 2;</span>
+<span class="fc bfc" id="L423" title="All 2 branches covered.">			if (deletedTocEntries.get(newTry).length &lt; length)</span>
+<span class="fc" id="L424">				doesntFit = newTry;</span>
+			else
+<span class="fc" id="L426">				bestFitSoFar = newTry;</span>
+<span class="fc" id="L427">		}</span>
+<span class="fc" id="L428">		return deletedTocEntries.get(bestFitSoFar);</span>
+	}
+
+	@Override
+	public synchronized int addDocument(List&lt;String&gt; content, List&lt;Integer&gt; posIncr) {
+<span class="pc bpc" id="L433" title="1 of 2 branches missed.">		if (!indexMode)</span>
+<span class="nc" id="L434">			throw new RuntimeException(&quot;Cannot add document, not in index mode&quot;);</span>
+
+		// Calculate the total number of tokens we need to store, based on the number
+		// of positions (we store 1 token per position, regardless of whether we have
+		// none, one or multiple values for that position)
+		int numberOfTokens;
+<span class="fc bfc" id="L440" title="All 2 branches covered.">		if (posIncr == null) {</span>
+			// No position increments given; assume always 1
+<span class="fc" id="L442">			numberOfTokens = content.size();</span>
+		} else {
+			// Calculate using position increments
+<span class="fc" id="L445">			numberOfTokens = 0;</span>
+<span class="fc bfc" id="L446" title="All 2 branches covered.">			for (int inc: posIncr) {</span>
+<span class="fc" id="L447">				numberOfTokens += inc;</span>
+<span class="fc" id="L448">			}</span>
+		}
+
+		// Decide where we're going to store this document,
+		// and update ToC
+<span class="fc" id="L453">		TocEntry gap = findBestFittingGap(numberOfTokens);</span>
+		long newDocumentOffset;
+		int mapReserve;
+<span class="fc" id="L456">		tocModified = true;</span>
+<span class="fc" id="L457">		boolean addNewEntry = true;</span>
+<span class="fc" id="L458">		int newDocumentFiid = -1;</span>
+<span class="fc bfc" id="L459" title="All 2 branches covered.">		if (gap == null) {</span>
+			// No fitting gap; just write it at the end
+<span class="fc" id="L461">			newDocumentOffset = tokenFileEndPosition;</span>
+<span class="fc" id="L462">			mapReserve = WRITE_MAP_RESERVE; // if writing at end, reserve more space</span>
+		}
+		else {
+			// Found a fitting gap; write it there
+<span class="fc" id="L466">			newDocumentOffset = gap.offset;</span>
+<span class="fc" id="L467">			mapReserve = 0; // don't reserve extra write space, not needed</span>
+<span class="fc bfc" id="L468" title="All 2 branches covered.">			if (gap.length == numberOfTokens) {</span>
+				// Exact fit; delete from free list and re-use entry
+<span class="fc" id="L470">				deletedTocEntries.remove(gap);</span>
+<span class="fc" id="L471">				gap.deleted = false;</span>
+<span class="fc" id="L472">				addNewEntry = false;</span>
+<span class="fc" id="L473">				newDocumentFiid = toc.indexOf(gap);</span>
+			} else {
+				// Not an exact fit; calculate remaining gap and re-sort free list
+<span class="fc" id="L476">				gap.offset += numberOfTokens;</span>
+<span class="fc" id="L477">				gap.length -= numberOfTokens;</span>
+<span class="fc" id="L478">				sortDeletedTocEntries();</span>
+			}
+		}
+		// Do we need to create a new entry for this document in the ToC?
+		// (always, unless we found an exact-fitting gap)
+<span class="fc bfc" id="L483" title="All 2 branches covered.">		if (addNewEntry) {</span>
+			// See if there's an unused entry
+<span class="fc bfc" id="L485" title="All 2 branches covered.">			TocEntry smallestFreeEntry = deletedTocEntries.isEmpty() ? null : deletedTocEntries.get(0);</span>
+<span class="fc bfc" id="L486" title="All 4 branches covered.">			if (smallestFreeEntry != null &amp;&amp; smallestFreeEntry.length == 0) {</span>
+				// Yes; re-use
+<span class="fc" id="L488">				deletedTocEntries.remove(0);</span>
+<span class="fc" id="L489">				smallestFreeEntry.offset = newDocumentOffset;</span>
+<span class="fc" id="L490">				smallestFreeEntry.length = numberOfTokens;</span>
+<span class="fc" id="L491">				smallestFreeEntry.deleted = false;</span>
+<span class="fc" id="L492">				newDocumentFiid = toc.indexOf(smallestFreeEntry);</span>
+			} else {
+				// No; make new entry
+<span class="fc" id="L495">				toc.add(new TocEntry(newDocumentOffset, numberOfTokens, false));</span>
+<span class="fc" id="L496">				newDocumentFiid = toc.size() - 1;</span>
+			}
+		}
+
+		try {
+			// Can we use the current write buffer for this write?
+<span class="fc bfc" id="L502" title="All 2 branches covered.">			long writeBufEnd = writeBuffer == null ? 0 : writeBufOffset + writeBuffer.limit();</span>
+<span class="pc bpc" id="L503" title="2 of 6 branches missed.">			if (writeBuffer == null || writeBufOffset &gt; newDocumentOffset || writeBufEnd &lt; newDocumentOffset + numberOfTokens) {</span>
+				// No, remap it
+<span class="fc" id="L505">				writeBufOffset = newDocumentOffset;</span>
+<span class="fc" id="L506">				ByteBuffer byteBuffer = writeTokensFileChannel.map(FileChannel.MapMode.READ_WRITE,</span>
+						writeBufOffset * SIZEOF_INT, (numberOfTokens + mapReserve)
+								* SIZEOF_INT);
+<span class="fc" id="L509">				writeBuffer = byteBuffer.asIntBuffer();</span>
+			}
+
+			// Set the correct start position
+<span class="fc" id="L513">			writeBuffer.position((int)(newDocumentOffset - writeBufOffset));</span>
+
+			// Did we increase the length of the tokens file?
+<span class="fc" id="L516">			long end = newDocumentOffset + numberOfTokens;</span>
+<span class="fc bfc" id="L517" title="All 2 branches covered.">			if (end &gt; tokenFileEndPosition)</span>
+<span class="fc" id="L518">				tokenFileEndPosition = end;</span>
+
+			// Write the token ids
+			// (first fill the buffer, then write the buffer in 1 call)
+<span class="fc" id="L522">			int [] tokenIds = new int[numberOfTokens];</span>
+<span class="fc" id="L523">			int tokenIdsIndex = 0;</span>
+<span class="fc" id="L524">			Iterator&lt;String&gt; contentIt = content.iterator();</span>
+<span class="fc bfc" id="L525" title="All 2 branches covered.">			Iterator&lt;Integer&gt; posIncrIt = posIncr == null ? null : posIncr.iterator();</span>
+<span class="fc bfc" id="L526" title="All 2 branches covered.">			int emptyStringTokenId = posIncrIt != null ? terms.indexOf(&quot;&quot;) : -1;</span>
+<span class="fc bfc" id="L527" title="All 2 branches covered.">			while (contentIt.hasNext()) {</span>
+<span class="fc" id="L528">				String token = contentIt.next();</span>
+<span class="fc bfc" id="L529" title="All 2 branches covered.">				int pi = posIncrIt == null ? 1 : posIncrIt.next();</span>
+<span class="fc bfc" id="L530" title="All 2 branches covered.">				if (pi == 0)</span>
+<span class="fc" id="L531">					continue; // we only store the first token at any position</span>
+<span class="fc bfc" id="L532" title="All 2 branches covered.">				if (pi &gt; 1) {</span>
+					// Skipped a few tokens; add empty tokens for these positions
+<span class="fc bfc" id="L534" title="All 2 branches covered.">					for (int i = 0; i &lt; pi - 1; i++) {</span>
+<span class="fc" id="L535">						tokenIds[tokenIdsIndex] = emptyStringTokenId;</span>
+<span class="fc" id="L536">						tokenIdsIndex++;</span>
+					}
+				}
+
+<span class="fc" id="L540">				tokenIds[tokenIdsIndex] = terms.indexOf(token);</span>
+<span class="fc" id="L541">				tokenIdsIndex++;</span>
+<span class="fc" id="L542">			}</span>
+<span class="pc bpc" id="L543" title="1 of 2 branches missed.">			if (tokenIdsIndex != numberOfTokens)</span>
+<span class="nc" id="L544">				throw new RuntimeException(&quot;tokenIdsIndex != numberOfTokens (&quot; + tokenIdsIndex + &quot; != &quot; + numberOfTokens + &quot;)&quot;);</span>
+<span class="fc" id="L545">			writeBuffer.put(tokenIds);</span>
+
+<span class="fc" id="L547">			return newDocumentFiid;</span>
+<span class="nc" id="L548">		} catch (IOException e1) {</span>
+<span class="nc" id="L549">			throw new RuntimeException(e1);</span>
+		}
+	}
+
+	@Override
+	public synchronized List&lt;int[]&gt; retrievePartsInt(int fiid, int[] start, int[] end) {
+		try {
+<span class="fc" id="L556">			TocEntry e = toc.get(fiid);</span>
+<span class="pc bpc" id="L557" title="2 of 4 branches missed.">			if (e == null || e.deleted)</span>
+<span class="nc" id="L558">				return null;</span>
+
+<span class="fc" id="L560">			int n = start.length;</span>
+<span class="pc bpc" id="L561" title="1 of 2 branches missed.">			if (n != end.length)</span>
+<span class="nc" id="L562">				throw new IllegalArgumentException(&quot;start and end must be of equal length&quot;);</span>
+<span class="fc" id="L563">			List&lt;int[]&gt; result = new ArrayList&lt;&gt;(n);</span>
+
+<span class="fc bfc" id="L565" title="All 2 branches covered.">			for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc bfc" id="L566" title="All 2 branches covered.">				if (start[i] == -1)</span>
+<span class="fc" id="L567">					start[i] = 0;</span>
+<span class="fc bfc" id="L568" title="All 2 branches covered.">				if (end[i] == -1)</span>
+<span class="fc" id="L569">					end[i] = e.length;</span>
+<span class="pc bpc" id="L570" title="2 of 4 branches missed.">				if (start[i] &lt; 0 || end[i] &lt; 0) {</span>
+<span class="nc" id="L571">					throw new IllegalArgumentException(&quot;Illegal values, start = &quot; + start[i] + &quot;, end = &quot;</span>
+							+ end[i]);
+				}
+<span class="pc bpc" id="L574" title="1 of 2 branches missed.">				if (end[i] &gt; e.length) // Can happen while making KWICs because we don't know the</span>
+										// doc length until here
+<span class="nc" id="L576">					end[i] = e.length;</span>
+<span class="pc bpc" id="L577" title="2 of 4 branches missed.">				if (start[i] &gt; e.length || end[i] &gt; e.length) {</span>
+<span class="nc" id="L578">					throw new IllegalArgumentException(&quot;Value(s) out of range, start = &quot; + start[i]</span>
+							+ &quot;, end = &quot; + end[i] + &quot;, content length = &quot; + e.length);
+				}
+<span class="pc bpc" id="L581" title="1 of 2 branches missed.">				if (end[i] &lt;= start[i]) {</span>
+<span class="nc" id="L582">					throw new IllegalArgumentException(</span>
+							&quot;Tried to read empty or negative length snippet (from &quot; + start[i]
+									+ &quot; to &quot; + end[i] + &quot;)&quot;);
+				}
+
+				// Get an IntBuffer to read the desired content
+<span class="fc" id="L588">				IntBuffer ib = null;</span>
+<span class="fc" id="L589">				boolean mapped = false;</span>
+<span class="fc bfc" id="L590" title="All 2 branches covered.">				if (tokensFileChunks != null) {</span>
+					// Yes, the tokens file has has been mapped to memory.
+					// Get an int buffer into the file.
+<span class="fc" id="L593">					mapped = true;</span>
+
+					// Figure out which chunk to access.
+<span class="fc" id="L596">					ByteBuffer whichChunk = null;</span>
+<span class="fc" id="L597">					long chunkOffsetBytes = -1;</span>
+<span class="fc" id="L598">					long entryOffsetBytes = e.offset * SIZEOF_INT;</span>
+<span class="pc bpc" id="L599" title="1 of 2 branches missed.">					for (int j = 0; j &lt; tokensFileChunkOffsetBytes.size(); j++) {</span>
+<span class="fc" id="L600">						long offsetBytes = tokensFileChunkOffsetBytes.get(j);</span>
+<span class="fc" id="L601">						ByteBuffer buffer = tokensFileChunks.get(j);</span>
+<span class="pc bpc" id="L602" title="1 of 2 branches missed.">						if (offsetBytes &lt;= entryOffsetBytes + start[i] * SIZEOF_INT</span>
+<span class="pc bpc" id="L603" title="1 of 2 branches missed.">								&amp;&amp; offsetBytes + buffer.capacity() &gt;= entryOffsetBytes + end[i]</span>
+										* SIZEOF_INT) {
+							// This one!
+<span class="fc" id="L606">							whichChunk = buffer;</span>
+<span class="fc" id="L607">							chunkOffsetBytes = offsetBytes;</span>
+<span class="fc" id="L608">							break;</span>
+						}
+					}
+
+<span class="fc" id="L612">					whichChunk.position((int) (e.offset * SIZEOF_INT - chunkOffsetBytes));</span>
+<span class="fc" id="L613">					ib = whichChunk.asIntBuffer();</span>
+				}
+
+<span class="fc" id="L616">				int snippetLength = end[i] - start[i];</span>
+<span class="fc" id="L617">				int[] snippet = new int[snippetLength];</span>
+<span class="fc bfc" id="L618" title="All 2 branches covered.">				if (mapped) {</span>
+					// The file is mem-mapped (search mode).
+					// Position us at the correct place in the file.
+<span class="fc" id="L621">					ib.position(start[i]);</span>
+				} else {
+					// Chunks are not mapped (index mode).
+					// Explicitly read the part we require from disk into an int buffer.
+<span class="fc" id="L625">					long offset = e.offset + start[i];</span>
+
+<span class="fc" id="L627">					int bytesToRead = snippetLength * SIZEOF_INT;</span>
+<span class="fc" id="L628">					ByteBuffer buffer = ByteBuffer.allocate(bytesToRead);</span>
+<span class="fc" id="L629">					int bytesRead = writeTokensFileChannel.read(buffer, offset * SIZEOF_INT);</span>
+<span class="pc bpc" id="L630" title="1 of 2 branches missed.">					if (bytesRead &lt; bytesToRead) {</span>
+<span class="nc" id="L631">						throw new RuntimeException(&quot;Not enough bytes read: &quot; + bytesRead</span>
+								+ &quot; &lt; &quot; + bytesToRead);
+					}
+<span class="fc" id="L634">					buffer.position(0);</span>
+<span class="fc" id="L635">					ib = buffer.asIntBuffer();</span>
+				}
+<span class="fc" id="L637">				ib.get(snippet);</span>
+<span class="fc" id="L638">				result.add(snippet);</span>
+			}
+
+<span class="fc" id="L641">			return result;</span>
+<span class="nc" id="L642">		} catch (Exception e) {</span>
+<span class="nc" id="L643">			throw ExUtil.wrapRuntimeException(e);</span>
+		}
+	}
+
+	@Override
+	public Terms getTerms() {
+<span class="fc" id="L649">		return terms;</span>
+	}
+
+	@Override
+	public int getNumDocs() {
+<span class="nc" id="L654">		return toc.size();</span>
+	}
+
+	@Override
+	public int getDocLength(int fiid) {
+<span class="fc" id="L659">		return toc.get(fiid).length;</span>
+	}
+
+	@Override
+	public void deleteDocument(int fiid) {
+<span class="pc bpc" id="L664" title="1 of 2 branches missed.">		if (!indexMode)</span>
+<span class="nc" id="L665">			throw new RuntimeException(&quot;Cannot delete document, not in index mode&quot;);</span>
+<span class="fc" id="L666">		TocEntry tocEntry = toc.get(fiid);</span>
+<span class="fc" id="L667">		tocEntry.deleted = true;</span>
+<span class="fc" id="L668">		deletedTocEntries.add(tocEntry); // NOTE: mergeAdjacentDeletedEntries takes care of re-sorting</span>
+<span class="fc" id="L669">		mergeAdjacentDeletedEntries();</span>
+<span class="fc" id="L670">		tocModified = true;</span>
+<span class="fc" id="L671">	}</span>
+
+	/**
+	 * Check if we can merge two (or more) deleted entries to create a
+	 * larger gap, and do so.
+	 *
+	 * Also takes care of truncating the file if there are deleted entries
+	 * at the end.
+	 */
+	private void mergeAdjacentDeletedEntries() {
+		// Sort by offset, so we can find adjacent entries
+<span class="fc" id="L682">		Collections.sort(deletedTocEntries);</span>
+
+		// Find and merge adjacent entries
+<span class="fc" id="L685">		TocEntry prev = deletedTocEntries.get(0);</span>
+<span class="fc bfc" id="L686" title="All 2 branches covered.">		for (int i = 1; i &lt; deletedTocEntries.size(); i++) {</span>
+<span class="fc" id="L687">			TocEntry current = deletedTocEntries.get(i);</span>
+<span class="fc bfc" id="L688" title="All 2 branches covered.">			if (current.offset == prev.offset + prev.length) {</span>
+				// Found two adjacent deleted entries. Merge them.
+<span class="fc" id="L690">				current.offset = prev.offset;</span>
+<span class="fc" id="L691">				current.length += prev.length;</span>
+
+				// length == 0 means a toc entry is unused
+				// we can't delete toc entries because it messes up
+				// the fiids. We will reuse them in addDocument().
+<span class="fc" id="L696">				prev.length = 0;</span>
+			}
+<span class="fc" id="L698">			prev = current;</span>
+		}
+
+<span class="fc" id="L701">		TocEntry lastEntry = deletedTocEntries.get(deletedTocEntries.size() - 1);</span>
+<span class="fc bfc" id="L702" title="All 2 branches covered.">		if (lastEntry.offset + lastEntry.length &gt;= tokenFileEndPosition) {</span>
+			// Free entry at the end of the token file. Remove the entry and
+			// make the tokens file shorter.
+<span class="fc" id="L705">			tokenFileEndPosition -= lastEntry.length;</span>
+<span class="fc" id="L706">			lastEntry.length = 0;</span>
+		}
+
+		// Re-sort on gap length
+<span class="fc" id="L710">		sortDeletedTocEntries();</span>
+<span class="fc" id="L711">	}</span>
+
+	@Override
+	public long getFreeSpace() {
+<span class="nc" id="L715">		long freeSpace = 0;</span>
+<span class="nc bnc" id="L716" title="All 2 branches missed.">		for (TocEntry e: deletedTocEntries) {</span>
+<span class="nc" id="L717">			freeSpace += e.length;</span>
+<span class="nc" id="L718">		}</span>
+<span class="nc" id="L719">		return freeSpace;</span>
+	}
+
+	@Override
+	public int getFreeBlocks() {
+<span class="nc" id="L724">		return deletedTocEntries.size();</span>
+	}
+
+	@Override
+	public long getTotalSize() {
+<span class="nc" id="L729">		return tokenFileEndPosition;</span>
+	}
+
+	@Override
+	protected void setLargeTermsFileSupport(boolean b) {
+<span class="fc" id="L734">		this.useBlockBasedTermsFile = b;</span>
+<span class="fc" id="L735">	}</span>
+
+	@Override
+	public Set&lt;Integer&gt; idSet() {
+<span class="nc" id="L739">		return new AbstractSet&lt;Integer&gt;() {</span>
+			@Override
+			public boolean contains(Object o) {
+<span class="nc bnc" id="L742" title="All 2 branches missed.">				return !toc.get((Integer)o).deleted;</span>
+			}
+
+			@Override
+			public boolean isEmpty() {
+<span class="nc bnc" id="L747" title="All 2 branches missed.">				return toc.size() == deletedTocEntries.size();</span>
+			}
+
+			@Override
+			public Iterator&lt;Integer&gt; iterator() {
+<span class="nc" id="L752">				return new Iterator&lt;Integer&gt;() {</span>
+<span class="nc" id="L753">					int current = -1;</span>
+<span class="nc" id="L754">					int next = -1;</span>
+
+					@Override
+					public boolean hasNext() {
+<span class="nc bnc" id="L758" title="All 2 branches missed.">						if (next &lt; 0)</span>
+<span class="nc" id="L759">							findNext();</span>
+<span class="nc bnc" id="L760" title="All 2 branches missed.">						return next &lt; toc.size();</span>
+					}
+
+					private void findNext() {
+<span class="nc" id="L764">						next = current + 1;</span>
+<span class="nc bnc" id="L765" title="All 4 branches missed.">						while (next &lt; toc.size() &amp;&amp; toc.get(next).deleted) {</span>
+<span class="nc" id="L766">							next++;</span>
+						}
+<span class="nc" id="L768">					}</span>
+
+					@Override
+					public Integer next() {
+<span class="nc bnc" id="L772" title="All 2 branches missed.">						if (next &lt; 0)</span>
+<span class="nc" id="L773">							findNext();</span>
+<span class="nc bnc" id="L774" title="All 2 branches missed.">						if (next &gt;= toc.size())</span>
+<span class="nc" id="L775">							throw new NoSuchElementException();</span>
+<span class="nc" id="L776">						current = next;</span>
+<span class="nc" id="L777">						next = -1;</span>
+<span class="nc" id="L778">						return current;</span>
+					}
+
+					@Override
+					public void remove() {
+<span class="nc" id="L783">						throw new UnsupportedOperationException();</span>
+					}
+				};
+			}
+
+			@Override
+			public int size() {
+<span class="nc" id="L790">				return toc.size() - deletedTocEntries.size();</span>
+			}
+		};
+	}
+
+	@Override
+	public boolean canDoNfaMatching() {
+<span class="fc" id="L797">		return canDoNfaMatching;</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

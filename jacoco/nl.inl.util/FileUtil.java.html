@@ -1,0 +1,377 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FileUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.util</a> &gt; <span class="el_source">FileUtil.java</span></div><h1>FileUtil.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.util;
+
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
+import java.nio.charset.Charset;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+/**
+ * Utilities for working with files
+ */
+<span class="nc" id="L40">public class FileUtil {</span>
+
+<span class="fc" id="L42">    protected static final Logger logger = LogManager.getLogger(FileUtil.class);</span>
+
+	/**
+	 * The default encoding for opening files.
+	 */
+<span class="fc" id="L47">	private static final Charset DEFAULT_ENCODING = Charset.forName(&quot;utf-8&quot;);</span>
+
+	/**
+	 * Sorts File objects alphabetically, case-insensitively,
+	 * subdirectories first. Used by listFilesSorted(). */
+<span class="fc" id="L52">	final public static Comparator&lt;File&gt; LIST_FILES_COMPARATOR = new Comparator&lt;File&gt;() {</span>
+		@Override
+		public int compare(File a, File b) {
+<span class="fc bfc" id="L55" title="All 2 branches covered.">			int ad = a.isDirectory() ? 0 : 1;</span>
+<span class="pc bpc" id="L56" title="1 of 2 branches missed.">			int bd = b.isDirectory() ? 0 : 1;</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">			return ad != bd ? (ad - bd) : a.getName().compareToIgnoreCase(b.getName());</span>
+		}
+	};
+
+	/**
+	 * Opens a file for writing in the default encoding.
+	 *
+	 * Wraps the Writer in a BufferedWriter and PrintWriter for efficient and convenient access.
+	 *
+	 * @param file
+	 *            the file to open
+	 * @return write interface into the file
+	 */
+	public static PrintWriter openForWriting(File file) {
+<span class="fc" id="L71">		return openForWriting(file, DEFAULT_ENCODING);</span>
+	}
+
+	/**
+	 * Opens a file for writing.
+	 *
+	 * Wraps the Writer in a BufferedWriter and PrintWriter for efficient and convenient access.
+	 *
+	 * @param file
+	 *            the file to open
+	 * @param encoding
+	 *            the encoding to use, e.g. &quot;utf-8&quot;
+	 * @return write interface into the file
+	 */
+	public static PrintWriter openForWriting(File file, String encoding) {
+<span class="nc" id="L86">		return openForWriting(file, Charset.forName(encoding));</span>
+	}
+
+	/**
+	 * Opens a file for writing.
+	 *
+	 * Wraps the Writer in a BufferedWriter and PrintWriter for efficient and convenient access.
+	 *
+	 * @param file
+	 *            the file to open
+	 * @param encoding
+	 *            the encoding to use, e.g. &quot;utf-8&quot;
+	 * @return write interface into the file
+	 */
+	public static PrintWriter openForWriting(File file, Charset encoding) {
+		try {
+<span class="fc" id="L102">			return new PrintWriter(new BufferedWriter(new OutputStreamWriter(new FileOutputStream(</span>
+					file), encoding)));
+<span class="nc" id="L104">		} catch (Exception e) {</span>
+<span class="nc" id="L105">			throw new RuntimeException(e);</span>
+		}
+	}
+
+	/**
+	 * Opens a file for reading, with the default encoding.
+	 *
+	 * Wraps the Reader in a BufferedReader for efficient and convenient access.
+	 *
+	 * @param file
+	 *            the file to open
+	 * @return read interface into the file
+	 */
+	public static BufferedReader openForReading(File file) {
+<span class="fc" id="L119">		return openForReading(file, DEFAULT_ENCODING);</span>
+	}
+
+	/**
+	 * Opens a file for reading, with the default encoding.
+	 *
+	 * Wraps the Reader in a BufferedReader for efficient and convenient access.
+	 *
+	 * @param file
+	 *            the file to open
+	 * @param encoding
+	 *            the encoding to use, e.g. &quot;utf-8&quot;
+	 * @return read interface into the file
+	 */
+	public static BufferedReader openForReading(File file, String encoding) {
+<span class="nc" id="L134">		return openForReading(file, Charset.forName(encoding));</span>
+	}
+
+	/**
+	 * Opens a file for reading, with the default encoding.
+	 *
+	 * Wraps the Reader in a BufferedReader for efficient and convenient access.
+	 *
+	 * @param file
+	 *            the file to open
+	 * @param encoding
+	 *            the encoding to use, e.g. &quot;utf-8&quot;
+	 * @return read interface into the file
+	 */
+	public static BufferedReader openForReading(File file, Charset encoding) {
+		try {
+<span class="fc" id="L150">			return new BufferedReader(new InputStreamReader(new FileInputStream(file), encoding));</span>
+<span class="nc" id="L151">		} catch (Exception e) {</span>
+<span class="nc" id="L152">			throw new RuntimeException(e);</span>
+		}
+	}
+
+	/**
+	 * Read a file into a list of lines
+	 *
+	 * @param inputFile
+	 *            the file to read
+	 * @return list of lines
+	 */
+	public static List&lt;String&gt; readLines(File inputFile) {
+<span class="nc" id="L164">		return readLines(inputFile, DEFAULT_ENCODING);</span>
+	}
+
+	/**
+	 * Read a file into a list of lines
+	 *
+	 * @param inputFile
+	 *            the file to read
+	 * @param encoding
+	 *            the encoding to use, e.g. &quot;utf-8&quot;
+	 * @return list of lines
+	 */
+	public static List&lt;String&gt; readLines(File inputFile, String encoding) {
+<span class="nc" id="L177">		return readLines(inputFile, Charset.forName(encoding));</span>
+	}
+
+	/**
+	 * Read a file into a list of lines
+	 *
+	 * @param inputFile
+	 *            the file to read
+	 * @param encoding
+	 *            the encoding to use, e.g. &quot;utf-8&quot;
+	 * @return list of lines
+	 */
+	public static List&lt;String&gt; readLines(File inputFile, Charset encoding) {
+		try {
+<span class="nc" id="L191">			List&lt;String&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L192">			try (BufferedReader in = openForReading(inputFile, encoding)) {</span>
+				String line;
+<span class="nc bnc" id="L194" title="All 2 branches missed.">				while ((line = in.readLine()) != null) {</span>
+<span class="nc" id="L195">					result.add(line.trim());</span>
+				}
+<span class="nc bnc" id="L197" title="All 8 branches missed.">			}</span>
+<span class="nc" id="L198">			return result;</span>
+<span class="nc" id="L199">		} catch (Exception e) {</span>
+<span class="nc" id="L200">			throw new RuntimeException(e);</span>
+		}
+	}
+
+	/**
+	 * A task to execute on a file. Used by processTree().
+	 */
+<span class="fc" id="L207">	public static abstract class FileTask {</span>
+		/**
+		 * Execute the task on this file.
+		 *
+		 * @param f
+		 *            the file to process
+		 */
+		public abstract void process(File f);
+	}
+
+	/**
+	 * Perform an operation on all files in a tree.
+	 *
+	 * Sorts the files alphabetically, with directories first,
+	 * so they are always processed in the same order.
+	 *
+	 * @param root
+	 *            the directory to start in (all subdirs are processed)
+	 * @param task
+	 *            the task to execute for every file
+	 */
+	public static void processTree(File root, FileTask task) {
+<span class="pc bpc" id="L229" title="1 of 2 branches missed.">		if (!root.isDirectory())</span>
+<span class="nc" id="L230">			throw new IllegalArgumentException(&quot;FileUtil.processTree: must be called with a directory! &quot;</span>
+					+ root);
+<span class="fc bfc" id="L232" title="All 2 branches covered.">		for (File f : listFilesSorted(root)) {</span>
+<span class="pc bpc" id="L233" title="1 of 2 branches missed.">			if (f.isFile())</span>
+<span class="fc" id="L234">				task.process(f);</span>
+<span class="nc bnc" id="L235" title="All 2 branches missed.">			else if (f.isDirectory()) {</span>
+<span class="nc" id="L236">				processTree(f, task);</span>
+			}
+		}
+<span class="fc" id="L239">	}</span>
+
+	/**
+	 * Perform an operation on some files in a tree.
+	 *
+	 * Sorts the files alphabetically, with directories first,
+	 * so they are always processed in the same order.
+	 *
+	 * @param dir
+	 *            the directory to start in
+	 * @param glob
+	 *            which files to process (e.g. &quot;*.xml&quot;)
+	 * @param recurseSubdirs
+	 *            whether or not to process subdirectories
+	 * @param task
+	 *            the task to execute for every file
+	 */
+	public static void processTree(File dir, String glob, boolean recurseSubdirs, FileTask task) {
+<span class="fc" id="L257">		Pattern pattGlob = Pattern.compile(FileUtil.globToRegex(glob));</span>
+<span class="fc bfc" id="L258" title="All 2 branches covered.">		for (File file : listFilesSorted(dir)) {</span>
+<span class="pc bpc" id="L259" title="1 of 2 branches missed.">			if (file.isDirectory()) {</span>
+				// Process subdir?
+<span class="nc bnc" id="L261" title="All 2 branches missed.">				if (recurseSubdirs)</span>
+<span class="nc" id="L262">					processTree(file, glob, recurseSubdirs, task);</span>
+<span class="pc bpc" id="L263" title="1 of 2 branches missed.">			} else if (file.isFile()) {</span>
+				// Regular file; does it match our glob expression?
+<span class="fc" id="L265">				Matcher m = pattGlob.matcher(file.getName());</span>
+<span class="pc bpc" id="L266" title="1 of 2 branches missed.">				if (m.matches()) {</span>
+<span class="fc" id="L267">					task.process(file);</span>
+				}
+			}
+		}
+<span class="fc" id="L271">	}</span>
+
+	/**
+	 * Find a file, searching several directories and trying several extensions.
+	 *
+	 * Searches the first directory for the file name with each of the extensions, then the
+	 * second directory, etc.
+	 *
+	 * Will only find a file if it is really inside the directory, so e.g. passing
+	 * &lt;code&gt;../../etc/passwd&lt;/code&gt; won't work.
+	 *
+	 * @param dirsToSearch directories to search for the file
+	 * @param pathToFile file name or path to the file (without extension if extensions != null)
+	 * @param extensions extensions to try, or null if the extension is already in pathToFile
+	 * @return the file if found or null if not found
+	 */
+	public static File findFile(List&lt;File&gt; dirsToSearch, String pathToFile, List&lt;String&gt; extensions) {
+        // Read JSON or YAML config file from any of the specified directories.
+        File configFile;
+<span class="fc" id="L290">        int i = 0;</span>
+<span class="fc bfc" id="L291" title="All 2 branches covered.">        for (File dir: dirsToSearch) {</span>
+<span class="pc bpc" id="L292" title="1 of 2 branches missed.">            if (dir == null)</span>
+<span class="nc" id="L293">                throw new IllegalArgumentException(&quot;dirsToSearch[&quot; + i + &quot;] == null!&quot;);</span>
+<span class="fc" id="L294">            i++;</span>
+<span class="pc bpc" id="L295" title="1 of 2 branches missed.">            if (extensions == null) {</span>
+<span class="nc" id="L296">                configFile = new File(dir, pathToFile);</span>
+<span class="nc" id="L297">                boolean fileExists = configFile.exists();</span>
+<span class="nc" id="L298">                boolean reallyInsideDir = configFile.getAbsolutePath().startsWith(dir.getAbsolutePath());</span>
+<span class="nc bnc" id="L299" title="All 2 branches missed.">                if (!fileExists)</span>
+<span class="nc" id="L300">                    logger.debug(&quot;Configfile not found: &quot; + configFile);</span>
+<span class="nc bnc" id="L301" title="All 2 branches missed.">                else if (!reallyInsideDir)</span>
+<span class="nc" id="L302">                    logger.debug(&quot;Configfile found but not inside dir: &quot; + configFile);</span>
+<span class="nc bnc" id="L303" title="All 4 branches missed.">                if (fileExists &amp;&amp; reallyInsideDir)</span>
+<span class="nc" id="L304">                    return configFile;</span>
+<span class="nc" id="L305">            } else {</span>
+<span class="fc" id="L306">                int j = 0;</span>
+<span class="fc bfc" id="L307" title="All 2 branches covered.">                for (String ext: extensions) {</span>
+<span class="pc bpc" id="L308" title="1 of 2 branches missed.">                    if (ext == null)</span>
+<span class="nc" id="L309">                        throw new IllegalArgumentException(&quot;extensions[&quot; + j + &quot;] == null!&quot;);</span>
+<span class="fc" id="L310">                    j++;</span>
+<span class="fc" id="L311">                    configFile = new File(dir, pathToFile + &quot;.&quot; + ext);</span>
+<span class="fc" id="L312">                    boolean fileExists = configFile.exists();</span>
+<span class="fc" id="L313">                    boolean reallyInsideDir = configFile.getAbsolutePath().startsWith(dir.getAbsolutePath());</span>
+<span class="fc bfc" id="L314" title="All 2 branches covered.">                    if (!fileExists)</span>
+<span class="fc" id="L315">                        logger.debug(&quot;Configfile not found: &quot; + configFile);</span>
+<span class="pc bpc" id="L316" title="1 of 2 branches missed.">                    else if (!reallyInsideDir)</span>
+<span class="nc" id="L317">                        logger.debug(&quot;Configfile found but not inside dir: &quot; + configFile);</span>
+<span class="pc bpc" id="L318" title="1 of 4 branches missed.">                    if (fileExists &amp;&amp; reallyInsideDir)</span>
+<span class="fc" id="L319">                        return configFile;</span>
+<span class="fc" id="L320">                }</span>
+            }
+<span class="fc" id="L322">        }</span>
+<span class="fc" id="L323">        return null;</span>
+    }
+
+    /**
+	 * Add a parenthesized number to a file name to get a file name that doesn't exist yet.
+	 *
+	 * @param file the file that exists already
+	 * @return a file with a number added that doesn't exist yet
+	 */
+	public static File addNumberToExistingFileName(File file) {
+<span class="nc" id="L333">		File parentFile = file.getAbsoluteFile().getParentFile();</span>
+<span class="nc" id="L334">		String name = file.getName();</span>
+<span class="nc" id="L335">		int number = 2;</span>
+		File newFile;
+		do {
+<span class="nc" id="L338">			newFile = new File(parentFile, name + &quot; (&quot; + number + &quot;)&quot;);</span>
+<span class="nc" id="L339">			number++;</span>
+<span class="nc bnc" id="L340" title="All 2 branches missed.">		} while(newFile.exists());</span>
+<span class="nc" id="L341">		return newFile;</span>
+	}
+
+	/**
+	 * Returns files in a directory, sorted.
+	 *
+	 * Sorts alphabetically, case-insensitively, and puts subdirectories first.
+	 *
+	 * @param dir the directory to list files in
+	 * @return the sorted array of files
+	 */
+	public static File[] listFilesSorted(File dir) {
+<span class="fc" id="L353">		File[] files = dir.listFiles();</span>
+<span class="fc" id="L354">		Arrays.sort(files, LIST_FILES_COMPARATOR);</span>
+<span class="fc" id="L355">		return files;</span>
+	}
+
+	/**
+	 * Convert a simple file glob expression (containing * and/or ?) to a regular expression.
+	 *
+	 * Example: &quot;log*.txt&quot; becomes &quot;^log.*\\.txt$&quot;
+	 *
+	 * @param glob
+	 *            the file glob expression
+	 * @return the regular expression
+	 */
+	public static String globToRegex(String glob) {
+<span class="fc" id="L368">		glob = glob.replaceAll(&quot;\\^&quot;, &quot;\\\\\\^&quot;);</span>
+<span class="fc" id="L369">		glob = glob.replaceAll(&quot;\\$&quot;, &quot;\\\\\\$&quot;);</span>
+<span class="fc" id="L370">		glob = glob.replaceAll(&quot;\\.&quot;, &quot;\\\\.&quot;);</span>
+<span class="fc" id="L371">		glob = glob.replaceAll(&quot;\\\\&quot;, &quot;\\\\&quot;);</span>
+<span class="fc" id="L372">		glob = glob.replaceAll(&quot;\\*&quot;, &quot;.*&quot;);</span>
+<span class="fc" id="L373">		glob = glob.replaceAll(&quot;\\?&quot;, &quot;.&quot;);</span>
+<span class="fc" id="L374">		return &quot;^&quot; + glob + &quot;$&quot;;</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

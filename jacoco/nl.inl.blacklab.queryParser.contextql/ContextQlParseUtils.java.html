@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ContextQlParseUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.queryParser.contextql</a> &gt; <span class="el_source">ContextQlParseUtils.java</span></div><h1>ContextQlParseUtils.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.queryParser.contextql;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import org.apache.lucene.index.Term;
+import org.apache.lucene.search.PhraseQuery;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.WildcardQuery;
+
+import nl.inl.blacklab.search.CompleteQuery;
+import nl.inl.blacklab.search.Searcher;
+import nl.inl.blacklab.search.TextPattern;
+import nl.inl.blacklab.search.TextPatternProperty;
+import nl.inl.blacklab.search.TextPatternSequence;
+import nl.inl.blacklab.search.TextPatternWildcard;
+
+public class ContextQlParseUtils {
+
+<span class="nc" id="L20">	private ContextQlParseUtils() {</span>
+<span class="nc" id="L21">	}</span>
+
+	public static CompleteQuery clause(Searcher searcher, String index, String relation, String term, String defaultProperty) {
+<span class="nc bnc" id="L24" title="All 2 branches missed.">        if (relation == null)</span>
+<span class="nc" id="L25">            relation = &quot;=&quot;;</span>
+<span class="nc bnc" id="L26" title="All 2 branches missed.">        if (index == null)</span>
+<span class="nc" id="L27">            index = defaultProperty;</span>
+
+<span class="nc bnc" id="L29" title="All 2 branches missed.">        if (relation.equals(&quot;=&quot;)) {</span>
+<span class="nc" id="L30">            return contains(searcher, index, term);</span>
+<span class="nc bnc" id="L31" title="All 2 branches missed.">        } else if (relation.equals(&quot;any&quot;)) {</span>
+<span class="nc" id="L32">        	throw new UnsupportedOperationException(&quot;any not yet supported&quot;);</span>
+<span class="nc bnc" id="L33" title="All 2 branches missed.">        } else if (relation.equals(&quot;all&quot;)) {</span>
+<span class="nc" id="L34">        	throw new UnsupportedOperationException(&quot;all not yet supported&quot;);</span>
+<span class="nc bnc" id="L35" title="All 2 branches missed.">        } else if (relation.equals(&quot;exact&quot;)) {</span>
+<span class="nc" id="L36">        	throw new UnsupportedOperationException(&quot;exact not supported&quot;);</span>
+<span class="nc bnc" id="L37" title="All 10 branches missed.">        } else if (relation.equals(&quot;&lt;&quot;) || relation.equals(&quot;&gt;&quot;) || relation.equals(&quot;&lt;=&quot;) || relation.equals(&quot;&gt;=&quot;) || relation.equals(&quot;&lt;&gt;&quot;)) {</span>
+<span class="nc" id="L38">        	throw new UnsupportedOperationException(&quot;Only contains (=) relation is supported!&quot;);</span>
+        } else {
+<span class="nc" id="L40">            throw new UnsupportedOperationException(&quot;Unknown relation operator: &quot; + relation);</span>
+        }
+    }
+
+    public static CompleteQuery combineClauses(CompleteQuery a, String op, CompleteQuery b) {
+<span class="nc bnc" id="L45" title="All 2 branches missed.">        if (op.equalsIgnoreCase(&quot;and&quot;)) {</span>
+<span class="nc" id="L46">            return a.and(b);</span>
+<span class="nc bnc" id="L47" title="All 2 branches missed.">        } else if (op.equalsIgnoreCase(&quot;or&quot;)) {</span>
+<span class="nc" id="L48">            return a.or(b);</span>
+<span class="nc bnc" id="L49" title="All 2 branches missed.">        } else if (op.equalsIgnoreCase(&quot;not&quot;)) {</span>
+<span class="nc" id="L50">            return a.not(b);</span>
+<span class="nc bnc" id="L51" title="All 2 branches missed.">        } else if (op.equalsIgnoreCase(&quot;prox&quot;)) {</span>
+<span class="nc" id="L52">            throw new UnsupportedOperationException(&quot;prox is not yet supported!&quot;);</span>
+        }
+<span class="nc" id="L54">        throw new UnsupportedOperationException(&quot;Unrecognized operator &quot; + op);</span>
+    }
+
+	/**
+	 * Return a clause meaning &quot;field contains value&quot;.
+	 *
+	 * Depending on the field name, this will contain a contents query
+	 * or a filter query.
+	 *
+	 * @param searcher our index
+	 * @param field the field name. If it starts with &quot;contents.&quot;, it is a contents
+	 * query. &quot;contents&quot; by itself means &quot;contents.word&quot;. &quot;word&quot;, &quot;lemma&quot; and &quot;pos&quot; by
+	 * themselves are interpreted as being prefixed with &quot;contents.&quot;
+	 * @param value the value, optionally with wildcards, to search for
+	 * @return the query
+	 */
+	public static CompleteQuery contains(Searcher searcher, String field, String value) {
+
+<span class="nc" id="L72">		boolean isContentsSearch = false;</span>
+<span class="nc" id="L73">		String prop = &quot;word&quot;;</span>
+		boolean isProperty;
+<span class="nc bnc" id="L75" title="All 4 branches missed.">		if (searcher != null &amp;&amp; !searcher.getClass().getSimpleName().startsWith(&quot;Mock&quot;)) // ARGH...</span>
+<span class="nc" id="L76">			isProperty = searcher.getIndexStructure().getMainContentsField().getProperties().contains(field);</span>
+		else
+<span class="nc bnc" id="L78" title="All 6 branches missed.">			isProperty = field.equals(&quot;word&quot;) || field.equals(&quot;lemma&quot;) || field.equals(&quot;pos&quot;); // common case</span>
+<span class="nc bnc" id="L79" title="All 2 branches missed.">		if (isProperty) {</span>
+<span class="nc" id="L80">			isContentsSearch = true;</span>
+<span class="nc" id="L81">			prop = field;</span>
+<span class="nc bnc" id="L82" title="All 2 branches missed.">		} else if (field.equals(&quot;contents&quot;)) {</span>
+<span class="nc" id="L83">			isContentsSearch = true;</span>
+<span class="nc bnc" id="L84" title="All 2 branches missed.">		} else if (field.startsWith(&quot;contents.&quot;)) {</span>
+<span class="nc" id="L85">			isContentsSearch = true;</span>
+<span class="nc" id="L86">			prop = field.substring(9);</span>
+		}
+
+<span class="nc" id="L89">		String[] parts = value.trim().split(&quot;\\s+&quot;);</span>
+<span class="nc" id="L90">		TextPattern tp = null;</span>
+<span class="nc" id="L91">		Query q = null;</span>
+<span class="nc bnc" id="L92" title="All 2 branches missed.">		if (parts.length == 1) {</span>
+			// Single term, possibly with wildcards
+<span class="nc bnc" id="L94" title="All 2 branches missed.">			if (isContentsSearch)</span>
+<span class="nc" id="L95">				tp = new TextPatternWildcard(value.trim());</span>
+			else
+<span class="nc" id="L97">				q = new WildcardQuery(new Term(field, value));</span>
+		} else {
+			// Phrase query
+<span class="nc bnc" id="L100" title="All 2 branches missed.">			if (isContentsSearch) {</span>
+<span class="nc" id="L101">				List&lt;TextPattern&gt; clauses = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L102" title="All 2 branches missed.">				for (int i = 0; i &lt; parts.length; i++) {</span>
+<span class="nc" id="L103">					clauses.add(new TextPatternWildcard(parts[i]));</span>
+				}
+<span class="nc" id="L105">				tp = new TextPatternSequence(clauses.toArray(new TextPattern[0]));</span>
+<span class="nc" id="L106">			}</span>
+			else {
+<span class="nc" id="L108">				PhraseQuery.Builder pb = new PhraseQuery.Builder();</span>
+<span class="nc bnc" id="L109" title="All 2 branches missed.">				for (int i = 0; i &lt; parts.length; i++) {</span>
+<span class="nc" id="L110">					pb.add(new Term(field, parts[i]));</span>
+				}
+<span class="nc" id="L112">				q = pb.build();</span>
+			}
+		}
+
+<span class="nc bnc" id="L116" title="All 2 branches missed.">		if (isContentsSearch)</span>
+<span class="nc" id="L117">			return new CompleteQuery(new TextPatternProperty(prop, tp), null);</span>
+<span class="nc" id="L118">		return new CompleteQuery(null, q);</span>
+	}
+
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

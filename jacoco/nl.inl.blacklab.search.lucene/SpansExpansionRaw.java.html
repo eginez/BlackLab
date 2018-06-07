@@ -1,0 +1,327 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SpansExpansionRaw.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">SpansExpansionRaw.java</span></div><h1>SpansExpansionRaw.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.lucene;
+
+import java.io.IOException;
+
+import org.apache.lucene.index.LeafReader;
+import org.apache.lucene.search.spans.SpanCollector;
+import nl.inl.blacklab.search.Span;
+
+/**
+ * Expands the source spans to the left and right by the given ranges.
+ *
+ * This is used to support sequences including subsequences of completely unknown tokens (like
+ * &lt;code&gt;&quot;apple&quot; []{2,4} &quot;pear&quot;&lt;/code&gt; to find apple and pear with 2 to 4 tokens in between).
+ *
+ * Note that this class will generate all possible expansions, so if you call it with left-expansion
+ * of between 2 to 4 tokens, it will generate 3 new hits for every hit from the source spans: one
+ * hit with 2 more tokens to the left, one hit with 3 more tokens to the left, and one hit with 4
+ * more tokens to the left.
+ *
+ * Note that the hits coming out of this class may contain duplicates and will not always be
+ * properly sorted. Both are undesirable; the user doesn't want to see duplicates, and Lucene
+ * expects Spans to always be sorted by start point (and possible by end point after that, although
+ * that is not certain; should be checked).
+ *
+ * Therefore, objects of this class should be wrapped in a class that sort the matches per document
+ * and eliminates duplicates (hence the 'raw' in the name - not suitable for consumption yet).
+ */
+class SpansExpansionRaw extends BLSpans {
+
+	/** The clause to expand */
+	private BLSpans clause;
+
+	/** Whether or not there's more docs in the clause */
+<span class="fc" id="L49">	private int currentDoc = -1;</span>
+
+	/** Current startPosition() in the clause */
+<span class="fc" id="L52">	private int clauseStart = -1;</span>
+
+	/** Whether to expand to left (true) or right (false) */
+	private boolean expandToLeft;
+
+	/** Minimum number of tokens to expand */
+	private int min;
+
+	/** Maximum number of tokens to expand (MAX_UNLIMITED = infinite) */
+	private int max;
+
+	/** Start of the current expanded hit */
+<span class="fc" id="L64">	private int start = -1;</span>
+
+	/** End of the current expanded hit */
+<span class="fc" id="L67">	private int end = -1;</span>
+
+	/** Number of expansion steps left to do for current clause hit */
+<span class="fc" id="L70">	private int expandStepsLeft = 0;</span>
+
+	/** For which document do we have the token length? */
+<span class="fc" id="L73">	private int tokenLengthDocId = -1;</span>
+
+	/** Token length for the doc specified in tokenLengthDocId */
+	private int tokenLength;
+
+	/** Used to get the field length in tokens for a document */
+	DocFieldLengthGetter lengthGetter;
+
+	/** How much to subtract from length (for ignoring closing token) */
+	private int subtractFromLength;
+
+	private boolean alreadyAtFirstHit;
+
+<span class="fc" id="L86">	public SpansExpansionRaw(boolean ignoreLastToken, LeafReader reader, String fieldName, BLSpans clause, boolean expandToLeft, int min, int max) {</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">		subtractFromLength = ignoreLastToken ? 1 : 0;</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">		if (!expandToLeft) {</span>
+			// We need to know document length to properly do expansion to the right
+			// TODO: cache this in Searcher..?
+<span class="fc" id="L91">			lengthGetter = new DocFieldLengthGetter(reader, fieldName);</span>
+		}
+<span class="fc" id="L93">		this.clause = clause;</span>
+<span class="fc" id="L94">		this.expandToLeft = expandToLeft;</span>
+<span class="fc" id="L95">		this.min = min;</span>
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">		this.max = max == -1 ? MAX_UNLIMITED : max;</span>
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">		if (min &gt; this.max)</span>
+<span class="nc" id="L98">			throw new IllegalArgumentException(&quot;min &gt; max&quot;);</span>
+<span class="pc bpc" id="L99" title="2 of 4 branches missed.">		if (min &lt; 0 || this.max &lt; 0)</span>
+<span class="nc" id="L100">			throw new IllegalArgumentException(&quot;Expansions cannot be negative&quot;);</span>
+<span class="fc" id="L101">	}</span>
+
+	/** For test, we don't have an index reader, so use default values (all docs are 5 tokens long)
+	 * @param b true if we're testing, false if not */
+	public void setTest(boolean b) {
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">		if (lengthGetter != null)</span>
+<span class="fc" id="L107">			lengthGetter.setTest(b);</span>
+<span class="fc" id="L108">	}</span>
+
+	@Override
+	public int docID() {
+<span class="fc" id="L112">		return currentDoc;</span>
+	}
+
+	@Override
+	public int endPosition() {
+<span class="fc bfc" id="L117" title="All 2 branches covered.">		if (alreadyAtFirstHit)</span>
+<span class="fc" id="L118">			return -1; // .nextStartPosition() not called yet</span>
+<span class="fc" id="L119">		return end;</span>
+	}
+
+	@Override
+	public int nextDoc() throws IOException {
+<span class="fc" id="L124">		alreadyAtFirstHit = false;</span>
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">		if (currentDoc != NO_MORE_DOCS) {</span>
+			do {
+<span class="fc" id="L127">				currentDoc = clause.nextDoc();</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">				if (currentDoc == NO_MORE_DOCS)</span>
+<span class="fc" id="L129">					return NO_MORE_DOCS;</span>
+<span class="fc" id="L130">				start = end = -1;</span>
+<span class="fc" id="L131">				clauseStart = clause.nextStartPosition();</span>
+<span class="fc" id="L132">				resetExpand();</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">			} while (clauseStart == NO_MORE_POSITIONS);</span>
+<span class="fc" id="L134">			alreadyAtFirstHit = true;</span>
+		}
+<span class="fc" id="L136">		return currentDoc;</span>
+	}
+
+	@Override
+	public int nextStartPosition() throws IOException {
+<span class="fc bfc" id="L141" title="All 2 branches covered.">		if (alreadyAtFirstHit) {</span>
+<span class="fc" id="L142">			alreadyAtFirstHit = false;</span>
+<span class="fc" id="L143">			return start;</span>
+		}
+<span class="pc bpc" id="L145" title="1 of 2 branches missed.">		if (currentDoc == NO_MORE_DOCS)</span>
+<span class="nc" id="L146">			return NO_MORE_POSITIONS;</span>
+<span class="pc bpc" id="L147" title="1 of 2 branches missed.">		if (clauseStart == NO_MORE_POSITIONS)</span>
+<span class="nc" id="L148">			return NO_MORE_POSITIONS;</span>
+
+<span class="fc bfc" id="L150" title="All 2 branches covered.">		if (expandStepsLeft &gt; 0) {</span>
+<span class="fc" id="L151">			expandStepsLeft--;</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">			if (expandToLeft) {</span>
+<span class="fc" id="L153">				start--;</span>
+
+				// Valid expansion?
+<span class="pc bpc" id="L156" title="1 of 2 branches missed.">				if (start &gt;= 0)</span>
+<span class="fc" id="L157">					return start;</span>
+
+				// Can't finish the expansion because we're at the start
+				// of the document; go to next hit.
+			} else {
+<span class="fc" id="L162">				end++;</span>
+<span class="fc" id="L163">				return start;</span>
+			}
+		}
+
+<span class="fc" id="L167">		clauseStart = clause.nextStartPosition();</span>
+<span class="fc" id="L168">		resetExpand();</span>
+<span class="fc" id="L169">		return clauseStart;</span>
+	}
+
+	@Override
+	public int advanceStartPosition(int target) throws IOException {
+<span class="fc bfc" id="L174" title="All 2 branches covered.">		if (alreadyAtFirstHit) {</span>
+<span class="fc" id="L175">			alreadyAtFirstHit = false;</span>
+<span class="pc bpc" id="L176" title="1 of 2 branches missed.">			if (start &gt;= target)</span>
+<span class="fc" id="L177">				return start;</span>
+		}
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">		if (currentDoc == NO_MORE_DOCS)</span>
+<span class="nc" id="L180">			return NO_MORE_POSITIONS;</span>
+<span class="pc bpc" id="L181" title="1 of 2 branches missed.">		if (clauseStart == NO_MORE_POSITIONS)</span>
+<span class="nc" id="L182">			return NO_MORE_POSITIONS;</span>
+
+<span class="pc bpc" id="L184" title="3 of 4 branches missed.">		if (expandStepsLeft &gt; 0 &amp;&amp; start &gt;= target)</span>
+<span class="nc" id="L185">			return nextStartPosition(); // we're already there</span>
+
+<span class="fc" id="L187">		clauseStart = clause.advanceStartPosition(target);</span>
+<span class="fc" id="L188">		resetExpand();</span>
+<span class="fc" id="L189">		return clauseStart;</span>
+	}
+
+	@Override
+	public int advance(int doc) throws IOException {
+<span class="fc" id="L194">		alreadyAtFirstHit = false;</span>
+<span class="pc bpc" id="L195" title="1 of 2 branches missed.">		if (currentDoc != NO_MORE_DOCS) {</span>
+<span class="pc bpc" id="L196" title="1 of 2 branches missed.">			if (currentDoc &lt; doc) {</span>
+<span class="fc" id="L197">				currentDoc = clause.advance(doc);</span>
+<span class="pc bpc" id="L198" title="1 of 2 branches missed.">				if (currentDoc != NO_MORE_DOCS) {</span>
+					while (true) {
+<span class="fc" id="L200">						start = end = -1;</span>
+<span class="fc" id="L201">						clauseStart = clause.nextStartPosition();</span>
+<span class="fc" id="L202">						resetExpand();</span>
+<span class="pc bpc" id="L203" title="1 of 2 branches missed.">						if (clauseStart != NO_MORE_POSITIONS) {</span>
+<span class="fc" id="L204">							alreadyAtFirstHit = true;</span>
+<span class="fc" id="L205">							return currentDoc;</span>
+						}
+<span class="nc" id="L207">						currentDoc = clause.nextDoc();</span>
+<span class="nc bnc" id="L208" title="All 2 branches missed.">						if (currentDoc == NO_MORE_DOCS)</span>
+<span class="nc" id="L209">							return NO_MORE_DOCS;</span>
+					}
+				}
+			} else {
+<span class="nc" id="L213">				nextDoc(); // per Lucene's specification, always at least go to the next doc</span>
+			}
+		}
+<span class="nc" id="L216">		return currentDoc;</span>
+	}
+
+	/**
+	 * We're at a new position in the source span. Reset the expansion process.
+	 *
+	 * Note that we may discover we can't do the minimum expansion (because the hit is at the start
+	 * of the document, for example), so we may have to advance the clause again, and may actually
+	 * run out of hits while doing so.
+	 *
+	 * Updates clauseStart to the start position if we're at a valid hit and have reset the expansion,
+	 * or to NO_MORE_POSITIONS if we're done.
+	 *
+	 * @throws IOException
+	 */
+	private void resetExpand() throws IOException {
+<span class="fc bfc" id="L232" title="All 2 branches covered.">		if (clauseStart == NO_MORE_POSITIONS) {</span>
+<span class="fc" id="L233">			clauseStart = start = end = NO_MORE_POSITIONS;</span>
+<span class="fc" id="L234">			return;</span>
+		}
+		while (true) {
+			// Attempt to do the initial expansion and reset the counter
+<span class="fc" id="L238">			start = clauseStart;</span>
+<span class="fc" id="L239">			end = clause.endPosition();</span>
+<span class="fc bfc" id="L240" title="All 2 branches covered.">			if (expandToLeft)</span>
+<span class="fc" id="L241">				start -= min;</span>
+			else
+<span class="fc" id="L243">				end += min;</span>
+
+			// What's the maximum we could still expand from here?
+			int maxExpandSteps;
+<span class="fc bfc" id="L247" title="All 2 branches covered.">			if (expandToLeft) {</span>
+				// Can only expand to the left until token 0.
+<span class="fc" id="L249">				maxExpandSteps = start;</span>
+			} else {
+				// Can only expand to the right until last token in document.
+
+				// Do we know this document's length already?
+<span class="fc bfc" id="L254" title="All 2 branches covered.">				if (currentDoc != tokenLengthDocId) {</span>
+					// No, determine length now
+<span class="fc" id="L256">					tokenLengthDocId = currentDoc;</span>
+<span class="fc" id="L257">					tokenLength = lengthGetter.getFieldLength(tokenLengthDocId) - subtractFromLength;</span>
+				}
+<span class="fc" id="L259">				maxExpandSteps = tokenLength - end;</span>
+			}
+<span class="fc bfc" id="L261" title="All 2 branches covered.">			if (max == MAX_UNLIMITED) {</span>
+				// Infinite expansion; just use max
+<span class="fc" id="L263">				expandStepsLeft = maxExpandSteps;</span>
+			}
+			else {
+				// Limited expansion; clamp by maximum
+<span class="fc" id="L267">				expandStepsLeft = Math.min(max - min, maxExpandSteps);</span>
+			}
+
+			// Valid expansion?   [shouldn't be necessary anymore because we calculated max]
+<span class="fc bfc" id="L271" title="All 2 branches covered.">			if (expandStepsLeft &gt;= 0) {</span>
+<span class="fc" id="L272">				clauseStart = start; // Yes, return</span>
+<span class="fc" id="L273">				return;</span>
+			}
+
+			// No, try the next hit, if there is one
+<span class="fc" id="L277">			clauseStart = clause.nextStartPosition();</span>
+<span class="pc bpc" id="L278" title="1 of 2 branches missed.">			if (clauseStart == NO_MORE_POSITIONS) {</span>
+<span class="fc" id="L279">				start = end = NO_MORE_POSITIONS;</span>
+<span class="fc" id="L280">				return; // No hits left, we're done</span>
+			}
+<span class="nc" id="L282">		}</span>
+	}
+
+	/**
+	 * @return start of the current hit
+	 */
+	@Override
+	public int startPosition() {
+<span class="fc bfc" id="L290" title="All 2 branches covered.">		if (alreadyAtFirstHit)</span>
+<span class="fc" id="L291">			return -1; // .nextStartPosition() not called yet</span>
+<span class="fc" id="L292">		return start;</span>
+	}
+
+	@Override
+	public String toString() {
+<span class="nc" id="L297">		return &quot;SpansExpansion(&quot; + clause + &quot;, &quot; + expandToLeft + &quot;, &quot; + min + &quot;, &quot; + inf(max) + &quot;)&quot;;</span>
+	}
+
+	@Override
+	public void passHitQueryContextToClauses(HitQueryContext context) {
+<span class="fc" id="L302">		clause.setHitQueryContext(context);</span>
+<span class="fc" id="L303">	}</span>
+
+	@Override
+	public void getCapturedGroups(Span[] capturedGroups) {
+<span class="pc bpc" id="L307" title="1 of 2 branches missed.">		if (!childClausesCaptureGroups)</span>
+<span class="nc" id="L308">			return;</span>
+<span class="fc" id="L309">		clause.getCapturedGroups(capturedGroups);</span>
+<span class="fc" id="L310">	}</span>
+
+	@Override
+	public int width() {
+<span class="nc" id="L314">		return clause.width();</span>
+	}
+
+	@Override
+	public void collect(SpanCollector collector) throws IOException {
+<span class="nc" id="L319">		clause.collect(collector);</span>
+<span class="nc" id="L320">	}</span>
+
+	@Override
+	public float positionsCost() {
+<span class="nc" id="L324">		return clause.positionsCost();</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

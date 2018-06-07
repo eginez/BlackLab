@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TextPattern.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search</a> &gt; <span class="el_source">TextPattern.java</span></div><h1>TextPattern.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search;
+
+import java.util.List;
+
+import nl.inl.blacklab.search.lucene.BLSpanQuery;
+
+/**
+ * Describes some pattern of words in a content field. The point of this interface is to provide an
+ * abstract layer to describe the pattern we're interested in, which can then be translated into,
+ * for example, a SpanQuery object or a String, depending on our needs.
+ */
+public abstract class TextPattern implements Cloneable {
+
+	public static final int MAX_UNLIMITED = BLSpanQuery.MAX_UNLIMITED;
+
+	static String inf(int max) {
+<span class="nc" id="L32">		return BLSpanQuery.inf(max);</span>
+	}
+
+	/**
+	 * Default constructor; does nothing.
+	 */
+<span class="fc" id="L38">	public TextPattern() {</span>
+		//
+<span class="fc" id="L40">	}</span>
+
+	/**
+	 * Translate this TextPattern into a BLSpanQuery.
+	 *
+	 * @param context
+	 *            query execution context to use
+	 * @return result of the translation
+	 */
+	public abstract BLSpanQuery translate(QueryExecutionContext context);
+
+	/**
+	 * Translate this TextPattern into some other representation.
+	 *
+	 * For example, TextPatternTranslatorSpanQuery translates it into Lucene SpanQuerys.
+	 *
+	 * Uses the searcher's initial query execution context.
+	 *
+	 * @param searcher
+	 * 			  our searcher, to get the inital query execution context from
+	 * @return result of the translation
+	 */
+	public BLSpanQuery translate(Searcher searcher) {
+<span class="nc" id="L63">		return translate(searcher.getDefaultExecutionContext());</span>
+	}
+
+	@Override
+	public abstract String toString();
+
+	/**
+	 * @param searcher searcher object
+	 * @return string representation
+	 * @deprecated toString() shouldn't depend on external information. Use {@link #toString()}.
+	 */
+	@Deprecated
+	public String toString(Searcher searcher) {
+<span class="nc" id="L76">		return toString(searcher.getDefaultExecutionContext());</span>
+	}
+
+	/**
+	 * @param searcher searcher object
+	 * @param fieldName contents field name
+	 * @return string representation
+	 * @deprecated toString() shouldn't depend on external information. Use {@link #toString()}.
+	 */
+	@Deprecated
+	public String toString(Searcher searcher, String fieldName) {
+<span class="nc" id="L87">		return toString(searcher.getDefaultExecutionContext());</span>
+	}
+
+	/**
+	 * @param context the execution context
+	 * @return string representation
+	 * @deprecated toString() shouldn't depend on external information. Use {@link #toString()}.
+	 */
+	@Deprecated
+	public abstract String toString(QueryExecutionContext context);
+
+	protected String clausesToString(List&lt;TextPattern&gt; clauses) {
+<span class="fc" id="L99">		StringBuilder b = new StringBuilder();</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">		for (TextPattern clause: clauses) {</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">			if (b.length() &gt; 0)</span>
+<span class="fc" id="L102">				b.append(&quot;, &quot;);</span>
+<span class="fc" id="L103">			b.append(clause.toString());</span>
+<span class="fc" id="L104">		}</span>
+<span class="fc" id="L105">		return b.toString();</span>
+	}
+
+	@Deprecated
+	protected String clausesToString(List&lt;TextPattern&gt; clauses,
+			QueryExecutionContext context) {
+<span class="nc" id="L111">		StringBuilder b = new StringBuilder();</span>
+<span class="nc bnc" id="L112" title="All 2 branches missed.">		for (TextPattern clause: clauses) {</span>
+<span class="nc bnc" id="L113" title="All 2 branches missed.">			if (b.length() &gt; 0)</span>
+<span class="nc" id="L114">				b.append(&quot;, &quot;);</span>
+<span class="nc bnc" id="L115" title="All 2 branches missed.">			b.append(context == null ? clause.toString() : clause.toString(context));</span>
+<span class="nc" id="L116">		}</span>
+<span class="nc" id="L117">		return b.toString();</span>
+	}
+
+	@Override
+	public abstract boolean equals(Object obj);
+
+	@Override
+	public abstract int hashCode();
+
+	String optInsensitive(QueryExecutionContext context, String value) {
+<span class="fc" id="L127">		return context.optDesensitize(value);</span>
+//		if (!context.diacriticsSensitive())
+//			value = StringUtil.removeAccents(value);
+//		if (!context.caseSensitive())
+//			value = value.toLowerCase();
+//		return value;
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

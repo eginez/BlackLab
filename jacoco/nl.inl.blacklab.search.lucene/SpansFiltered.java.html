@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SpansFiltered.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">SpansFiltered.java</span></div><h1>SpansFiltered.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.lucene;
+
+import java.io.IOException;
+
+import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.search.Scorer;
+import org.apache.lucene.search.spans.SpanCollector;
+import nl.inl.blacklab.search.Span;
+
+/**
+ * Apply a Filter to a Spans.
+ *
+ * This allows us to only consider certain documents (say, only documents in a certain domain) when
+ * executing our query.
+ */
+class SpansFiltered extends BLSpans {
+	BLSpans spans;
+
+	/** Set of accepted docs. NOTE: this is not segment-based, but for the whole index! */
+	DocIdSetIterator docIdSetIter;
+
+	boolean more;
+
+<span class="fc" id="L39">	public SpansFiltered(BLSpans spans, Scorer filterDocs) throws IOException {</span>
+<span class="fc" id="L40">		this.spans = spans;</span>
+<span class="pc bpc" id="L41" title="1 of 2 branches missed.">		docIdSetIter = filterDocs == null ? null : filterDocs.iterator(); //docIdSetIter = filterDocs.iterator();</span>
+<span class="fc" id="L42">		more = false;</span>
+<span class="pc bpc" id="L43" title="1 of 2 branches missed.">		if (docIdSetIter != null) {</span>
+<span class="pc bpc" id="L44" title="1 of 2 branches missed.">			more = (docIdSetIter.nextDoc() != NO_MORE_DOCS);</span>
+		}
+<span class="fc" id="L46">	}</span>
+
+	private int synchronize() throws IOException {
+<span class="fc bfc" id="L49" title="All 4 branches covered.">		while (more &amp;&amp; spans.docID() != docIdSetIter.docID()) {</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">			if (spans.docID() &lt; docIdSetIter.docID()) {</span>
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">				more = spans.advance(docIdSetIter.docID()) != NO_MORE_DOCS;</span>
+<span class="pc bpc" id="L52" title="1 of 2 branches missed.">			} else if (docIdSetIter.advance(spans.docID()) == NO_MORE_DOCS) {</span>
+<span class="fc" id="L53">				more = false;</span>
+			}
+		}
+<span class="fc bfc" id="L56" title="All 2 branches covered.">		return more ? spans.docID() : NO_MORE_DOCS;</span>
+	}
+
+	@Override
+	public int nextDoc() throws IOException {
+<span class="pc bpc" id="L61" title="1 of 2 branches missed.">		if (!more)</span>
+<span class="nc" id="L62">			return NO_MORE_DOCS;</span>
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">		more = spans.nextDoc() != NO_MORE_DOCS;</span>
+<span class="fc" id="L64">		return synchronize();</span>
+	}
+
+	@Override
+	public int nextStartPosition() throws IOException {
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">		if (!more)</span>
+<span class="nc" id="L70">			return NO_MORE_POSITIONS;</span>
+<span class="fc" id="L71">		return spans.nextStartPosition();</span>
+	}
+
+	@Override
+	public int advanceStartPosition(int target) throws IOException {
+<span class="nc bnc" id="L76" title="All 2 branches missed.">		if (!more)</span>
+<span class="nc" id="L77">			return NO_MORE_POSITIONS;</span>
+<span class="nc" id="L78">		return spans.advanceStartPosition(target);</span>
+	}
+
+	@Override
+	public int advance(int target) throws IOException {
+<span class="nc bnc" id="L83" title="All 2 branches missed.">		if (!more)</span>
+<span class="nc" id="L84">			return NO_MORE_DOCS;</span>
+<span class="nc bnc" id="L85" title="All 2 branches missed.">		more = spans.advance(target) != NO_MORE_DOCS;</span>
+<span class="nc" id="L86">		return synchronize();</span>
+	}
+
+	@Override
+	public int docID() {
+<span class="fc" id="L91">		return spans.docID();</span>
+	}
+
+	@Override
+	public int endPosition() {
+<span class="fc" id="L96">		return spans.endPosition();</span>
+	}
+
+	@Override
+	public int startPosition() {
+<span class="fc" id="L101">		return spans.startPosition();</span>
+	}
+
+	@Override
+	public void passHitQueryContextToClauses(HitQueryContext context) {
+<span class="fc" id="L106">		spans.setHitQueryContext(context);</span>
+<span class="fc" id="L107">	}</span>
+
+	@Override
+	public void getCapturedGroups(Span[] capturedGroups) {
+<span class="nc bnc" id="L111" title="All 2 branches missed.">		if (!childClausesCaptureGroups)</span>
+<span class="nc" id="L112">			return;</span>
+<span class="nc" id="L113">		spans.getCapturedGroups(capturedGroups);</span>
+<span class="nc" id="L114">	}</span>
+
+	@Override
+	public int width() {
+<span class="nc" id="L118">		return spans.width();</span>
+	}
+
+	@Override
+	public void collect(SpanCollector collector) throws IOException {
+<span class="nc" id="L123">		spans.collect(collector);</span>
+<span class="nc" id="L124">	}</span>
+
+	@Override
+	public float positionsCost() {
+<span class="nc" id="L128">		return spans.positionsCost();</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

@@ -71,7 +71,7 @@
 <a class="jxr_linenumber" name="L63" href="#L63">63</a>  		<strong class="jxr_keyword">this</strong>.groupBy = groupBy;
 <a class="jxr_linenumber" name="L64" href="#L64">64</a>  		<em class="jxr_comment">//Thread currentThread = Thread.currentThread();</em>
 <a class="jxr_linenumber" name="L65" href="#L65">65</a>  		Map&lt;HitPropValue, List&lt;DocResult&gt;&gt; groupLists = <strong class="jxr_keyword">new</strong> HashMap&lt;&gt;();
-<a class="jxr_linenumber" name="L66" href="#L66">66</a>  		<strong class="jxr_keyword">for</strong> (DocResult r : docResults) {
+<a class="jxr_linenumber" name="L66" href="#L66">66</a>  		<strong class="jxr_keyword">for</strong> (DocResult r : docResults) { <em class="jxr_comment">// TODO inconsistency compared to hits within groups, hitgroups ignore sorting of the source data, docgroups don't</em>
 <a class="jxr_linenumber" name="L67" href="#L67">67</a>  			HitPropValue groupId = groupBy.get(r);
 <a class="jxr_linenumber" name="L68" href="#L68">68</a>  			List&lt;DocResult&gt; group = groupLists.get(groupId);
 <a class="jxr_linenumber" name="L69" href="#L69">69</a>  			<strong class="jxr_keyword">if</strong> (group == <strong class="jxr_keyword">null</strong>) {
@@ -145,6 +145,6 @@
 <a class="jxr_linenumber" name="L137" href="#L137">137</a> }
 </pre>
 <hr/>
-<div id="footer">Copyright &#169; 2017 <a href="http://www.inl.nl">Instituut voor Nederlandse Taal (INT)</a>. All rights reserved.</div>
+<div id="footer">Copyright &#169; 2018 <a href="http://www.inl.nl">Instituut voor Nederlandse Taal (INT)</a>. All rights reserved.</div>
 </body>
 </html>

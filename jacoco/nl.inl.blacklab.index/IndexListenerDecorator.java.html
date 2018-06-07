@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IndexListenerDecorator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.index</a> &gt; <span class="el_source">IndexListenerDecorator.java</span></div><h1>IndexListenerDecorator.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.index;
+
+import java.io.File;
+
+/**
+ * Decorate an IndexListener.
+ */
+public abstract class IndexListenerDecorator extends IndexListener {
+
+	IndexListener subject;
+
+<span class="nc" id="L12">	public IndexListenerDecorator(IndexListener subject) {</span>
+<span class="nc" id="L13">		this.subject = subject;</span>
+<span class="nc" id="L14">	}</span>
+
+	@Override
+	public synchronized void fileStarted(String name) {
+<span class="nc" id="L18">		subject.fileStarted(name);</span>
+<span class="nc" id="L19">	}</span>
+
+	@Override
+	public synchronized void fileDone(String name) {
+<span class="nc" id="L23">		subject.fileDone(name);</span>
+<span class="nc" id="L24">	}</span>
+
+	@Override
+	public synchronized void charsDone(long charsDone) {
+<span class="nc" id="L28">		subject.charsDone(charsDone);</span>
+<span class="nc" id="L29">	}</span>
+
+	@Override
+	public synchronized void documentStarted(String name) {
+<span class="nc" id="L33">		subject.documentStarted(name);</span>
+<span class="nc" id="L34">	}</span>
+
+	@Override
+	public synchronized void documentDone(String name) {
+<span class="nc" id="L38">		subject.documentDone(name);</span>
+<span class="nc" id="L39">	}</span>
+
+	@Override
+	public synchronized long getFilesProcessed() {
+<span class="nc" id="L43">		return subject.getFilesProcessed();</span>
+	}
+
+	@Override
+	public synchronized long getCharsProcessed() {
+<span class="nc" id="L48">		return subject.getCharsProcessed();</span>
+	}
+
+	@Override
+	public synchronized long getTokensProcessed() {
+<span class="nc" id="L53">		return subject.getTokensProcessed();</span>
+	}
+
+	@Override
+	public synchronized long getDocsDone() {
+<span class="nc" id="L58">		return subject.getDocsDone();</span>
+	}
+
+	@Override
+	public void indexStart() {
+<span class="nc" id="L63">		subject.indexStart();</span>
+<span class="nc" id="L64">	}</span>
+
+	@Override
+	public void indexEnd() {
+<span class="nc" id="L68">		subject.indexEnd();</span>
+<span class="nc" id="L69">	}</span>
+
+	@Override
+	public void closeStart() {
+<span class="nc" id="L73">		subject.closeStart();</span>
+<span class="nc" id="L74">	}</span>
+
+	@Override
+	public void closeEnd() {
+<span class="nc" id="L78">		subject.closeEnd();</span>
+<span class="nc" id="L79">	}</span>
+
+	@Override
+	public long getIndexTime() {
+<span class="nc" id="L83">		return subject.getIndexTime();</span>
+	}
+
+	@Override
+	public long getOptimizeTime() {
+<span class="nc" id="L88">		return subject.getOptimizeTime();</span>
+	}
+
+	@Override
+	public long getCloseTime() {
+<span class="nc" id="L93">		return subject.getCloseTime();</span>
+	}
+
+	@Override
+	public void indexerCreated(Indexer indexer) {
+<span class="nc" id="L98">		subject.indexerCreated(indexer);</span>
+<span class="nc" id="L99">	}</span>
+
+	@Override
+	public void indexerClosed() {
+<span class="nc" id="L103">		subject.indexerClosed();</span>
+<span class="nc" id="L104">	}</span>
+
+	@Override
+	public long getTotalTime() {
+<span class="nc" id="L108">		return subject.getTotalTime();</span>
+	}
+
+	@Override
+	public void luceneDocumentAdded() {
+<span class="nc" id="L113">		subject.luceneDocumentAdded();</span>
+<span class="nc" id="L114">	}</span>
+
+	@Override
+	public synchronized void tokensDone(int n) {
+<span class="nc" id="L118">		subject.tokensDone(n);</span>
+<span class="nc" id="L119">	}</span>
+	
+	@Override
+	public synchronized boolean errorOccurred(Throwable e, String path, File f) {
+<span class="nc" id="L123">		return subject.errorOccurred(e, path, f);</span>
+	}
+	
+	@Override
+	public int getErrors() {
+<span class="nc" id="L128">		return subject.getErrors();</span>
+	}
+
+	@Override
+	public void rollbackStart() {
+<span class="nc" id="L133">		subject.rollbackStart();</span>
+<span class="nc" id="L134">	}</span>
+
+	@Override
+	public void rollbackEnd() {
+<span class="nc" id="L138">		subject.rollbackEnd();</span>
+<span class="nc" id="L139">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

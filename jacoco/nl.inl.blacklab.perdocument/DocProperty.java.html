@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DocProperty.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.perdocument</a> &gt; <span class="el_source">DocProperty.java</span></div><h1>DocProperty.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.perdocument;
+
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import nl.inl.blacklab.search.grouping.HitPropValue;
+import nl.inl.blacklab.search.grouping.PropValSerializeUtil;
+
+/**
+ * Abstract base class for criteria on which to group DocResult objects. Subclasses implement
+ * specific grouping criteria (number of hits, the value of a stored field in the Lucene document,
+ * ...)
+ */
+<span class="fc" id="L33">public abstract class DocProperty {</span>
+<span class="fc" id="L34">	protected static final Logger logger = LogManager.getLogger(DocProperty.class);</span>
+
+	/** Reverse comparison result or not? */
+<span class="fc" id="L37">	protected boolean reverse = false;</span>
+
+	/**
+	 * Get the desired grouping/sorting property from the DocResult object
+	 *
+	 * @param result
+	 *            the result to get the grouping property for
+	 * @return the grouping property. e.g. this might be &quot;Harry Mulisch&quot; when grouping on author.
+	 */
+	public abstract HitPropValue get(DocResult result);
+
+	/**
+	 * Compares two docs on this property
+	 * @param a first doc
+	 * @param b second doc
+	 * @return 0 if equal, negative if a &lt; b, positive if a &gt; b.
+	 */
+	public int compare(DocResult a, DocResult b) {
+<span class="nc" id="L55">		return get(a).compareTo(get(b));</span>
+	}
+
+	public boolean defaultSortDescending() {
+<span class="nc" id="L59">		return false;</span>
+	}
+
+	public abstract String getName();
+
+	public abstract String serialize();
+
+	/**
+	 * Used by subclasses to add a dash for reverse when serializing
+	 * @return either a dash or the empty string
+	 */
+	protected String serializeReverse() {
+<span class="pc bpc" id="L71" title="1 of 2 branches missed.">		return reverse ? &quot;-&quot; : &quot;&quot;;</span>
+	}
+
+	public static DocProperty deserialize(String serialized) {
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">		if (PropValSerializeUtil.isMultiple(serialized)) {</span>
+<span class="nc" id="L76">			boolean reverse = false;</span>
+<span class="nc bnc" id="L77" title="All 4 branches missed.">			if (serialized.startsWith(&quot;-(&quot;) &amp;&amp; serialized.endsWith(&quot;)&quot;)) {</span>
+<span class="nc" id="L78">				reverse = true;</span>
+<span class="nc" id="L79">				serialized = serialized.substring(2, serialized.length() - 1);</span>
+			}
+<span class="nc" id="L81">			DocPropertyMultiple result = DocPropertyMultiple.deserialize(serialized);</span>
+<span class="nc" id="L82">			result.setReverse(reverse);</span>
+<span class="nc" id="L83">			return result;</span>
+		}
+
+<span class="fc" id="L86">		boolean reverse = false;</span>
+<span class="pc bpc" id="L87" title="2 of 4 branches missed.">		if (serialized.length() &gt; 0 &amp;&amp; serialized.charAt(0) == '-') {</span>
+<span class="fc" id="L88">			reverse = true;</span>
+<span class="fc" id="L89">			serialized = serialized.substring(1);</span>
+		}
+
+<span class="fc" id="L92">		String[] parts = PropValSerializeUtil.splitPartFirstRest(serialized);</span>
+<span class="fc" id="L93">		String type = parts[0].toLowerCase();</span>
+<span class="pc bpc" id="L94" title="1 of 2 branches missed.">		String info = parts.length &gt; 1 ? parts[1] : &quot;&quot;;</span>
+<span class="fc" id="L95">		List&lt;String&gt; types = Arrays.asList(&quot;decade&quot;, &quot;numhits&quot;, &quot;field&quot;, &quot;fieldlen&quot;);</span>
+<span class="fc" id="L96">		int typeNum = types.indexOf(type);</span>
+		DocProperty result;
+<span class="pc bpc" id="L98" title="4 of 5 branches missed.">		switch (typeNum) {</span>
+		case 0:
+<span class="fc" id="L100">			result = DocPropertyDecade.deserialize(info);</span>
+<span class="fc" id="L101">			break;</span>
+		case 1:
+<span class="nc" id="L103">			result = DocPropertyNumberOfHits.deserialize();</span>
+<span class="nc" id="L104">			break;</span>
+		case 2:
+<span class="nc" id="L106">			result = DocPropertyStoredField.deserialize(info);</span>
+<span class="nc" id="L107">			break;</span>
+		case 3:
+<span class="nc" id="L109">			result = DocPropertyComplexFieldLength.deserialize(info);</span>
+<span class="nc" id="L110">			break;</span>
+		default:
+<span class="nc" id="L112">			logger.debug(&quot;Unknown DocProperty '&quot; + type + &quot;'&quot;);</span>
+<span class="nc" id="L113">			return null;</span>
+		}
+<span class="fc" id="L115">		result.setReverse(reverse);</span>
+<span class="fc" id="L116">		return result;</span>
+	}
+
+	/**
+	 * Is the comparison reversed?
+	 * @return true if it is, false if not
+	 */
+	public boolean isReverse() {
+<span class="nc" id="L124">		return reverse;</span>
+	}
+
+	/**
+	 * Set whether to reverse the comparison.
+	 * @param reverse if true, reverses comparison
+	 */
+	public void setReverse(boolean reverse) {
+<span class="fc" id="L132">		this.reverse = reverse;</span>
+<span class="fc" id="L133">	}</span>
+
+	@Override
+	public String toString() {
+<span class="nc" id="L137">		return serialize();</span>
+	}
+	
+	/**
+	 * Get the names of all (sub-)properties separately.
+	 * @return the list
+	 */
+	public abstract List&lt;String&gt; getPropNames();
+
+	public static void getFacetsUrlParam(Map&lt;String, String&gt; param, List&lt;DocProperty&gt; facets) {
+<span class="nc" id="L147">		DocPropertyMultiple f = new DocPropertyMultiple(facets.toArray(new DocProperty[0]));</span>
+<span class="nc" id="L148">		param.put(&quot;facets&quot;, f.serialize());</span>
+<span class="nc" id="L149">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HitPropValueMultiple.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.grouping</a> &gt; <span class="el_source">HitPropValueMultiple.java</span></div><h1>HitPropValueMultiple.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.search.grouping;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+import nl.inl.blacklab.search.Hits;
+
+public class HitPropValueMultiple extends HitPropValue {
+	HitPropValue[] value;
+
+<span class="fc" id="L12">	public HitPropValueMultiple(HitPropValue[] value) {</span>
+<span class="fc" id="L13">		this.value = value;</span>
+<span class="fc" id="L14">	}</span>
+
+	@Override
+	public int compareTo(Object o) {
+<span class="nc" id="L18">		return compareHitPropValueArrays(value, ((HitPropValueMultiple)o).value);</span>
+	}
+
+	@Override
+	public int hashCode() {
+<span class="nc" id="L23">		return Arrays.hashCode(value);</span>
+	}
+
+	public static HitPropValueMultiple deserialize(Hits hits, String info) {
+<span class="fc" id="L27">		String[] strValues = PropValSerializeUtil.splitMultiple(info);</span>
+<span class="fc" id="L28">		HitPropValue[] values = new HitPropValue[strValues.length];</span>
+<span class="fc" id="L29">		int i = 0;</span>
+<span class="fc bfc" id="L30" title="All 2 branches covered.">		for (String strValue: strValues) {</span>
+<span class="fc" id="L31">			values[i] = HitPropValue.deserialize(hits, strValue);</span>
+<span class="fc" id="L32">			i++;</span>
+		}
+<span class="fc" id="L34">		return new HitPropValueMultiple(values);</span>
+	}
+
+	@Override
+	public String toString() {
+<span class="nc" id="L39">		StringBuilder b = new StringBuilder();</span>
+<span class="nc" id="L40">		int i = 0;</span>
+<span class="nc bnc" id="L41" title="All 2 branches missed.">		for (HitPropValue v: value) {</span>
+<span class="nc bnc" id="L42" title="All 2 branches missed.">			if (i &gt; 0)</span>
+<span class="nc" id="L43">				b.append(&quot; / &quot;);</span>
+<span class="nc" id="L44">			i++;</span>
+<span class="nc" id="L45">			b.append(v.toString());</span>
+		}
+<span class="nc" id="L47">		return b.toString();</span>
+	}
+
+	@Override
+	public String serialize() {
+<span class="fc" id="L52">		String[] valuesSerialized = new String[value.length];</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">		for (int i = 0; i &lt; value.length; i++) {</span>
+<span class="fc" id="L54">			valuesSerialized[i] = value[i].serialize();</span>
+		}
+<span class="fc" id="L56">		return PropValSerializeUtil.combineMultiple(valuesSerialized);</span>
+	}
+
+	@Override
+	public List&lt;String&gt; getPropValues() {
+<span class="nc" id="L61">		List&lt;String&gt; l = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L62" title="All 2 branches missed.">		for (HitPropValue v : value)</span>
+<span class="nc" id="L63">			l.addAll(v.getPropValues());</span>
+<span class="nc" id="L64">		return l;</span>
+	}
+
+	/**
+	 * Compare two arrays of HitPropValue objects, by comparing each
+	 * one in succession.
+	 *
+	 * The first difference encountered determines the result. If the
+	 * arrays are of different length but otherwise equal, the longest
+	 * array will be ordered after the shorter.
+	 *
+	 * @param a first array
+	 * @param b second array
+	 * @return 0 if equal, negative if a &amp;lt; b, positive if a &amp;gt; b
+	 */
+	private static int compareHitPropValueArrays(HitPropValue[] a, HitPropValue[] b) {
+<span class="nc" id="L80">		int n = a.length;</span>
+<span class="nc bnc" id="L81" title="All 2 branches missed.">		if (b.length &lt; n)</span>
+<span class="nc" id="L82">			n = b.length;</span>
+<span class="nc bnc" id="L83" title="All 2 branches missed.">		for (int i = 0; i &lt; n; i++) {</span>
+			// Does this element decide the comparison?
+<span class="nc" id="L85">			int cmp = a[i].compareTo(b[i]);</span>
+<span class="nc bnc" id="L86" title="All 2 branches missed.">			if (cmp != 0) {</span>
+<span class="nc" id="L87">				return cmp; // yep, done</span>
+			}
+		}
+<span class="nc bnc" id="L90" title="All 2 branches missed.">		if (a.length == b.length) {</span>
+			// Arrays are exactly equal
+<span class="nc" id="L92">			return 0;</span>
+		}
+<span class="nc bnc" id="L94" title="All 2 branches missed.">		if (n == a.length) {</span>
+			// Array b is longer than a; sort it after a
+<span class="nc" id="L96">			return -1;</span>
+		}
+		// a longer than b
+<span class="nc" id="L99">		return 1;</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

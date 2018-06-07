@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ComplexField.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.index.complex</a> &gt; <span class="el_source">ComplexField.java</span></div><h1>ComplexField.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.index.complex;
+
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.apache.lucene.document.Document;
+import org.apache.lucene.document.Field;
+import org.apache.lucene.document.IntField;
+import org.eclipse.collections.impl.list.mutable.primitive.IntArrayList;
+
+import nl.inl.blacklab.index.complex.ComplexFieldProperty.SensitivitySetting;
+
+
+/**
+ * A complex field is like a Lucene field, but in addition to its &quot;normal&quot; value, it can have
+ * multiple properties per word (not just a single token). The properties might be &quot;headword&quot;, &quot;pos&quot;
+ * (part of speech), &quot;namedentity&quot; (whether or not the word is (part of) a named entity like a
+ * location or place), etc.
+ *
+ * Complex fields are implemented by indexing a field in Lucene for each property. For example, if
+ * complex field &quot;contents&quot; has properties &quot;headword&quot; and &quot;pos&quot;, there would be 3 Lucene fields for
+ * the complex field: &quot;contents&quot;, &quot;contents__headword&quot; and &quot;contents__pos&quot;.
+ *
+ * The main field (&quot;contents&quot; in the above example) may include offset information if you want (e.g.
+ * for highlighting). All Lucene fields will include position information (for use with
+ * SpanQueries).
+ *
+ * N.B. It is crucial that everything stays in synch, so you should call all the appropriate add*()
+ * methods for each property and each token, or use the correct position increments to keep everything
+ * synched up. The same goes for addStartChar() and addEndChar() (although, if you don't want any
+ * offsets, you need not call these).
+ */
+public class ComplexField {
+
+<span class="fc" id="L55">    protected static final Logger logger = LogManager.getLogger(ComplexField.class);</span>
+
+<span class="fc" id="L57">	private Map&lt;String, ComplexFieldProperty&gt; properties = new HashMap&lt;&gt;();</span>
+
+<span class="fc" id="L59">	private IntArrayList start = new IntArrayList();</span>
+
+<span class="fc" id="L61">	private IntArrayList end = new IntArrayList();</span>
+
+	private String fieldName;
+
+	private ComplexFieldProperty mainProperty;
+
+<span class="fc" id="L67">	private Set&lt;String&gt; noForwardIndexProps = new HashSet&lt;&gt;();</span>
+
+	public void setNoForwardIndexProps(Set&lt;String&gt; noForwardIndexProps) {
+<span class="fc" id="L70">		this.noForwardIndexProps.clear();</span>
+<span class="fc" id="L71">		this.noForwardIndexProps.addAll(noForwardIndexProps);</span>
+<span class="fc" id="L72">	}</span>
+
+	/**
+	 * Construct a ComplexField object with a main property
+	 * @param name field name
+	 * @param mainPropertyName main property name
+	 * @param sensitivity ways to index main property, with respect to case- and
+	 *   diacritics-sensitivity.
+	 * @param mainPropHasPayloads does the main property have payloads?
+	 */
+<span class="fc" id="L82">	public ComplexField(String name, String mainPropertyName, SensitivitySetting sensitivity, boolean mainPropHasPayloads) {</span>
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">	    if (!ComplexFieldUtil.isValidXmlElementName(name))</span>
+<span class="nc" id="L84">	        logger.warn(&quot;Field name '&quot; + name + &quot;' is discouraged (field/property names should be valid XML element names)&quot;);</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">        if (!ComplexFieldUtil.isValidXmlElementName(mainPropertyName))</span>
+<span class="nc" id="L86">            logger.warn(&quot;Property name '&quot; + mainPropertyName + &quot;' is discouraged (field/property names should be valid XML element names)&quot;);</span>
+<span class="fc" id="L87">		boolean includeOffsets = true;</span>
+<span class="fc" id="L88">		fieldName = name;</span>
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">		if (mainPropertyName == null)</span>
+<span class="nc" id="L90">			mainPropertyName = ComplexFieldUtil.getDefaultMainPropName();</span>
+<span class="fc" id="L91">		mainProperty = new ComplexFieldProperty(mainPropertyName, sensitivity, includeOffsets, mainPropHasPayloads);</span>
+<span class="fc" id="L92">		properties.put(mainPropertyName, mainProperty);</span>
+<span class="fc" id="L93">	}</span>
+
+	public int numberOfTokens() {
+<span class="fc" id="L96">		return start.size();</span>
+	}
+
+	public ComplexFieldProperty addProperty(String name, SensitivitySetting sensitivity, boolean includePayloads) {
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">        if (!ComplexFieldUtil.isValidXmlElementName(name))</span>
+<span class="nc" id="L101">            logger.warn(&quot;Property name '&quot; + name + &quot;' is discouraged (field/property names should be valid XML element names)&quot;);</span>
+<span class="fc" id="L102">		ComplexFieldProperty p = new ComplexFieldProperty(name, sensitivity, false, includePayloads);</span>
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">		if (noForwardIndexProps.contains(name)) {</span>
+<span class="nc" id="L104">			p.setForwardIndex(false);</span>
+		}
+<span class="fc" id="L106">		properties.put(name, p);</span>
+<span class="fc" id="L107">		return p;</span>
+	}
+
+	public ComplexFieldProperty addProperty(String name, SensitivitySetting sensitivity) {
+<span class="fc" id="L111">		return addProperty(name, sensitivity, false);</span>
+	}
+
+	public void addStartChar(int startChar) {
+<span class="fc" id="L115">		start.add(startChar);</span>
+<span class="fc" id="L116">	}</span>
+
+	public void addEndChar(int endChar) {
+<span class="fc" id="L119">		end.add(endChar);</span>
+<span class="fc" id="L120">	}</span>
+
+	public void addToLuceneDoc(Document doc) {
+<span class="fc bfc" id="L123" title="All 2 branches covered.">		for (ComplexFieldProperty p : properties.values()) {</span>
+<span class="fc" id="L124">			p.addToLuceneDoc(doc, fieldName, start, end);</span>
+<span class="fc" id="L125">		}</span>
+
+		// Add number of tokens in complex field as a stored field,
+		// because we need to be able to find this property quickly
+		// for SpanQueryNot.
+		// (Also note that this is the actual number of words + 1,
+		//  because we always store a dummy &quot;closing token&quot; at the end
+		//  that doesn't contain a word but may contain trailing punctuation)
+<span class="fc" id="L133">		doc.add(new IntField(ComplexFieldUtil.lengthTokensField(fieldName), numberOfTokens(), Field.Store.YES));</span>
+<span class="fc" id="L134">	}</span>
+
+
+	/**
+	 * Clear the internal state for reuse.
+	 *
+	 * @param reuseBuffers
+	 * IMPORTANT: reuseBuffers should not be used if any document passed to {@link ComplexField#addToLuceneDoc(Document)}
+	 * has not been added to the IndexWriter yet. (though IndexWriter::commit is not required).
+	 * Document does not copy data until it as added, so clearing our internal buffers before adding it to the writer
+	 * would also remove this data from the lucene Document.
+	 */
+	public void clear(boolean reuseBuffers) {
+<span class="pc bpc" id="L147" title="1 of 2 branches missed.">		if (reuseBuffers) {</span>
+<span class="fc" id="L148">			start.clear();</span>
+<span class="fc" id="L149">			end.clear();</span>
+		} else {
+<span class="nc" id="L151">			start = new IntArrayList();</span>
+<span class="nc" id="L152">			end = new IntArrayList();</span>
+		}
+
+<span class="fc bfc" id="L155" title="All 2 branches covered.">		for (ComplexFieldProperty p : properties.values()) {</span>
+<span class="fc" id="L156">			p.clear(reuseBuffers);</span>
+<span class="fc" id="L157">		}</span>
+<span class="fc" id="L158">	}</span>
+
+	public ComplexFieldProperty getProperty(String name) {
+<span class="nc" id="L161">		ComplexFieldProperty p = properties.get(name);</span>
+<span class="nc bnc" id="L162" title="All 2 branches missed.">		if (p == null)</span>
+<span class="nc" id="L163">			throw new IllegalArgumentException(&quot;Undefined property '&quot; + name + &quot;'&quot;);</span>
+<span class="nc" id="L164">		return p;</span>
+	}
+
+	public boolean hasProperty(String name) {
+<span class="nc" id="L168">		return properties.containsKey(name);</span>
+	}
+
+	public ComplexFieldProperty getMainProperty() {
+<span class="fc" id="L172">		return mainProperty;</span>
+	}
+
+	public ComplexFieldProperty getTagProperty() {
+<span class="nc" id="L176">		return getProperty(ComplexFieldUtil.START_TAG_PROP_NAME);</span>
+	}
+
+	public ComplexFieldProperty getPunctProperty() {
+<span class="nc" id="L180">		return getProperty(ComplexFieldUtil.PUNCTUATION_PROP_NAME);</span>
+	}
+
+	public String getName() {
+<span class="fc" id="L184">		return fieldName;</span>
+	}
+
+	public Collection&lt;ComplexFieldProperty&gt; getProperties() {
+<span class="fc" id="L188">		return properties.values();</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

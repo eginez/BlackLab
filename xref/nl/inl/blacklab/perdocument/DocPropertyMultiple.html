@@ -132,20 +132,29 @@
 <a class="jxr_linenumber" name="L124" href="#L124">124</a> 		}
 <a class="jxr_linenumber" name="L125" href="#L125">125</a> 		<strong class="jxr_keyword">return</strong> (reverse ? <span class="jxr_string">"-("</span> : <span class="jxr_string">""</span>) + PropValSerializeUtil.combineMultiple(values) + (reverse ? <span class="jxr_string">")"</span> : <span class="jxr_string">""</span>);
 <a class="jxr_linenumber" name="L126" href="#L126">126</a> 	}
-<a class="jxr_linenumber" name="L127" href="#L127">127</a> 
-<a class="jxr_linenumber" name="L128" href="#L128">128</a> 	<strong class="jxr_keyword">public</strong> <strong class="jxr_keyword">static</strong> <a href="../../../../nl/inl/blacklab/perdocument/DocPropertyMultiple.html">DocPropertyMultiple</a> deserialize(String info) {
-<a class="jxr_linenumber" name="L129" href="#L129">129</a> 		String[] strValues = PropValSerializeUtil.splitMultiple(info);
-<a class="jxr_linenumber" name="L130" href="#L130">130</a> 		DocProperty[] values = <strong class="jxr_keyword">new</strong> <a href="../../../../nl/inl/blacklab/perdocument/DocProperty.html">DocProperty</a>[strValues.length];
-<a class="jxr_linenumber" name="L131" href="#L131">131</a> 		<strong class="jxr_keyword">int</strong> i = 0;
-<a class="jxr_linenumber" name="L132" href="#L132">132</a> 		<strong class="jxr_keyword">for</strong> (String strValue: strValues) {
-<a class="jxr_linenumber" name="L133" href="#L133">133</a> 			values[i] = DocProperty.deserialize(strValue);
-<a class="jxr_linenumber" name="L134" href="#L134">134</a> 			i++;
-<a class="jxr_linenumber" name="L135" href="#L135">135</a> 		}
-<a class="jxr_linenumber" name="L136" href="#L136">136</a> 		<strong class="jxr_keyword">return</strong> <strong class="jxr_keyword">new</strong> <a href="../../../../nl/inl/blacklab/perdocument/DocPropertyMultiple.html">DocPropertyMultiple</a>(values);
-<a class="jxr_linenumber" name="L137" href="#L137">137</a> 	}
-<a class="jxr_linenumber" name="L138" href="#L138">138</a> }
+<a class="jxr_linenumber" name="L127" href="#L127">127</a> 	
+<a class="jxr_linenumber" name="L128" href="#L128">128</a> 	@Override
+<a class="jxr_linenumber" name="L129" href="#L129">129</a> 	<strong class="jxr_keyword">public</strong> List&lt;String&gt; getPropNames() {
+<a class="jxr_linenumber" name="L130" href="#L130">130</a> 		List&lt;String&gt; ret = <strong class="jxr_keyword">new</strong> ArrayList&lt;&gt;();
+<a class="jxr_linenumber" name="L131" href="#L131">131</a> 		<strong class="jxr_keyword">for</strong> (DocProperty prop : criteria) {
+<a class="jxr_linenumber" name="L132" href="#L132">132</a> 			ret.addAll(prop.getPropNames());
+<a class="jxr_linenumber" name="L133" href="#L133">133</a> 		}
+<a class="jxr_linenumber" name="L134" href="#L134">134</a> 		<strong class="jxr_keyword">return</strong> ret;
+<a class="jxr_linenumber" name="L135" href="#L135">135</a> 	}
+<a class="jxr_linenumber" name="L136" href="#L136">136</a> 
+<a class="jxr_linenumber" name="L137" href="#L137">137</a> 	<strong class="jxr_keyword">public</strong> <strong class="jxr_keyword">static</strong> <a href="../../../../nl/inl/blacklab/perdocument/DocPropertyMultiple.html">DocPropertyMultiple</a> deserialize(String info) {
+<a class="jxr_linenumber" name="L138" href="#L138">138</a> 		String[] strValues = PropValSerializeUtil.splitMultiple(info);
+<a class="jxr_linenumber" name="L139" href="#L139">139</a> 		DocProperty[] values = <strong class="jxr_keyword">new</strong> <a href="../../../../nl/inl/blacklab/perdocument/DocProperty.html">DocProperty</a>[strValues.length];
+<a class="jxr_linenumber" name="L140" href="#L140">140</a> 		<strong class="jxr_keyword">int</strong> i = 0;
+<a class="jxr_linenumber" name="L141" href="#L141">141</a> 		<strong class="jxr_keyword">for</strong> (String strValue: strValues) {
+<a class="jxr_linenumber" name="L142" href="#L142">142</a> 			values[i] = DocProperty.deserialize(strValue);
+<a class="jxr_linenumber" name="L143" href="#L143">143</a> 			i++;
+<a class="jxr_linenumber" name="L144" href="#L144">144</a> 		}
+<a class="jxr_linenumber" name="L145" href="#L145">145</a> 		<strong class="jxr_keyword">return</strong> <strong class="jxr_keyword">new</strong> <a href="../../../../nl/inl/blacklab/perdocument/DocPropertyMultiple.html">DocPropertyMultiple</a>(values);
+<a class="jxr_linenumber" name="L146" href="#L146">146</a> 	}
+<a class="jxr_linenumber" name="L147" href="#L147">147</a> }
 </pre>
 <hr/>
-<div id="footer">Copyright &#169; 2017 <a href="http://www.inl.nl">Instituut voor Nederlandse Taal (INT)</a>. All rights reserved.</div>
+<div id="footer">Copyright &#169; 2018 <a href="http://www.inl.nl">Instituut voor Nederlandse Taal (INT)</a>. All rights reserved.</div>
 </body>
 </html>

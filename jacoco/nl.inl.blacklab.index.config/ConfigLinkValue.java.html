@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ConfigLinkValue.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.index.config</a> &gt; <span class="el_source">ConfigLinkValue.java</span></div><h1>ConfigLinkValue.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.index.config;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/** Configuration for linked document link values. */
+public class ConfigLinkValue {
+
+    /** XPath to find value */
+    private String valuePath;
+
+    /** Field name to get from Lucene doc */
+    private String valueField;
+
+    /** Operations to perform on this value, if any */
+<span class="pc" id="L16">    private List&lt;ConfigProcessStep&gt; process = new ArrayList&lt;&gt;();</span>
+
+<span class="fc" id="L18">    public ConfigLinkValue() {</span>
+<span class="fc" id="L19">    }</span>
+
+<span class="nc" id="L21">    public ConfigLinkValue(String valuePath) {</span>
+<span class="nc" id="L22">        this.valuePath = valuePath;</span>
+<span class="nc" id="L23">    }</span>
+
+    public void validate() {
+<span class="nc bnc" id="L26" title="All 4 branches missed.">        if (valuePath == null &amp;&amp; valueField == null)</span>
+<span class="nc" id="L27">            throw new InputFormatConfigException(&quot;Link value must have either valuePath or valueField&quot;);</span>
+<span class="nc bnc" id="L28" title="All 4 branches missed.">        if (valuePath != null &amp;&amp; valueField != null)</span>
+<span class="nc" id="L29">            throw new InputFormatConfigException(&quot;Link value may only define either valuePath or valueField&quot;);</span>
+<span class="nc bnc" id="L30" title="All 2 branches missed.">        for (ConfigProcessStep step: process) {</span>
+<span class="nc" id="L31">            step.validate();</span>
+<span class="nc" id="L32">        }</span>
+<span class="nc" id="L33">    }</span>
+
+    public ConfigLinkValue copy() {
+<span class="nc" id="L36">        ConfigLinkValue cp = new ConfigLinkValue();</span>
+<span class="nc" id="L37">        cp.setValuePath(valuePath);</span>
+<span class="nc" id="L38">        cp.setValueField(valueField);</span>
+<span class="nc" id="L39">        cp.process.addAll(process);</span>
+<span class="nc" id="L40">        return cp;</span>
+    }
+
+    public String getValuePath() {
+<span class="nc" id="L44">        return valuePath;</span>
+    }
+
+    public void setValuePath(String valuePath) {
+<span class="nc" id="L48">        this.valuePath = valuePath;</span>
+<span class="nc" id="L49">    }</span>
+
+    public String getValueField() {
+<span class="nc" id="L52">        return valueField;</span>
+    }
+
+    public void setValueField(String valueField) {
+<span class="fc" id="L56">        this.valueField = valueField;</span>
+<span class="fc" id="L57">    }</span>
+
+    public List&lt;ConfigProcessStep&gt; getProcess() {
+<span class="nc" id="L60">        return process;</span>
+    }
+
+    public void setProcess(List&lt;ConfigProcessStep&gt; p) {
+<span class="fc" id="L64">        process.clear();</span>
+<span class="fc" id="L65">        process.addAll(p);</span>
+<span class="fc" id="L66">    }</span>
+
+    public void addProcessStep(ConfigProcessStep p) {
+<span class="nc" id="L69">        this.process.add(p);</span>
+<span class="nc" id="L70">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

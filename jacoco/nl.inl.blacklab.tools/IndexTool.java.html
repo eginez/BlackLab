@@ -1,0 +1,393 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IndexTool.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.tools</a> &gt; <span class="el_source">IndexTool.java</span></div><h1>IndexTool.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.tools;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
+import java.util.TreeMap;
+
+import org.apache.lucene.index.CorruptIndexException;
+
+import nl.inl.blacklab.index.DocIndexerFactory.Format;
+import nl.inl.blacklab.index.DocumentFormatException;
+import nl.inl.blacklab.index.DocumentFormats;
+import nl.inl.blacklab.index.DownloadCache;
+import nl.inl.blacklab.index.Indexer;
+import nl.inl.blacklab.search.Searcher;
+import nl.inl.util.ExUtil;
+import nl.inl.util.FileUtil;
+import nl.inl.util.LogUtil;
+import nl.inl.util.LuceneUtil;
+import nl.inl.util.StringUtil;
+
+/**
+ * The indexer class and main program for the ANW corpus.
+ */
+<span class="nc" id="L50">public class IndexTool {</span>
+
+<span class="nc" id="L52">	static Map&lt;String, String&gt; indexerParam = new TreeMap&lt;&gt;();</span>
+
+	public static void main(String[] args) throws Exception {
+		// If the current directory contains indexer.properties, read it
+<span class="nc" id="L56">		File propFile = new File(&quot;.&quot;, &quot;indexer.properties&quot;);</span>
+<span class="nc bnc" id="L57" title="All 2 branches missed.">		if (propFile.canRead())</span>
+<span class="nc" id="L58">			readParametersFromPropertiesFile(propFile);</span>
+
+		// Parse command line
+<span class="nc" id="L61">		int maxDocsToIndex = 0;</span>
+<span class="nc" id="L62">		File indexDir = null, inputDir = null;</span>
+<span class="nc" id="L63">		String glob = &quot;*&quot;;</span>
+<span class="nc" id="L64">		String docFormat = null;</span>
+<span class="nc" id="L65">		boolean createNewIndex = false;</span>
+<span class="nc" id="L66">		String command = &quot;&quot;;</span>
+<span class="nc" id="L67">		Set&lt;String&gt; commands = new HashSet&lt;&gt;(Arrays.asList(&quot;add&quot;, &quot;create&quot;, &quot;delete&quot;));</span>
+<span class="nc" id="L68">		boolean addingFiles = true;</span>
+<span class="nc" id="L69">		String deleteQuery = null;</span>
+<span class="nc" id="L70">		boolean useThreads = false;</span>
+<span class="nc" id="L71">		List&lt;File&gt; linkedFileDirs = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L72" title="All 2 branches missed.">		for (int i = 0; i &lt; args.length; i++) {</span>
+<span class="nc" id="L73">			String arg = args[i].trim();</span>
+<span class="nc bnc" id="L74" title="All 2 branches missed.">			if (arg.startsWith(&quot;---&quot;)) {</span>
+<span class="nc" id="L75">				String name = arg.substring(3);</span>
+<span class="nc bnc" id="L76" title="All 2 branches missed.">				if (i + 1 == args.length) {</span>
+<span class="nc" id="L77">					System.err.println(&quot;Passing parameter to indexer: argument needed!&quot;);</span>
+<span class="nc" id="L78">					usage();</span>
+<span class="nc" id="L79">					return;</span>
+				}
+<span class="nc" id="L81">				i++;</span>
+<span class="nc" id="L82">				String value = args[i];</span>
+<span class="nc" id="L83">				indexerParam.put(name, value);</span>
+<span class="nc bnc" id="L84" title="All 2 branches missed.">			} else if (arg.startsWith(&quot;--&quot;)) {</span>
+<span class="nc" id="L85">				String name = arg.substring(2);</span>
+<span class="nc bnc" id="L86" title="All 30 branches missed.">				switch(name) {</span>
+				case &quot;threads&quot;:
+<span class="nc" id="L88">					useThreads = true;</span>
+<span class="nc" id="L89">					break;</span>
+				case &quot;nothreads&quot;:
+<span class="nc" id="L91">					useThreads = false;</span>
+<span class="nc" id="L92">					break;</span>
+				case &quot;linked-file-dir&quot;:
+<span class="nc bnc" id="L94" title="All 2 branches missed.">                    if (i + 1 == args.length) {</span>
+<span class="nc" id="L95">                        System.err.println(&quot;--linked-file-dir option needs argument&quot;);</span>
+<span class="nc" id="L96">                        usage();</span>
+<span class="nc" id="L97">                        return;</span>
+                    }
+<span class="nc" id="L99">				    linkedFileDirs.add(new File(args[i + 1]));</span>
+<span class="nc" id="L100">				    i++;</span>
+<span class="nc" id="L101">				    break;</span>
+				case &quot;maxdocs&quot;:
+<span class="nc bnc" id="L103" title="All 2 branches missed.">					if (i + 1 == args.length) {</span>
+<span class="nc" id="L104">						System.err.println(&quot;--maxdocs option needs argument&quot;);</span>
+<span class="nc" id="L105">						usage();</span>
+<span class="nc" id="L106">						return;</span>
+					}
+					try {
+<span class="nc" id="L109">						maxDocsToIndex = Integer.parseInt(args[i + 1]);</span>
+<span class="nc" id="L110">						i++;</span>
+<span class="nc" id="L111">					} catch (NumberFormatException e) {</span>
+<span class="nc" id="L112">						System.err.println(&quot;--maxdocs option needs integer argument&quot;);</span>
+<span class="nc" id="L113">						usage();</span>
+<span class="nc" id="L114">						return;</span>
+<span class="nc" id="L115">					}</span>
+					break;
+				case &quot;create&quot;:
+<span class="nc" id="L118">					System.err.println(&quot;Option --create is deprecated; use create command (--help for details)&quot;);</span>
+<span class="nc" id="L119">					createNewIndex = true;</span>
+<span class="nc" id="L120">					break;</span>
+				case &quot;indexparam&quot;:
+<span class="nc bnc" id="L122" title="All 2 branches missed.">					if (i + 1 == args.length) {</span>
+<span class="nc" id="L123">						System.err.println(&quot;--indexparam option needs argument&quot;);</span>
+<span class="nc" id="L124">						usage();</span>
+<span class="nc" id="L125">						return;</span>
+					}
+<span class="nc" id="L127">					propFile = new File(args[i + 1]);</span>
+<span class="nc bnc" id="L128" title="All 2 branches missed.">					if (!propFile.canRead()) {</span>
+<span class="nc" id="L129">						System.err.println(&quot;Cannot read &quot; + propFile);</span>
+<span class="nc" id="L130">						usage();</span>
+<span class="nc" id="L131">						return;</span>
+					}
+<span class="nc" id="L133">					readParametersFromPropertiesFile(propFile);</span>
+<span class="nc" id="L134">					i++;</span>
+<span class="nc" id="L135">					break;</span>
+				case &quot;help&quot;:
+<span class="nc" id="L137">					usage();</span>
+<span class="nc" id="L138">					return;</span>
+				default: {
+<span class="nc" id="L140">					System.err.println(&quot;Unknown option --&quot; + name);</span>
+<span class="nc" id="L141">					usage();</span>
+<span class="nc" id="L142">					return;</span>
+				}
+				}
+<span class="nc" id="L145">			} else {</span>
+<span class="nc bnc" id="L146" title="All 4 branches missed.">				if (command.length() == 0 &amp;&amp; commands.contains(arg)) {</span>
+<span class="nc" id="L147">					command = arg;</span>
+<span class="nc bnc" id="L148" title="All 4 branches missed.">					addingFiles = command.equals(&quot;add&quot;) || command.equals(&quot;create&quot;);</span>
+<span class="nc bnc" id="L149" title="All 2 branches missed.">				} else if (indexDir == null) {</span>
+<span class="nc" id="L150">					indexDir = new File(arg);</span>
+<span class="nc bnc" id="L151" title="All 4 branches missed.">				} else if (addingFiles &amp;&amp; inputDir == null) {</span>
+<span class="nc bnc" id="L152" title="All 4 branches missed.">					if (arg.startsWith(&quot;\&quot;&quot;) &amp;&amp; arg.endsWith(&quot;\&quot;&quot;)) {</span>
+						// Trim off extra quotes needed to pass file glob to
+						// Windows JVM.
+<span class="nc" id="L155">						arg = arg.substring(1, arg.length() - 1);</span>
+					}
+<span class="nc bnc" id="L157" title="All 6 branches missed.">					if (arg.contains(&quot;*&quot;) || arg.contains(&quot;?&quot;) || new File(arg).isFile()) {</span>
+						// Contains file glob. Separate the two components.
+<span class="nc" id="L159">						int n = arg.lastIndexOf('/', arg.length() - 2);</span>
+<span class="nc bnc" id="L160" title="All 2 branches missed.">						if (n &lt; 0)</span>
+<span class="nc" id="L161">							n = arg.lastIndexOf('\\', arg.length() - 2);</span>
+<span class="nc bnc" id="L162" title="All 2 branches missed.">						if (n &lt; 0) {</span>
+<span class="nc" id="L163">							glob = arg;</span>
+<span class="nc" id="L164">							inputDir = new File(&quot;.&quot;);</span>
+						} else {
+<span class="nc" id="L166">							glob = arg.substring(n + 1);</span>
+<span class="nc" id="L167">							inputDir = new File(arg.substring(0, n));</span>
+						}
+<span class="nc" id="L169">					} else {</span>
+<span class="nc" id="L170">						inputDir = new File(arg);</span>
+					}
+<span class="nc bnc" id="L172" title="All 4 branches missed.">				} else if (addingFiles &amp;&amp; docFormat == null) {</span>
+<span class="nc" id="L173">					docFormat = arg;</span>
+<span class="nc bnc" id="L174" title="All 4 branches missed.">				} else if (command.equals(&quot;delete&quot;) &amp;&amp; deleteQuery == null) {</span>
+<span class="nc" id="L175">					deleteQuery = arg;</span>
+				} else {
+<span class="nc" id="L177">					System.err.println(&quot;Too many arguments!&quot;);</span>
+<span class="nc" id="L178">					usage();</span>
+<span class="nc" id="L179">					return;</span>
+				}
+			}
+		}
+<span class="nc bnc" id="L183" title="All 2 branches missed.">		if (indexDir == null) {</span>
+<span class="nc" id="L184">			System.err.println(&quot;No index dir given.&quot;);</span>
+<span class="nc" id="L185">			usage();</span>
+<span class="nc" id="L186">			return;</span>
+		}
+
+		// Check the command
+<span class="nc bnc" id="L190" title="All 2 branches missed.">		if (command.length() == 0) {</span>
+<span class="nc" id="L191">			System.err.println(&quot;No command specified; specify 'create' or 'add'. (--help for details)&quot;);</span>
+<span class="nc" id="L192">			usage();</span>
+<span class="nc" id="L193">			return;</span>
+			//System.err.println(&quot;No command specified; assuming \&quot;add\&quot; (--help for details)&quot;);
+			//command = &quot;add&quot;;
+		}
+<span class="nc bnc" id="L197" title="All 2 branches missed.">		if (command.equals(&quot;delete&quot;)) {</span>
+<span class="nc" id="L198">			commandDelete(indexDir, deleteQuery);</span>
+<span class="nc" id="L199">			return;</span>
+		}
+<span class="nc bnc" id="L201" title="All 2 branches missed.">		if (command.equals(&quot;create&quot;))</span>
+<span class="nc" id="L202">			createNewIndex = true;</span>
+
+		// We're adding files. Do we have an input dir/file and file format name?
+<span class="nc bnc" id="L205" title="All 2 branches missed.">		if (inputDir == null) {</span>
+<span class="nc" id="L206">			System.err.println(&quot;No input dir given.&quot;);</span>
+<span class="nc" id="L207">			usage();</span>
+<span class="nc" id="L208">			return;</span>
+		}
+
+
+		// Init log4j
+<span class="nc" id="L213">		LogUtil.setupBasicLoggingConfig();</span>
+
+<span class="nc" id="L215">		File indexDirParent = indexDir.getAbsoluteFile().getParentFile();</span>
+<span class="nc" id="L216">		File inputDirParent = inputDir.getAbsoluteFile().getParentFile();</span>
+<span class="nc" id="L217">		List&lt;File&gt; dirs = new ArrayList&lt;&gt;(Arrays.asList(new File(&quot;.&quot;), inputDir, indexDir));</span>
+<span class="nc bnc" id="L218" title="All 2 branches missed.">		if (inputDirParent != null)</span>
+<span class="nc" id="L219">		    dirs.add(2, inputDirParent);</span>
+<span class="nc bnc" id="L220" title="All 4 branches missed.">		if (indexDirParent != null &amp;&amp; !dirs.contains(indexDirParent))</span>
+<span class="nc" id="L221">			dirs.add(indexDirParent);</span>
+<span class="nc" id="L222">		propFile = FileUtil.findFile(dirs, &quot;indexer&quot;, Arrays.asList(&quot;properties&quot;));</span>
+<span class="nc bnc" id="L223" title="All 4 branches missed.">		if (propFile != null &amp;&amp; propFile.canRead())</span>
+<span class="nc" id="L224">			readParametersFromPropertiesFile(propFile);</span>
+
+<span class="nc" id="L226">		File indexTemplateFile = null;</span>
+<span class="nc bnc" id="L227" title="All 2 branches missed.">		if (createNewIndex) {</span>
+<span class="nc" id="L228">			indexTemplateFile = FileUtil.findFile(dirs, &quot;indextemplate&quot;, Arrays.asList(&quot;json&quot;, &quot;yaml&quot;, &quot;yml&quot;));</span>
+		}
+
+<span class="nc bnc" id="L231" title="All 2 branches missed.">		String op = createNewIndex ? &quot;Creating new&quot; : &quot;Appending to&quot;;</span>
+<span class="nc" id="L232">		String strGlob = File.separator;</span>
+<span class="nc bnc" id="L233" title="All 6 branches missed.">		if (glob != null &amp;&amp; glob.length() &gt; 0 &amp;&amp; !glob.equals(&quot;*&quot;)) {</span>
+<span class="nc" id="L234">			strGlob += glob;</span>
+		}
+<span class="nc bnc" id="L236" title="All 2 branches missed.">		System.out.println(op + &quot; index in &quot; + indexDir + File.separator + &quot; from &quot; + inputDir + strGlob +</span>
+		                   (docFormat != null ? &quot; (using format &quot; + docFormat + &quot;)&quot; : &quot;(using autodetected format)&quot;));
+<span class="nc bnc" id="L238" title="All 2 branches missed.">		if (!indexerParam.isEmpty()) {</span>
+<span class="nc" id="L239">			System.out.println(&quot;Indexer parameters:&quot;);</span>
+<span class="nc bnc" id="L240" title="All 2 branches missed.">			for (Map.Entry&lt;String,String&gt; e: indexerParam.entrySet()) {</span>
+<span class="nc" id="L241">				System.out.println(&quot;  &quot; + e.getKey() + &quot;: &quot; + e.getValue());</span>
+<span class="nc" id="L242">			}</span>
+		}
+
+		// Make sure BlackLab can find our format configuration files
+		// (by default, it will already look in $BLACKLAB_CONFIG_DIR/formats, $HOME/.blacklab/formats
+		//  and /etc/blacklab/formats, but we also want it to look in the current dir, the input dir,
+		//  and the parent(s) of the input and index dirs)
+<span class="nc" id="L249">		File currentWorkingDir = new File(System.getProperty(&quot;user.dir&quot;));</span>
+<span class="nc" id="L250">        List&lt;File&gt; formatDirs = new ArrayList&lt;&gt;(Arrays.asList(currentWorkingDir, inputDirParent, inputDir));</span>
+<span class="nc bnc" id="L251" title="All 2 branches missed.">		if (!formatDirs.contains(indexDirParent))</span>
+<span class="nc" id="L252">		    formatDirs.add(indexDirParent);</span>
+
+<span class="nc" id="L254">		DocumentFormats.registerFormatsInDirectories(formatDirs);</span>
+
+<span class="nc bnc" id="L256" title="All 2 branches missed.">		if (docFormat == null) {</span>
+<span class="nc" id="L257">			System.err.println(&quot;No document format given; trying to detect it from the index...&quot;);</span>
+<span class="nc bnc" id="L258" title="All 2 branches missed.">		} else if (docFormat.equals(&quot;teip4&quot;)) {</span>
+<span class="nc" id="L259">			System.err.println(&quot;'teip4' is deprecated, use 'tei' for either TEI P4 or P5.&quot;);</span>
+<span class="nc" id="L260">			docFormat = &quot;tei&quot;;</span>
+		}
+
+		// Create the indexer and index the files
+<span class="nc" id="L264">        DownloadCache.setDownloadAllowed(true); // allow downloading linked (metadata) documents</span>
+<span class="nc bnc" id="L265" title="All 6 branches missed.">		if (!createNewIndex || indexTemplateFile == null || !indexTemplateFile.canRead()) {</span>
+<span class="nc" id="L266">			indexTemplateFile = null;</span>
+		}
+		Indexer indexer;
+		try {
+<span class="nc" id="L270">			indexer = new Indexer(indexDir, createNewIndex, docFormat, indexTemplateFile);</span>
+<span class="nc bnc" id="L271" title="All 2 branches missed.">			if (useThreads)</span>
+<span class="nc" id="L272">				indexer.setUseThreads(true);</span>
+<span class="nc" id="L273">		} catch (DocumentFormatException e1) {</span>
+<span class="nc" id="L274">			System.err.println(e1.getMessage());</span>
+<span class="nc" id="L275">			System.err.println(&quot;Please specify a correct format on the command line.&quot;);</span>
+<span class="nc" id="L276">			usage();</span>
+<span class="nc" id="L277">			return;</span>
+<span class="nc" id="L278">		}</span>
+<span class="nc bnc" id="L279" title="All 2 branches missed.">		if (createNewIndex)</span>
+<span class="nc" id="L280">			indexer.getSearcher().getIndexStructure().setDocumentFormat(docFormat);</span>
+<span class="nc" id="L281">		indexer.setIndexerParam(indexerParam);</span>
+<span class="nc bnc" id="L282" title="All 2 branches missed.">		if (maxDocsToIndex &gt; 0)</span>
+<span class="nc" id="L283">			indexer.setMaxNumberOfDocsToIndex(maxDocsToIndex);</span>
+<span class="nc" id="L284">        indexer.setLinkedFileDirs(linkedFileDirs);</span>
+		try {
+<span class="nc bnc" id="L286" title="All 4 branches missed.">			if (glob.contains(&quot;*&quot;) || glob.contains(&quot;?&quot;)) {</span>
+				// Real wildcard glob
+<span class="nc" id="L288">				indexer.index(inputDir, glob);</span>
+			} else {
+				// Single file.
+<span class="nc" id="L291">				indexer.index(new File(inputDir, glob), &quot;*&quot;);</span>
+			}
+<span class="nc" id="L293">		} catch (Exception e) {</span>
+<span class="nc" id="L294">			System.err.println(&quot;An error occurred, aborting indexing (changes will be rolled back). Error details follow.&quot;);</span>
+<span class="nc" id="L295">			e.printStackTrace();</span>
+<span class="nc" id="L296">			indexer.rollback();</span>
+		} finally {
+			// Close the index.
+<span class="nc" id="L299">			indexer.close();</span>
+<span class="nc" id="L300">		}</span>
+<span class="nc" id="L301">	}</span>
+
+	private static void readParametersFromPropertiesFile(File propFile) {
+<span class="nc" id="L304">		Properties p = readPropertiesFromFile(propFile);</span>
+<span class="nc bnc" id="L305" title="All 2 branches missed.">		for (Map.Entry&lt;Object, Object&gt; e: p.entrySet()) {</span>
+<span class="nc" id="L306">			indexerParam.put(e.getKey().toString(), e.getValue().toString());</span>
+<span class="nc" id="L307">		}</span>
+<span class="nc" id="L308">	}</span>
+
+	private static void commandDelete(File indexDir, String deleteQuery) throws IOException,
+			org.apache.lucene.queryparser.classic.ParseException, CorruptIndexException {
+<span class="nc bnc" id="L312" title="All 2 branches missed.">		if (deleteQuery == null) {</span>
+<span class="nc" id="L313">			System.err.println(&quot;No delete query given.&quot;);</span>
+<span class="nc" id="L314">			usage();</span>
+<span class="nc" id="L315">			return;</span>
+		}
+<span class="nc" id="L317">		Searcher searcher = Searcher.openForWriting(indexDir, false);</span>
+		try {
+<span class="nc" id="L319">			System.out.println(&quot;Doing delete: &quot; + deleteQuery);</span>
+<span class="nc" id="L320">			searcher.delete(LuceneUtil.parseLuceneQuery(deleteQuery, searcher.getAnalyzer(), null));</span>
+		} finally {
+<span class="nc" id="L322">			searcher.close();</span>
+<span class="nc" id="L323">		}</span>
+<span class="nc" id="L324">	}</span>
+
+	private static void usage() {
+<span class="nc" id="L327">		System.err.flush();</span>
+<span class="nc" id="L328">		System.out.flush();</span>
+<span class="nc" id="L329">		System.out</span>
+<span class="nc" id="L330">				.println(&quot;Usage:\n&quot;</span>
+						+ &quot;  IndexTool {add|create} [options] &lt;indexdir&gt; &lt;inputdir&gt; &lt;format&gt;\n&quot;
+						+ &quot;  IndexTool delete &lt;indexdir&gt; &lt;filterQuery&gt;\n&quot;
+						+ &quot;\n&quot;
+						+ &quot;Options:\n&quot;
+						+ &quot;  --maxdocs &lt;n&gt;          Stop after indexing &lt;n&gt; documents\n&quot;
+                        + &quot;  --linked-file-dir &lt;d&gt;  Look in directory &lt;d&gt; for linked (e.g. metadata) files\n&quot;
+                        + &quot;  --[no]threads          Enable/disable multithreaded indexing (experimental)\n&quot;
+                        + &quot;                         Currently disabled by default. Once properly tested,\n&quot;
+                        + &quot;                         we will change the default to enabled.\n&quot;
+                        + &quot;\n&quot;
+                        + &quot;Deprecated options (not needed anymore with .yaml format configs):\n&quot;
+						+ &quot;  --indexparam &lt;file&gt;    Read properties file with parameters for DocIndexer\n&quot;
+						+ &quot;                         (NOTE: even without this option, if the current\n&quot;
+						+ &quot;                         directory, the input or index directory (or its parent)\n&quot;
+						+ &quot;                         contain a file named indexer.properties, these are passed\n&quot;
+						+ &quot;                         to the indexer)\n&quot;
+						+ &quot;  ---&lt;name&gt; &lt;value&gt;      Pass parameter to DocIndexer class\n&quot;
+						+ &quot;  ---meta-&lt;name&gt; &lt;value&gt; Add an extra metadata field to documents indexed.\n&quot;
+						+ &quot;                         You can also add a property named meta-&lt;name&gt; to your\n&quot;
+						+ &quot;                         indexer.properties file. This field is stored untokenized.\n&quot;
+						+ &quot;\n&quot;
+						+ &quot;Available input format configurations:&quot;);
+<span class="nc bnc" id="L353" title="All 2 branches missed.">		for (Format format: DocumentFormats.getFormats()) {</span>
+<span class="nc" id="L354">            String name = format.getId();</span>
+<span class="nc" id="L355">		    String displayName = format.getDisplayName();</span>
+<span class="nc" id="L356">		    String desc = format.getDescription();</span>
+<span class="nc" id="L357">		    String url = format.getHelpUrl();</span>
+<span class="nc bnc" id="L358" title="All 2 branches missed.">		    if (!url.isEmpty())</span>
+<span class="nc" id="L359">		        url = &quot;\n      (see &quot; + url + &quot;)&quot;;</span>
+<span class="nc bnc" id="L360" title="All 2 branches missed.">            if (displayName.length() &gt; 0)</span>
+<span class="nc" id="L361">                displayName = &quot; (&quot; + displayName + &quot;)&quot;;</span>
+<span class="nc bnc" id="L362" title="All 2 branches missed.">            if (desc.length() &gt; 0) {</span>
+<span class="nc" id="L363">                desc = &quot;\n      &quot; + StringUtil.join(StringUtil.wrap(desc, 75), &quot;\n      &quot;);</span>
+            }
+<span class="nc" id="L365">			System.out.println(&quot;  &quot; + name + displayName + desc + url);</span>
+<span class="nc" id="L366">		}</span>
+<span class="nc" id="L367">	}</span>
+
+	/**
+	 * Read Properties from the specified file
+	 *
+	 * @param file
+	 *            the file to read
+	 * @return the Properties read
+	 */
+	public static Properties readPropertiesFromFile(File file) {
+		try {
+<span class="nc bnc" id="L378" title="All 2 branches missed.">			if (!file.isFile()) {</span>
+<span class="nc" id="L379">				throw new IllegalArgumentException(&quot;Property file &quot; + file.getCanonicalPath()</span>
+						+ &quot; does not exist or is not a regular file!&quot;);
+			}
+
+<span class="nc" id="L383">			try (Reader in = new BufferedReader(new InputStreamReader(new FileInputStream(file), &quot;iso-8859-1&quot;))) {</span>
+<span class="nc" id="L384">				Properties properties = new Properties();</span>
+<span class="nc" id="L385">				properties.load(in);</span>
+<span class="nc" id="L386">				return properties;</span>
+<span class="nc bnc" id="L387" title="All 8 branches missed.">			}</span>
+<span class="nc" id="L388">		} catch (Exception e) {</span>
+<span class="nc" id="L389">			throw ExUtil.wrapRuntimeException(e);</span>
+		}
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

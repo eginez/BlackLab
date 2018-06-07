@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NfaStateAndAcyclic.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.fimatch</a> &gt; <span class="el_source">NfaStateAndAcyclic.java</span></div><h1>NfaStateAndAcyclic.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.search.fimatch;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+/**
+ * An AND-node where none of the clauses cycle back to an
+ * earlier node. This can be evaluated more efficiently,
+ * by finding matches for each of the clauses, and then
+ * continuing at nextState from each of the matches found.
+ */
+public class NfaStateAndAcyclic extends NfaState {
+
+	List&lt;NfaState&gt; clauses;
+
+	NfaState nextState;
+
+<span class="fc" id="L22">	public NfaStateAndAcyclic(List&lt;NfaState&gt; andClauses) {</span>
+<span class="fc bfc" id="L23" title="All 2 branches covered.">		for (NfaState clause: andClauses) {</span>
+<span class="fc" id="L24">			clause.finish(new HashSet&lt;NfaState&gt;());</span>
+<span class="fc" id="L25">		}</span>
+<span class="fc" id="L26">		this.clauses = new ArrayList&lt;&gt;(andClauses);</span>
+<span class="fc" id="L27">		this.nextState = null;</span>
+<span class="fc" id="L28">	}</span>
+
+<span class="nc" id="L30">	public NfaStateAndAcyclic() {</span>
+<span class="nc" id="L31">		this.clauses = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L32">		this.nextState = null;</span>
+<span class="nc" id="L33">	}</span>
+
+	@Override
+	public boolean findMatchesInternal(ForwardIndexDocument fiDoc, int pos, int direction, Set&lt;Integer&gt; matchEnds) {
+		// AND state. Find matches for all alternatives.
+<span class="fc" id="L38">		Set&lt;Integer&gt; clausesMatchEnds = null;</span>
+<span class="fc" id="L39">		Set&lt;Integer&gt; matchEndsThisClause = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">		for (NfaState clause: clauses) {</span>
+<span class="fc" id="L41">			matchEndsThisClause.clear();</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">			if (!clause.findMatchesInternal(fiDoc, pos, direction, matchEndsThisClause))</span>
+<span class="fc" id="L43">				return false; // this clause had no hits; short circuit AND</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">			if (clausesMatchEnds == null) {</span>
+				// First matches found
+<span class="fc" id="L46">				clausesMatchEnds = matchEndsThisClause;</span>
+<span class="fc" id="L47">				matchEndsThisClause = new HashSet&lt;&gt;();</span>
+			} else {
+				// Determine intersection with previous matches
+<span class="fc" id="L50">				clausesMatchEnds.retainAll(matchEndsThisClause);</span>
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">				if (clausesMatchEnds.size() == 0)</span>
+<span class="nc" id="L52">					return false; // there are no hits left; short circuit AND</span>
+			}
+<span class="fc" id="L54">		}</span>
+<span class="fc" id="L55">		boolean foundMatch = false;</span>
+<span class="pc bpc" id="L56" title="1 of 2 branches missed.">		if (clausesMatchEnds.size() &gt; 0) {</span>
+			// Continue matching from the matches to our OR clauses
+<span class="fc bfc" id="L58" title="All 2 branches covered.">			for (Integer clauseMatchEnd: clausesMatchEnds) {</span>
+<span class="fc" id="L59">				foundMatch |= nextState.findMatchesInternal(fiDoc, clauseMatchEnd, direction, matchEnds);</span>
+<span class="fc" id="L60">			}</span>
+		}
+<span class="fc" id="L62">		return foundMatch;</span>
+	}
+
+	@Override
+	void fillDangling(NfaState state) {
+<span class="nc bnc" id="L67" title="All 2 branches missed.">		if (nextState == null)</span>
+<span class="nc" id="L68">			nextState = state;</span>
+<span class="nc" id="L69">	}</span>
+
+	@Override
+	NfaStateAndAcyclic copyInternal(Collection&lt;NfaState&gt; dangling, Map&lt;NfaState, NfaState&gt; copiesMade) {
+<span class="nc" id="L73">		NfaStateAndAcyclic copy = new NfaStateAndAcyclic();</span>
+<span class="nc" id="L74">		copiesMade.put(this, copy);</span>
+<span class="nc" id="L75">		List&lt;NfaState&gt; clauseCopies = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L76" title="All 2 branches missed.">		for (NfaState clause: clauses) {</span>
+<span class="nc" id="L77">			clause = clause.copy(null, copiesMade);</span>
+<span class="nc" id="L78">			clauseCopies.add(clause);</span>
+<span class="nc" id="L79">		}</span>
+<span class="nc" id="L80">		copy.clauses.addAll(clauseCopies);</span>
+<span class="nc" id="L81">		copy.nextState = nextState;</span>
+<span class="nc bnc" id="L82" title="All 4 branches missed.">		if (nextState == null &amp;&amp; dangling != null)</span>
+<span class="nc" id="L83">			dangling.add(copy);</span>
+<span class="nc" id="L84">		return copy;</span>
+	}
+
+	@Override
+	public void setNextState(int input, NfaState state) {
+<span class="nc" id="L89">		clauses.set(input, state);</span>
+<span class="nc" id="L90">	}</span>
+
+	@Override
+	public boolean matchesEmptySequence(Set&lt;NfaState&gt; statesVisited) {
+<span class="nc bnc" id="L94" title="All 2 branches missed.">		if (statesVisited.contains(this)) {</span>
+			// We've found a cycle. Stop processing, and just return the
+			// &quot;safest&quot; (least-guarantee) answer. In this case: we can't
+			// guarantee that this DOESN'T match the empty sequence.
+<span class="nc" id="L98">			return true;</span>
+		}
+<span class="nc" id="L100">		statesVisited.add(this);</span>
+<span class="nc bnc" id="L101" title="All 2 branches missed.">		for (NfaState clause: clauses) {</span>
+<span class="nc bnc" id="L102" title="All 2 branches missed.">			if (!clause.matchesEmptySequence(statesVisited))</span>
+<span class="nc" id="L103">				return false;</span>
+<span class="nc" id="L104">		}</span>
+<span class="nc bnc" id="L105" title="All 4 branches missed.">		return nextState == null || nextState.matchesEmptySequence(statesVisited);</span>
+	}
+
+	@Override
+	public boolean hitsAllSameLength(Set&lt;NfaState&gt; statesVisited) {
+<span class="nc bnc" id="L110" title="All 2 branches missed.">		if (statesVisited.contains(this)) {</span>
+			// We've found a cycle. Stop processing, and just return the
+			// &quot;safest&quot; (least-guarantee) answer. In this case: we can't
+			// guarantee that hits are all the same length.
+<span class="nc" id="L114">			return false;</span>
+		}
+<span class="nc" id="L116">		statesVisited.add(this);</span>
+<span class="nc" id="L117">		boolean anyClauseHitsAllSameLength = false;</span>
+<span class="nc bnc" id="L118" title="All 2 branches missed.">		for (NfaState clause: clauses) {</span>
+<span class="nc bnc" id="L119" title="All 2 branches missed.">			if (clause.hitsAllSameLength(statesVisited)) {</span>
+<span class="nc" id="L120">				anyClauseHitsAllSameLength = true;</span>
+<span class="nc" id="L121">				break;</span>
+			}
+<span class="nc" id="L123">		}</span>
+<span class="nc bnc" id="L124" title="All 6 branches missed.">		return anyClauseHitsAllSameLength &amp;&amp; (nextState == null || nextState.hitsAllSameLength(statesVisited));</span>
+	}
+
+	@Override
+	public int hitsLengthMin(Set&lt;NfaState&gt; statesVisited) {
+<span class="nc bnc" id="L129" title="All 2 branches missed.">		if (statesVisited.contains(this)) {</span>
+			// We've found a cycle. Stop processing, and just return the
+			// &quot;safest&quot; (least-guarantee) answer. In this case: the smallest
+			// hit might be 0 long.
+<span class="nc" id="L133">			return 0;</span>
+		}
+<span class="nc" id="L135">		statesVisited.add(this);</span>
+<span class="nc" id="L136">		int hitLengthMin = 0;</span>
+<span class="nc bnc" id="L137" title="All 2 branches missed.">		for (NfaState nextState: clauses) {</span>
+<span class="nc" id="L138">			int i = nextState.hitsLengthMin(statesVisited);</span>
+<span class="nc bnc" id="L139" title="All 2 branches missed.">			if (i &gt; hitLengthMin)</span>
+<span class="nc" id="L140">				hitLengthMin = i;</span>
+<span class="nc" id="L141">		}</span>
+<span class="nc bnc" id="L142" title="All 4 branches missed.">		if (hitLengthMin &lt; Integer.MAX_VALUE &amp;&amp; nextState != null) {</span>
+<span class="nc" id="L143">			hitLengthMin += nextState.hitsLengthMin(statesVisited);</span>
+		}
+<span class="nc" id="L145">		return hitLengthMin;</span>
+	}
+
+	@Override
+	public int hitsLengthMax(Set&lt;NfaState&gt; statesVisited) {
+<span class="nc bnc" id="L150" title="All 2 branches missed.">		if (statesVisited.contains(this)) {</span>
+			// We've found a cycle. Stop processing, and just return the
+			// &quot;safest&quot; (least-guarantee) answer. In this case: the largest
+			// hit might be &quot;infinitely&quot; large.
+<span class="nc" id="L154">			return Integer.MAX_VALUE;</span>
+		}
+<span class="nc" id="L156">		statesVisited.add(this);</span>
+<span class="nc" id="L157">		int hitLengthMax = Integer.MAX_VALUE;</span>
+<span class="nc bnc" id="L158" title="All 2 branches missed.">		for (NfaState nextState: clauses) {</span>
+<span class="nc" id="L159">			int i = nextState.hitsLengthMax(statesVisited);</span>
+<span class="nc bnc" id="L160" title="All 2 branches missed.">			if (i &lt; hitLengthMax)</span>
+<span class="nc" id="L161">				hitLengthMax = i;</span>
+<span class="nc" id="L162">		}</span>
+<span class="nc bnc" id="L163" title="All 2 branches missed.">		if (nextState != null) {</span>
+<span class="nc" id="L164">			hitLengthMax += nextState.hitsLengthMax(statesVisited);</span>
+		}
+<span class="nc" id="L166">		return hitLengthMax;</span>
+	}
+
+	@Override
+	protected String dumpInternal(Map&lt;NfaState, Integer&gt; stateNrs) {
+<span class="nc" id="L171">		StringBuilder b = new StringBuilder();</span>
+<span class="nc bnc" id="L172" title="All 2 branches missed.">		for (NfaState s: clauses) {</span>
+<span class="nc bnc" id="L173" title="All 2 branches missed.">			if (b.length() &gt; 0)</span>
+<span class="nc" id="L174">				b.append(&quot;,&quot;);</span>
+<span class="nc" id="L175">			b.append(dump(s, stateNrs));</span>
+<span class="nc" id="L176">		}</span>
+<span class="nc" id="L177">		return &quot;AND(&quot; + b.toString() + &quot;, &quot; + dump(nextState, stateNrs) + &quot;)&quot;;</span>
+	}
+
+	@Override
+	void lookupPropertyNumbersInternal(ForwardIndexAccessor fiAccessor, Map&lt;NfaState, Boolean&gt; statesVisited) {
+<span class="fc bfc" id="L182" title="All 2 branches covered.">		for (NfaState s: clauses) {</span>
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">			if (s != null)</span>
+<span class="fc" id="L184">				s.lookupPropertyNumbers(fiAccessor, statesVisited);</span>
+<span class="fc" id="L185">		}</span>
+<span class="pc bpc" id="L186" title="1 of 2 branches missed.">		if (nextState != null)</span>
+<span class="fc" id="L187">			nextState.lookupPropertyNumbers(fiAccessor, statesVisited);</span>
+<span class="fc" id="L188">	}</span>
+
+	@Override
+	protected void finishInternal(Set&lt;NfaState&gt; visited) {
+<span class="fc bfc" id="L192" title="All 2 branches covered.">		for (int i = 0; i &lt; clauses.size(); i++) {</span>
+<span class="fc" id="L193">			NfaState s = clauses.get(i);</span>
+<span class="pc bpc" id="L194" title="1 of 2 branches missed.">			if (s == null)</span>
+<span class="nc" id="L195">				clauses.set(i, match());</span>
+			else
+<span class="fc" id="L197">				s.finish(visited);</span>
+		}
+<span class="pc bpc" id="L199" title="1 of 2 branches missed.">		if (nextState == null)</span>
+<span class="fc" id="L200">			nextState = match();</span>
+		else
+<span class="nc" id="L202">			nextState.finish(visited);</span>
+<span class="fc" id="L203">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

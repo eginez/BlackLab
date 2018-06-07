@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SpanQueryConstrained.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">SpanQueryConstrained.java</span></div><h1>SpanQueryConstrained.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.search.lucene;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.index.TermContext;
+import org.apache.lucene.search.IndexSearcher;
+
+import nl.inl.blacklab.search.fimatch.ForwardIndexAccessor;
+import nl.inl.blacklab.search.matchfilter.MatchFilter;
+
+public class SpanQueryConstrained extends BLSpanQueryAbstract {
+
+	MatchFilter constraint;
+
+	ForwardIndexAccessor fiAccessor;
+
+	public SpanQueryConstrained(BLSpanQuery clause, MatchFilter constraint, ForwardIndexAccessor fiAccessor) {
+<span class="fc" id="L24">		super(BLSpanQuery.ensureSortedUnique(clause));</span>
+<span class="fc" id="L25">		this.constraint = constraint;</span>
+<span class="fc" id="L26">		this.fiAccessor = fiAccessor;</span>
+<span class="fc" id="L27">	}</span>
+
+	@Override
+	public String toString(String field) {
+<span class="fc" id="L31">		return &quot;CONSTRAINT(&quot; + clauses.get(0) + &quot;, &quot; + constraint + &quot;)&quot;;</span>
+	}
+
+	@Override
+	public BLSpanQuery rewrite(IndexReader reader) throws IOException {
+<span class="fc" id="L36">		List&lt;BLSpanQuery&gt; cl = rewriteClauses(reader);</span>
+<span class="fc" id="L37">		MatchFilter rewrittenConstraint = constraint.rewrite();</span>
+<span class="pc bpc" id="L38" title="1 of 4 branches missed.">		if (cl == null &amp;&amp; rewrittenConstraint == constraint)</span>
+<span class="nc" id="L39">			return this;</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">		if (cl == null)</span>
+<span class="fc" id="L41">			cl = clauses;</span>
+<span class="fc" id="L42">		return new SpanQueryConstrained(cl.get(0), rewrittenConstraint, fiAccessor);</span>
+	}
+
+	@Override
+	public BLSpanWeight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
+<span class="fc" id="L47">		BLSpanWeight prodWeight = clauses.get(0).createWeight(searcher, needsScores);</span>
+<span class="pc bpc" id="L48" title="1 of 2 branches missed.">		Map&lt;Term, TermContext&gt; contexts = needsScores ? getTermContexts(prodWeight) : null;</span>
+<span class="fc" id="L49">		constraint.lookupPropertyIndices(fiAccessor);</span>
+<span class="fc" id="L50">		return new SpanWeightConstrained(prodWeight, constraint, searcher, contexts);</span>
+	}
+
+	class SpanWeightConstrained extends BLSpanWeight {
+
+		final BLSpanWeight prodWeight;
+
+		private MatchFilter constraint;
+
+		public SpanWeightConstrained(BLSpanWeight prodWeight2, MatchFilter constraint, IndexSearcher searcher,
+<span class="fc" id="L60">				Map&lt;Term, TermContext&gt; contexts) throws IOException {</span>
+<span class="fc" id="L61">			super(SpanQueryConstrained.this, searcher, contexts);</span>
+<span class="fc" id="L62">			this.prodWeight = prodWeight2;</span>
+<span class="fc" id="L63">			this.constraint = constraint;</span>
+<span class="fc" id="L64">		}</span>
+
+		@Override
+		public void extractTerms(Set&lt;Term&gt; terms) {
+<span class="fc" id="L68">			prodWeight.extractTerms(terms);</span>
+<span class="fc" id="L69">		}</span>
+
+		@Override
+		public void extractTermContexts(Map&lt;Term, TermContext&gt; contexts) {
+<span class="nc" id="L73">			prodWeight.extractTermContexts(contexts);</span>
+<span class="nc" id="L74">		}</span>
+
+		@Override
+		public BLSpans getSpans(final LeafReaderContext context, Postings requiredPostings) throws IOException {
+<span class="fc" id="L78">			BLSpans spansProd = prodWeight.getSpans(context, requiredPostings);</span>
+<span class="pc bpc" id="L79" title="1 of 2 branches missed.">			if (spansProd == null)</span>
+<span class="nc" id="L80">				return null;</span>
+<span class="fc" id="L81">			return new SpansConstrained(spansProd, constraint, fiAccessor.getForwardIndexAccessorLeafReader(context.reader()));</span>
+		}
+	}
+
+	@Override
+	public boolean hitsAllSameLength() {
+<span class="nc" id="L87">		return clauses.get(0).hitsAllSameLength();</span>
+	}
+
+	@Override
+	public int hitsLengthMin() {
+<span class="nc" id="L92">		return clauses.get(0).hitsLengthMin();</span>
+	}
+
+	@Override
+	public int hitsLengthMax() {
+<span class="nc" id="L97">		return clauses.get(0).hitsLengthMax();</span>
+	}
+
+	@Override
+	public boolean hitsEndPointSorted() {
+<span class="nc" id="L102">		return clauses.get(0).hitsEndPointSorted();</span>
+	}
+
+	@Override
+	public boolean hitsStartPointSorted() {
+<span class="fc" id="L107">		return clauses.get(0).hitsStartPointSorted();</span>
+	}
+
+	@Override
+	public boolean hitsHaveUniqueStart() {
+<span class="nc" id="L112">		return clauses.get(0).hitsHaveUniqueStart();</span>
+	}
+
+	@Override
+	public boolean hitsHaveUniqueEnd() {
+<span class="nc" id="L117">		return clauses.get(0).hitsHaveUniqueEnd();</span>
+	}
+
+	@Override
+	public boolean hitsAreUnique() {
+<span class="fc" id="L122">		return clauses.get(0).hitsAreUnique();</span>
+	}
+
+	@Override
+	public long reverseMatchingCost(IndexReader reader) {
+<span class="nc" id="L127">		return clauses.get(0).reverseMatchingCost(reader);</span>
+	}
+
+	@Override
+	public int forwardMatchingCost() {
+<span class="nc" id="L132">		return clauses.get(0).forwardMatchingCost();</span>
+	}
+
+	@Override
+	public String getRealField() {
+<span class="nc" id="L137">		return clauses.get(0).getRealField();</span>
+	}
+
+	@Override
+	public int hashCode() {
+<span class="nc" id="L142">		final int prime = 31;</span>
+<span class="nc" id="L143">		int result = super.hashCode();</span>
+<span class="nc bnc" id="L144" title="All 2 branches missed.">		result = prime * result + ((constraint == null) ? 0 : constraint.hashCode());</span>
+<span class="nc" id="L145">		return result;</span>
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+<span class="nc bnc" id="L150" title="All 2 branches missed.">		if (this == obj)</span>
+<span class="nc" id="L151">			return true;</span>
+<span class="nc bnc" id="L152" title="All 2 branches missed.">		if (!super.equals(obj))</span>
+<span class="nc" id="L153">			return false;</span>
+<span class="nc bnc" id="L154" title="All 2 branches missed.">		if (getClass() != obj.getClass())</span>
+<span class="nc" id="L155">			return false;</span>
+<span class="nc" id="L156">		SpanQueryConstrained other = (SpanQueryConstrained) obj;</span>
+<span class="nc bnc" id="L157" title="All 2 branches missed.">		if (constraint == null) {</span>
+<span class="nc bnc" id="L158" title="All 2 branches missed.">			if (other.constraint != null)</span>
+<span class="nc" id="L159">				return false;</span>
+<span class="nc bnc" id="L160" title="All 2 branches missed.">		} else if (!constraint.equals(other.constraint))</span>
+<span class="nc" id="L161">			return false;</span>
+<span class="nc" id="L162">		return true;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

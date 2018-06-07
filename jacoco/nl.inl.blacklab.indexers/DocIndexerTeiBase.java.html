@@ -1,0 +1,298 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DocIndexerTeiBase.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.indexers</a> &gt; <span class="el_source">DocIndexerTeiBase.java</span></div><h1>DocIndexerTeiBase.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.indexers;
+
+import java.io.Reader;
+
+import org.apache.lucene.document.Document;
+import org.xml.sax.Attributes;
+
+import nl.inl.blacklab.index.DocIndexerXmlHandlers;
+import nl.inl.blacklab.index.HookableSaxHandler.ElementHandler;
+import nl.inl.blacklab.index.Indexer;
+import nl.inl.blacklab.index.complex.ComplexFieldProperty;
+import nl.inl.util.StringUtil;
+
+/**
+ * Index a TEI P4/P5 file.
+ * (Abstract base class for different TEI variants)
+ */
+public abstract class DocIndexerTeiBase extends DocIndexerXmlHandlers {
+
+	/** If true, we are inside a listBibl element where we
+	 *  should capture metadata fields (interpGrp/interp) */
+<span class="nc" id="L37">	boolean captureMetadata = false;</span>
+
+	/** Value of the type attribute of the interpGrp we're in (or null) */
+	String interpGrpType;
+
+	boolean hasLemma;
+
+	String indexLemmaAs;
+
+	boolean hasType;
+
+	String indexTypeAs;
+
+	boolean hasFunction;
+
+	String indexFunctionAs;
+
+	String contentElement;
+
+	@SuppressWarnings(&quot;deprecation&quot;)
+    public DocIndexerTeiBase(Indexer indexer, String fileName, Reader reader, String contentElement, boolean defaultToPosInTypeAttribute) {
+<span class="nc" id="L58">		super(indexer, fileName, reader);</span>
+
+<span class="nc" id="L60">		this.contentElement = contentElement;</span>
+
+		// Add some extra properties
+<span class="nc" id="L63">		hasLemma = getParameter(&quot;hasAttr_lemma&quot;, true);</span>
+<span class="nc" id="L64">		indexLemmaAs = getParameter(&quot;attrPropName_lemma&quot;, &quot;lemma&quot;);</span>
+
+<span class="nc bnc" id="L66" title="All 2 branches missed.">		if (defaultToPosInTypeAttribute) {</span>
+			// Default to &quot;type&quot; attribute containing PoS (unless changed via parameters)
+<span class="nc" id="L68">			hasType  = getParameter(&quot;hasAttr_type&quot;, true);</span>
+<span class="nc" id="L69">			indexTypeAs = getParameter(&quot;attrPropName_type&quot;, &quot;pos&quot;);</span>
+<span class="nc" id="L70">			hasFunction = getParameter(&quot;hasAttr_function&quot;, false);</span>
+<span class="nc" id="L71">			indexFunctionAs = getParameter(&quot;attrPropName_function&quot;, &quot;function&quot;);</span>
+		} else {
+			// Default to &quot;function&quot; attribute containing PoS (unless changed via parameters)
+<span class="nc" id="L74">			hasType  = getParameter(&quot;hasAttr_type&quot;, false);</span>
+<span class="nc" id="L75">			indexTypeAs = getParameter(&quot;attrPropName_type&quot;, &quot;type&quot;);</span>
+<span class="nc" id="L76">			hasFunction = getParameter(&quot;hasAttr_function&quot;, true);</span>
+<span class="nc" id="L77">			indexFunctionAs = getParameter(&quot;attrPropName_function&quot;, &quot;pos&quot;);</span>
+		}
+
+<span class="nc" id="L80">		init();</span>
+
+<span class="nc" id="L82">	}</span>
+
+	public void init() {
+
+		// Get handles to the default properties (the main one &amp; punct)
+<span class="nc" id="L87">		final ComplexFieldProperty propMain = getMainProperty();</span>
+<span class="nc" id="L88">		final ComplexFieldProperty propPunct = getPropPunct();</span>
+
+<span class="nc bnc" id="L90" title="All 2 branches missed.">		final ComplexFieldProperty propLemma = hasLemma ? addProperty(indexLemmaAs) : null;</span>
+<span class="nc bnc" id="L91" title="All 2 branches missed.">		final ComplexFieldProperty propType = hasType ? addProperty(indexTypeAs) : null;</span>
+<span class="nc bnc" id="L92" title="All 2 branches missed.">		final ComplexFieldProperty propFunction = hasFunction ? addProperty(indexFunctionAs) : null;</span>
+
+		// Doc element: the individual documents to index
+		// Note that we add handlers for both TEI and TEI.2, to
+		// handle both TEI P5 and P4 files.
+<span class="nc" id="L97">		DocumentElementHandler documentElementHandler = new DocumentElementHandler() {</span>
+
+			@Override
+			public void endElement(String uri, String localName, String qName) {
+
+				// Combine levels 1 &amp; 2 of author and title field for easier
+				// searching and displaying
+<span class="nc" id="L104">				combineAuthorAndTitleFields();</span>
+
+<span class="nc" id="L106">				super.endElement(uri, localName, qName);</span>
+<span class="nc" id="L107">			}</span>
+
+		};
+<span class="nc" id="L110">		addHandler(&quot;TEI&quot;, documentElementHandler);</span>
+<span class="nc" id="L111">		addHandler(&quot;TEI.2&quot;, documentElementHandler);</span>
+
+		// Content element: the main text contents.
+		// We use the body element by default, but a subclass can change this default by
+		// calling superconstructor with extra param, see DocIndexerTeiText.
+		//
+		// This handler clears captured character content at the beginning to start afresh.
+<span class="nc" id="L118">		final ElementHandler body = addHandler(contentElement, new ElementHandler() {</span>
+			@Override
+			public void startElement(String uri, String localName, String qName,
+					Attributes attributes) {
+<span class="nc" id="L122">				consumeCharacterContent(); // clear it to capture punctuation and words</span>
+<span class="nc" id="L123">			}</span>
+
+			@Override
+			public void endElement(String uri, String localName, String qName) {
+
+				// Before ending the document, add the final bit of punctuation.
+<span class="nc" id="L129">				propPunct.addValue(StringUtil.normalizeWhitespace(consumeCharacterContent()));</span>
+
+<span class="nc" id="L131">				super.endElement(uri, localName, qName);</span>
+<span class="nc" id="L132">			}</span>
+
+
+		});
+
+		// listBibl element (metadata): keep track of id attribute
+<span class="nc" id="L138">		addHandler(&quot;listBibl&quot;, new ElementHandler() {</span>
+
+			@Override
+			public void startElement(String uri, String localName, String qName,
+					Attributes attributes) {
+<span class="nc" id="L143">				consumeCharacterContent(); // clear it to capture punctuation and words</span>
+<span class="nc" id="L144">				String listBiblId = attributes.getValue(&quot;id&quot;);</span>
+				@SuppressWarnings(&quot;deprecation&quot;)
+<span class="nc" id="L146">                String listBiblIdToCapture = getParameter(&quot;listBiblIdToCapture&quot;, &quot;inlMetadata&quot;); // TODO: remove INL-specific stuff</span>
+<span class="nc bnc" id="L147" title="All 4 branches missed.">				captureMetadata = listBiblId != null &amp;&amp; listBiblId.equals(listBiblIdToCapture);</span>
+<span class="nc" id="L148">			}</span>
+
+			@Override
+			public void endElement(String uri, String localName, String qName) {
+<span class="nc" id="L152">				captureMetadata = false;</span>
+<span class="nc" id="L153">			}</span>
+		});
+
+		// interpGrp element: metadata category
+<span class="nc" id="L157">		addHandler(&quot;interpGrp&quot;, new ElementHandler() {</span>
+			@Override
+			public void startElement(String uri, String localName, String qName,
+					Attributes attributes) {
+<span class="nc" id="L161">				consumeCharacterContent(); // clear it to capture punctuation and words</span>
+<span class="nc" id="L162">				interpGrpType = attributes.getValue(&quot;type&quot;);</span>
+<span class="nc bnc" id="L163" title="All 2 branches missed.">				if (interpGrpType == null)</span>
+<span class="nc" id="L164">					interpGrpType = &quot;&quot;;</span>
+<span class="nc" id="L165">			}</span>
+
+			@Override
+			public void endElement(String uri, String localName, String qName) {
+<span class="nc" id="L169">				interpGrpType = null;</span>
+<span class="nc" id="L170">			}</span>
+		});
+
+		// interp element: metadata value
+<span class="nc" id="L174">		addHandler(&quot;interp&quot;, new ElementHandler() {</span>
+			@Override
+			public void startElement(String uri, String localName, String qName,
+					Attributes attributes) {
+<span class="nc bnc" id="L178" title="All 4 branches missed.">				if (!captureMetadata || interpGrpType == null)</span>
+<span class="nc" id="L179">					return;</span>
+<span class="nc" id="L180">				String value = attributes.getValue(&quot;value&quot;);</span>
+<span class="nc bnc" id="L181" title="All 2 branches missed.">				if (value == null)</span>
+<span class="nc" id="L182">					value = &quot;&quot;;</span>
+<span class="nc" id="L183">				addMetadataField(interpGrpType, value);</span>
+<span class="nc" id="L184">			}</span>
+
+		});
+
+		// Word elements: index as main contents
+<span class="nc" id="L189">		addHandler(&quot;w&quot;, new WordHandlerBase() {</span>
+
+			@Override
+			public void startElement(String uri, String localName, String qName,
+					Attributes attributes) {
+<span class="nc bnc" id="L194" title="All 2 branches missed.">				if (!body.insideElement())</span>
+<span class="nc" id="L195">					return;</span>
+<span class="nc" id="L196">				super.startElement(uri, localName, qName, attributes);</span>
+
+				// Determine headword and part of speech from the attributes
+<span class="nc bnc" id="L199" title="All 2 branches missed.">				if (hasLemma) {</span>
+<span class="nc" id="L200">					String lemma = attributes.getValue(&quot;lemma&quot;);</span>
+<span class="nc bnc" id="L201" title="All 2 branches missed.">					if (lemma == null) {</span>
+<span class="nc" id="L202">						lemma = &quot;&quot;;</span>
+					}
+<span class="nc" id="L204">					propLemma.addValue(lemma);</span>
+				}
+<span class="nc bnc" id="L206" title="All 2 branches missed.">				if (hasType) {</span>
+<span class="nc" id="L207">					String pos = attributes.getValue(&quot;type&quot;);</span>
+<span class="nc bnc" id="L208" title="All 2 branches missed.">					if (pos == null)</span>
+<span class="nc" id="L209">						pos = &quot;?&quot;;</span>
+<span class="nc" id="L210">					propType.addValue(pos);</span>
+				}
+<span class="nc bnc" id="L212" title="All 2 branches missed.">				if (hasFunction) {</span>
+<span class="nc" id="L213">					String func = attributes.getValue(&quot;function&quot;);</span>
+<span class="nc bnc" id="L214" title="All 2 branches missed.">					if (func == null)</span>
+<span class="nc" id="L215">						func = &quot;?&quot;;</span>
+<span class="nc" id="L216">					propFunction.addValue(func);</span>
+				}
+
+				// Add punctuation
+<span class="nc" id="L220">				propPunct.addValue(StringUtil.normalizeWhitespace(consumeCharacterContent()));</span>
+<span class="nc" id="L221">			}</span>
+
+			@Override
+			public void endElement(String uri, String localName, String qName) {
+<span class="nc bnc" id="L225" title="All 2 branches missed.">				if (!body.insideElement())</span>
+<span class="nc" id="L226">					return;</span>
+<span class="nc" id="L227">				super.endElement(uri, localName, qName);</span>
+<span class="nc" id="L228">				propMain.addValue(consumeCharacterContent());</span>
+<span class="nc" id="L229">			}</span>
+
+		});
+
+		// Sentence tags: index as tags in the content (only inside body element)
+<span class="nc" id="L234">		addHandler(&quot;s&quot;, new InlineTagHandler() {</span>
+
+			@Override
+			public void startElement(String uri, String localName, String qName,
+					Attributes attributes) {
+<span class="nc bnc" id="L239" title="All 2 branches missed.">				if (body.insideElement())</span>
+<span class="nc" id="L240">					super.startElement(uri, localName, qName, attributes);</span>
+<span class="nc" id="L241">			}</span>
+
+			@Override
+			public void endElement(String uri, String localName, String qName) {
+<span class="nc bnc" id="L245" title="All 2 branches missed.">				if (body.insideElement())</span>
+<span class="nc" id="L246">					super.endElement(uri, localName, qName);</span>
+<span class="nc" id="L247">			}</span>
+
+		});
+
+<span class="nc" id="L251">	}</span>
+
+	/**
+	 * Make author and authorCombined fields, which allow easier searching thatn
+	 * with authorLevel1 and/or authorLevel2 separately.
+	 */
+	void combineAuthorAndTitleFields() {
+<span class="nc" id="L258">		Document myLuceneDoc = getCurrentLuceneDoc();</span>
+<span class="nc" id="L259">		String author = myLuceneDoc.get(&quot;authorLevel1&quot;);</span>
+<span class="nc" id="L260">		String authorLevel2 = myLuceneDoc.get(&quot;authorLevel2&quot;);</span>
+<span class="nc bnc" id="L261" title="All 4 branches missed.">		if (author != null || authorLevel2 != null) {</span>
+			// Make author field, which is authorLevel1 or authorLevel2 if the first is empty
+			// Also make authorCombined, which is an indexed field combining the two levels (for searching).
+<span class="nc bnc" id="L264" title="All 2 branches missed.">			if (author == null)</span>
+<span class="nc" id="L265">				author = &quot;&quot;;</span>
+<span class="nc bnc" id="L266" title="All 2 branches missed.">			if (authorLevel2 == null)</span>
+<span class="nc" id="L267">				authorLevel2 = &quot;&quot;;</span>
+<span class="nc bnc" id="L268" title="All 2 branches missed.">			if (author.isEmpty()) {</span>
+<span class="nc" id="L269">				author = authorLevel2;</span>
+<span class="nc" id="L270">				authorLevel2 = &quot;&quot;;</span>
+			}
+<span class="nc" id="L272">			String authorCombined = author + &quot; &quot; + authorLevel2;</span>
+<span class="nc" id="L273">			addMetadataField(&quot;author&quot;, author);</span>
+<span class="nc" id="L274">            addMetadataField(&quot;authorCombined&quot;, authorCombined);</span>
+		}
+
+<span class="nc" id="L277">		String title = myLuceneDoc.get(&quot;titleLevel1&quot;);</span>
+<span class="nc" id="L278">		String titleLevel2 = myLuceneDoc.get(&quot;titleLevel2&quot;);</span>
+<span class="nc bnc" id="L279" title="All 4 branches missed.">		if (title != null || titleLevel2 != null) {</span>
+			// Make title field, which is titleLevel1 or titleLevel2 if the first is empty
+			// Also make titleCombined, which is an indexed field combining the two levels (for searching).
+<span class="nc bnc" id="L282" title="All 2 branches missed.">			if (title == null)</span>
+<span class="nc" id="L283">				title = &quot;&quot;;</span>
+<span class="nc bnc" id="L284" title="All 2 branches missed.">			if (titleLevel2 == null)</span>
+<span class="nc" id="L285">				titleLevel2 = &quot;&quot;;</span>
+<span class="nc bnc" id="L286" title="All 2 branches missed.">			if (title.isEmpty()) {</span>
+<span class="nc" id="L287">				title = titleLevel2;</span>
+<span class="nc" id="L288">				titleLevel2 = &quot;&quot;;</span>
+			}
+<span class="nc" id="L290">			String titleCombined = title + &quot; &quot; + titleLevel2;</span>
+<span class="nc" id="L291">			addMetadataField(&quot;title&quot;, title);</span>
+<span class="nc" id="L292">			addMetadataField(&quot;titleCombined&quot;, titleCombined);</span>
+		}
+<span class="nc" id="L294">	}</span>
+
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

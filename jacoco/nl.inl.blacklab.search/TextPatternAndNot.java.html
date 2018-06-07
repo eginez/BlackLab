@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TextPatternAndNot.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search</a> &gt; <span class="el_source">TextPatternAndNot.java</span></div><h1>TextPatternAndNot.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import nl.inl.blacklab.search.lucene.BLSpanQuery;
+import nl.inl.blacklab.search.lucene.SpanQueryAndNot;
+
+/**
+ * AND (NOT) query for combining different properties from a complex field.
+ *
+ * Note that when generating a SpanQuery, the Span start and end are also matched! Therefore only
+ * two hits in the same document at the same start and end position will produce a match. This is
+ * useful for e.g. selecting adjectives that start with a 'b' (queries on different property
+ * (sub)fields that should apply to the same word).
+ */
+public class TextPatternAndNot extends TextPattern {
+
+<span class="pc" id="L34">	protected List&lt;TextPattern&gt; include = new ArrayList&lt;&gt;();</span>
+
+<span class="pc" id="L36">	protected List&lt;TextPattern&gt; exclude = new ArrayList&lt;&gt;();</span>
+
+<span class="fc" id="L38">	public TextPatternAndNot(TextPattern... clauses) {</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">		for (TextPattern clause : clauses) {</span>
+<span class="fc" id="L40">			this.include.add(clause);</span>
+		}
+<span class="fc" id="L42">	}</span>
+
+<span class="nc" id="L44">	public TextPatternAndNot(List&lt;TextPattern&gt; includeClauses, List&lt;TextPattern&gt; excludeClauses) {</span>
+<span class="nc" id="L45">		include.addAll(includeClauses);</span>
+<span class="nc" id="L46">		exclude.addAll(excludeClauses);</span>
+<span class="nc" id="L47">	}</span>
+
+	@Override
+	public BLSpanQuery translate(QueryExecutionContext context) {
+<span class="fc" id="L51">		List&lt;BLSpanQuery&gt; chResults = new ArrayList&lt;&gt;(include.size());</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">		for (TextPattern cl : include) {</span>
+<span class="fc" id="L53">			chResults.add(cl.translate(context));</span>
+<span class="fc" id="L54">		}</span>
+<span class="fc" id="L55">		List&lt;BLSpanQuery&gt; chResultsNot = new ArrayList&lt;&gt;(exclude.size());</span>
+<span class="pc bpc" id="L56" title="1 of 2 branches missed.">		for (TextPattern cl : exclude) {</span>
+<span class="nc" id="L57">			chResultsNot.add(cl.translate(context));</span>
+<span class="nc" id="L58">		}</span>
+<span class="fc" id="L59">		return new SpanQueryAndNot(chResults, chResultsNot);</span>
+	}
+
+	@Override
+	public Object clone() {
+		try {
+<span class="nc" id="L65">			TextPatternAndNot clone = (TextPatternAndNot) super.clone();</span>
+
+			// copy list of children so we can modify it independently
+<span class="nc" id="L68">			clone.include = new ArrayList&lt;&gt;(include);</span>
+<span class="nc" id="L69">			clone.exclude = new ArrayList&lt;&gt;(exclude);</span>
+
+<span class="nc" id="L71">			return clone;</span>
+<span class="nc" id="L72">		} catch (CloneNotSupportedException e) {</span>
+<span class="nc" id="L73">			throw new UnsupportedOperationException(&quot;Clone not supported: &quot; + e.getMessage());</span>
+		}
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+<span class="nc bnc" id="L79" title="All 2 branches missed.">		if (obj instanceof TextPatternAndNot) {</span>
+<span class="nc bnc" id="L80" title="All 2 branches missed.">			return include.equals(((TextPatternAndNot) obj).include) &amp;&amp;</span>
+<span class="nc bnc" id="L81" title="All 2 branches missed.">					exclude.equals(((TextPatternAndNot) obj).exclude);</span>
+		}
+<span class="nc" id="L83">		return false;</span>
+	}
+
+	@Override
+	public int hashCode() {
+<span class="nc" id="L88">		return include.hashCode() + exclude.hashCode();</span>
+	}
+
+	@Deprecated
+	@Override
+	public String toString(QueryExecutionContext context) {
+<span class="nc bnc" id="L94" title="All 2 branches missed.">		if (exclude.isEmpty())</span>
+<span class="nc" id="L95">			return &quot;AND(&quot; + clausesToString(include, context) + &quot;)&quot;;</span>
+<span class="nc" id="L96">		return &quot;ANDNOT([&quot; + clausesToString(include, context) + &quot;], [&quot; + clausesToString(exclude, context) + &quot;])&quot;;</span>
+	}
+
+	@Override
+	public String toString() {
+<span class="nc bnc" id="L101" title="All 2 branches missed.">		if (exclude.isEmpty())</span>
+<span class="nc" id="L102">			return &quot;AND(&quot; + clausesToString(include) + &quot;)&quot;;</span>
+<span class="nc" id="L103">		return &quot;ANDNOT([&quot; + clausesToString(include) + &quot;], [&quot; + clausesToString(exclude) + &quot;])&quot;;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

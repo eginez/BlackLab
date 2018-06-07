@@ -76,7 +76,7 @@
 <a class="jxr_linenumber" name="L68" href="#L68">68</a>  		<em class="jxr_comment">// Use a BlackLabSpanTermQuery instead of default Lucene one</em>
 <a class="jxr_linenumber" name="L69" href="#L69">69</a>  		<em class="jxr_comment">// because we need to override getField() to only return the base field name,</em>
 <a class="jxr_linenumber" name="L70" href="#L70">70</a>  		<em class="jxr_comment">// not the complete field name with the property.</em>
-<a class="jxr_linenumber" name="L71" href="#L71">71</a>  		clauses = <strong class="jxr_keyword">new</strong> ArrayList&lt;BLSpanQuery&gt;(Arrays.asList(
+<a class="jxr_linenumber" name="L71" href="#L71">71</a>  		clauses = <strong class="jxr_keyword">new</strong> ArrayList&lt;&gt;(Arrays.asList(
 <a class="jxr_linenumber" name="L72" href="#L72">72</a>  			<strong class="jxr_keyword">new</strong> <a href="../../../../../nl/inl/blacklab/search/lucene/BLSpanTermQuery.html">BLSpanTermQuery</a>(<strong class="jxr_keyword">new</strong> Term(startTagFieldName, tagName)),
 <a class="jxr_linenumber" name="L73" href="#L73">73</a>  			<strong class="jxr_keyword">new</strong> <a href="../../../../../nl/inl/blacklab/search/lucene/BLSpanTermQuery.html">BLSpanTermQuery</a>(<strong class="jxr_keyword">new</strong> Term(endTagFieldName, tagName))
 <a class="jxr_linenumber" name="L74" href="#L74">74</a>  		));
@@ -207,6 +207,6 @@
 <a class="jxr_linenumber" name="L199" href="#L199">199</a> }
 </pre>
 <hr/>
-<div id="footer">Copyright &#169; 2017 <a href="http://www.inl.nl">Instituut voor Nederlandse Taal (INT)</a>. All rights reserved.</div>
+<div id="footer">Copyright &#169; 2018 <a href="http://www.inl.nl">Instituut voor Nederlandse Taal (INT)</a>. All rights reserved.</div>
 </body>
 </html>

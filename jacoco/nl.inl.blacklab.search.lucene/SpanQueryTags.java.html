@@ -1,0 +1,226 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SpanQueryTags.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">SpanQueryTags.java</span></div><h1>SpanQueryTags.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.lucene;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.index.TermContext;
+import org.apache.lucene.search.IndexSearcher;
+import nl.inl.blacklab.index.complex.ComplexFieldUtil;
+import nl.inl.util.StringUtil;
+
+/**
+ *
+ * Returns spans corresponding to a certain element (tag) type.
+ *
+ * For example, SpanQueryTags(&quot;ne&quot;) will give us spans for all the &lt;ne&gt; elements in the document.
+ */
+public class SpanQueryTags extends BLSpanQuery {
+
+	BLSpanTermQuery clause;
+
+	private String tagName;
+
+	private String baseFieldName;
+
+	private Map&lt;String, String&gt; attr;
+
+	private String startTagFieldName;
+
+<span class="fc" id="L50">	public SpanQueryTags(String startTagFieldName, String tagName, Map&lt;String, String&gt; attr) {</span>
+<span class="fc" id="L51">		this.tagName = tagName;</span>
+<span class="fc" id="L52">		baseFieldName = ComplexFieldUtil.getBaseName(startTagFieldName);</span>
+<span class="fc" id="L53">		this.startTagFieldName = startTagFieldName;</span>
+<span class="fc" id="L54">		this.clause = new BLSpanTermQuery(new Term(startTagFieldName, tagName));</span>
+<span class="fc bfc" id="L55" title="All 4 branches covered.">		this.attr = attr != null &amp;&amp; attr.isEmpty() ? null : attr;</span>
+<span class="fc" id="L56">	}</span>
+
+	@Override
+	public BLSpanQuery rewrite(IndexReader reader) throws IOException {
+<span class="fc bfc" id="L60" title="All 2 branches covered.">		if (attr == null)</span>
+<span class="fc" id="L61">			return this;</span>
+
+		// Construct attribute filters
+<span class="fc" id="L64">		List&lt;BLSpanQuery&gt; attrFilters = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">		for (Map.Entry&lt;String,String&gt; e: attr.entrySet()) {</span>
+<span class="fc" id="L66">			String value = &quot;@&quot; + e.getKey() + &quot;__&quot; + e.getValue();</span>
+<span class="fc" id="L67">			attrFilters.add(new BLSpanTermQuery(new Term(startTagFieldName, value)));</span>
+<span class="fc" id="L68">		}</span>
+
+		// Filter the tags
+		// (NOTE: only works for start tags and full elements because attribute values
+		//  are indexed at the start tag!)
+		BLSpanQuery filter;
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">		if (attrFilters.size() == 1)</span>
+<span class="fc" id="L75">			filter = attrFilters.get(0);</span>
+		else
+<span class="nc" id="L77">			filter = new SpanQueryAnd(attrFilters);</span>
+<span class="fc" id="L78">		return new SpanQueryPositionFilter(new SpanQueryTags(startTagFieldName, tagName, null), filter, SpanQueryPositionFilter.Operation.STARTS_AT, false);</span>
+	}
+
+	@Override
+	public BLSpanWeight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">		if (attr != null)</span>
+<span class="nc" id="L84">			throw new RuntimeException(&quot;Query should've been rewritten! (attr != null)&quot;);</span>
+<span class="fc" id="L85">		BLSpanWeight weight = clause.createWeight(searcher, needsScores);</span>
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">		return new SpanWeightTags(weight, searcher, needsScores ? getTermContexts(weight) : null);</span>
+	}
+
+	class SpanWeightTags extends BLSpanWeight {
+
+		final BLSpanWeight weight;
+
+<span class="fc" id="L93">		public SpanWeightTags(BLSpanWeight weight, IndexSearcher searcher, Map&lt;Term, TermContext&gt; terms) throws IOException {</span>
+<span class="fc" id="L94">			super(SpanQueryTags.this, searcher, terms);</span>
+<span class="fc" id="L95">			this.weight = weight;</span>
+<span class="fc" id="L96">		}</span>
+
+		@Override
+		public void extractTerms(Set&lt;Term&gt; terms) {
+<span class="fc" id="L100">			weight.extractTerms(terms);</span>
+<span class="fc" id="L101">		}</span>
+
+		@Override
+		public void extractTermContexts(Map&lt;Term, TermContext&gt; contexts) {
+<span class="nc" id="L105">			weight.extractTermContexts(contexts);</span>
+<span class="nc" id="L106">		}</span>
+
+		@Override
+		public BLSpans getSpans(final LeafReaderContext context, Postings requiredPostings) throws IOException {
+<span class="fc" id="L110">			BLSpans startTags = weight.getSpans(context, requiredPostings);</span>
+<span class="pc bpc" id="L111" title="1 of 2 branches missed.">			if (startTags == null)</span>
+<span class="nc" id="L112">				return null;</span>
+<span class="fc" id="L113">			return new SpansTags(startTags);</span>
+		}
+	}
+
+	@Override
+	public String toString(String field) {
+<span class="pc bpc" id="L119" title="1 of 4 branches missed.">		if (attr != null &amp;&amp; !attr.isEmpty())</span>
+<span class="fc" id="L120">			return &quot;TAGS(&quot; + tagName + &quot;, &quot; + StringUtil.join(attr) + &quot;)&quot;;</span>
+<span class="fc" id="L121">		return &quot;TAGS(&quot; + tagName + &quot;)&quot;;</span>
+	}
+
+	@Override
+	public boolean equals(Object o) {
+<span class="pc bpc" id="L126" title="1 of 2 branches missed.">		if (this == o)</span>
+<span class="nc" id="L127">			return true;</span>
+<span class="pc bpc" id="L128" title="2 of 4 branches missed.">		if (o == null || this.getClass() != o.getClass())</span>
+<span class="nc" id="L129">			return false;</span>
+
+<span class="fc" id="L131">		final SpanQueryTags that = (SpanQueryTags) o;</span>
+
+<span class="fc bfc" id="L133" title="All 2 branches covered.">		if (!clause.equals(that.clause))</span>
+<span class="fc" id="L134">			return false;</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">		if (attr == null) {</span>
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">			if (that.attr != null) {</span>
+<span class="nc" id="L137">				return false;</span>
+			}
+<span class="fc bfc" id="L139" title="All 2 branches covered.">		} else if (!attr.equals(that.attr)) {</span>
+<span class="fc" id="L140">			return false;</span>
+		}
+
+<span class="fc" id="L143">		return true;</span>
+	}
+
+	/**
+	 * Returns the name of the search field. In the case of a complex field, the clauses may
+	 * actually query different properties of the same complex field (e.g. &quot;description&quot; and
+	 * &quot;description__pos&quot;). That's why only the prefix is returned.
+	 *
+	 * @return name of the search field. In the case of a complex
+	 */
+	@Override
+	public String getField() {
+<span class="fc" id="L155">		return baseFieldName;</span>
+	}
+
+	@Override
+	public String getRealField() {
+<span class="fc" id="L160">		return startTagFieldName;</span>
+	}
+
+	@Override
+	public int hashCode() {
+<span class="nc" id="L165">		int h = clause.hashCode();</span>
+<span class="nc bnc" id="L166" title="All 2 branches missed.">		if (attr != null)</span>
+<span class="nc" id="L167">			h ^= attr.hashCode();</span>
+<span class="nc" id="L168">		h ^= (h &lt;&lt; 10) | (h &gt;&gt;&gt; 23);</span>
+<span class="nc" id="L169">		return h;</span>
+	}
+
+	public String getElementName() {
+<span class="fc" id="L173">		return tagName;</span>
+	}
+
+	@Override
+	public boolean hitsAllSameLength() {
+<span class="fc" id="L178">		return false;</span>
+	}
+
+	@Override
+	public int hitsLengthMin() {
+<span class="nc" id="L183">		return 0;</span>
+	}
+
+	@Override
+	public int hitsLengthMax() {
+<span class="nc" id="L188">		return Integer.MAX_VALUE;</span>
+	}
+
+	@Override
+	public boolean hitsEndPointSorted() {
+<span class="fc" id="L193">		return false;</span>
+	}
+
+	@Override
+	public boolean hitsStartPointSorted() {
+<span class="fc" id="L198">		return true;</span>
+	}
+
+	@Override
+	public boolean hitsHaveUniqueStart() {
+<span class="fc" id="L203">		return true;</span>
+	}
+
+	@Override
+	public boolean hitsHaveUniqueEnd() {
+<span class="fc" id="L208">		return false;</span>
+	}
+
+	@Override
+	public boolean hitsAreUnique() {
+<span class="pc bpc" id="L213" title="3 of 4 branches missed.">		return hitsHaveUniqueStart() || hitsHaveUniqueEnd();</span>
+	}
+
+	@Override
+	public long reverseMatchingCost(IndexReader reader) {
+<span class="fc" id="L218">		return clause.reverseMatchingCost(reader);</span>
+	}
+
+	@Override
+	public int forwardMatchingCost() {
+<span class="fc" id="L223">		return clause.forwardMatchingCost();</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

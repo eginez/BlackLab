@@ -1,0 +1,297 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SpanQueryPositionFilter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">SpanQueryPositionFilter.java</span></div><h1>SpanQueryPositionFilter.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.lucene;
+
+import java.io.IOException;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.index.TermContext;
+import org.apache.lucene.search.IndexSearcher;
+
+/**
+ * Filters hits from a producer query based on the hit positions of a filter query.
+ * This allows us to do several things, such as:
+ * * find hits from the producer that contain one or more hits from the filter
+ * * find hits from the producer are contained by hit(s) from the filter
+ * * find hits from the producer that start at the same position as a hit from the filter
+ * * find hits from the producer that end at the same position as a hit from the filter
+ */
+public class SpanQueryPositionFilter extends BLSpanQueryAbstract {
+
+<span class="fc" id="L38">	static SpanComparatorStartPoint cmpStartPoint = new SpanComparatorStartPoint();</span>
+
+	/** Filter operation to apply */
+	SpanQueryPositionFilter.Operation op;
+
+	/** Return producer spans that DON'T match the filter instead? */
+	boolean invert;
+
+	/** How to adjust the left edge of the producer hits while matching */
+	int leftAdjust;
+
+	/** How to adjust the right edge of the producer hits while matching */
+	int rightAdjust;
+
+	/**
+	 * Produce hits that match filter hits.
+	 *
+	 * @param producer hits we may be interested in
+	 * @param filter how we determine what producer hits we're interested in
+	 * @param op operation used to determine what producer hits we're interested in (containing, within, startsat, endsat)
+	 * @param invert produce hits that don't match filter instead?
+	 */
+	public SpanQueryPositionFilter(BLSpanQuery producer, BLSpanQuery filter, SpanQueryPositionFilter.Operation op, boolean invert) {
+<span class="fc" id="L61">		this(producer, filter, op, invert, 0, 0);</span>
+<span class="fc" id="L62">	}</span>
+
+	/**
+	 * Produce hits that match filter hits.
+	 *
+	 * @param producer hits we may be interested in
+	 * @param filter how we determine what producer hits we're interested in
+	 * @param op operation used to determine what producer hits we're interested in (containing, within, startsat, endsat)
+	 * @param invert produce hits that don't match filter instead?
+	 * @param leftAdjust how to adjust the left edge of the producer hits while matching
+	 * @param rightAdjust how to adjust the right edge of the producer hits while matching
+	 */
+	public SpanQueryPositionFilter(BLSpanQuery producer, BLSpanQuery filter, SpanQueryPositionFilter.Operation op, boolean invert, int leftAdjust, int rightAdjust) {
+<span class="fc" id="L75">		super(producer, filter);</span>
+<span class="fc" id="L76">		this.op = op;</span>
+<span class="fc" id="L77">		this.invert = invert;</span>
+<span class="fc" id="L78">		this.leftAdjust = leftAdjust;</span>
+<span class="fc" id="L79">		this.rightAdjust = rightAdjust;</span>
+<span class="fc" id="L80">	}</span>
+
+	@Override
+	public BLSpanQuery rewrite(IndexReader reader) throws IOException {
+<span class="fc" id="L84">		BLSpanQuery producer = clauses.get(0).rewrite(reader);</span>
+<span class="fc" id="L85">		BLSpanQuery filter = clauses.get(1).rewrite(reader);</span>
+
+<span class="pc bpc" id="L87" title="1 of 8 branches missed.">		if (!invert &amp;&amp; op != SpanQueryPositionFilter.Operation.STARTS_AT &amp;&amp; op != SpanQueryPositionFilter.Operation.ENDS_AT &amp;&amp; producer instanceof SpanQueryAnyToken) {</span>
+			// We're filtering &quot;all n-grams of length min-max&quot;.
+			// Use the special optimized SpanQueryFilterNGrams.
+<span class="fc" id="L90">			SpanQueryAnyToken tp = (SpanQueryAnyToken)producer;</span>
+<span class="fc" id="L91">			return new SpanQueryFilterNGrams(filter, op, tp.hitsLengthMin(), tp.hitsLengthMax());</span>
+		}
+
+<span class="fc bfc" id="L94" title="All 4 branches covered.">		if (producer != clauses.get(0) || filter != clauses.get(1)) {</span>
+<span class="fc" id="L95">			SpanQueryPositionFilter result = new SpanQueryPositionFilter(producer, filter, op, invert);</span>
+<span class="fc" id="L96">			result.leftAdjust = leftAdjust;</span>
+<span class="fc" id="L97">			result.rightAdjust = rightAdjust;</span>
+<span class="fc" id="L98">			return result;</span>
+		}
+<span class="fc" id="L100">		return this;</span>
+	}
+
+	@Override
+	public BLSpanWeight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
+<span class="fc" id="L105">		BLSpanWeight prodWeight = clauses.get(0).createWeight(searcher, needsScores);</span>
+<span class="fc" id="L106">		BLSpanWeight filterWeight = clauses.get(1).createWeight(searcher, needsScores);</span>
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">		Map&lt;Term, TermContext&gt; contexts = needsScores ? getTermContexts(prodWeight, filterWeight) : null;</span>
+<span class="fc" id="L108">		return new SpanWeightPositionFilter(prodWeight, filterWeight, searcher, contexts);</span>
+	}
+
+	class SpanWeightPositionFilter extends BLSpanWeight {
+
+		final BLSpanWeight prodWeight, filterWeight;
+
+<span class="fc" id="L115">		public SpanWeightPositionFilter(BLSpanWeight prodWeight, BLSpanWeight filterWeight, IndexSearcher searcher, Map&lt;Term, TermContext&gt; terms) throws IOException {</span>
+<span class="fc" id="L116">			super(SpanQueryPositionFilter.this, searcher, terms);</span>
+<span class="fc" id="L117">			this.prodWeight = prodWeight;</span>
+<span class="fc" id="L118">			this.filterWeight = filterWeight;</span>
+<span class="fc" id="L119">		}</span>
+
+		@Override
+		public void extractTerms(Set&lt;Term&gt; terms) {
+<span class="fc" id="L123">			prodWeight.extractTerms(terms);</span>
+<span class="fc" id="L124">			filterWeight.extractTerms(terms);</span>
+<span class="fc" id="L125">		}</span>
+
+		@Override
+		public void extractTermContexts(Map&lt;Term, TermContext&gt; contexts) {
+<span class="nc" id="L129">			prodWeight.extractTermContexts(contexts);</span>
+<span class="nc" id="L130">			filterWeight.extractTermContexts(contexts);</span>
+<span class="nc" id="L131">		}</span>
+
+		@Override
+		public BLSpans getSpans(final LeafReaderContext context, Postings requiredPostings) throws IOException {
+<span class="fc" id="L135">			BLSpans spansProd = prodWeight.getSpans(context, requiredPostings);</span>
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">			if (spansProd == null)</span>
+<span class="nc" id="L137">				return null;</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">			if (!clauses.get(0).hitsStartPointSorted())</span>
+<span class="fc" id="L139">				spansProd = new PerDocumentSortedSpans(spansProd, PerDocumentSortedSpans.cmpStartPoint, false);</span>
+<span class="fc" id="L140">			BLSpans spansFilter = filterWeight.getSpans(context, requiredPostings);</span>
+<span class="pc bpc" id="L141" title="1 of 2 branches missed.">			if (spansFilter == null) {</span>
+				// No filter hits. If it's a positive filter, that means no producer hits can match.
+				// If it's a negative filter, all producer hits match.
+<span class="nc bnc" id="L144" title="All 2 branches missed.">				return invert ? spansProd : null;</span>
+			}
+<span class="fc" id="L146">			boolean filterFixedLength = clauses.get(1).hitsAllSameLength();</span>
+			SpansInBuckets filter;
+<span class="pc bpc" id="L148" title="1 of 2 branches missed.">			if (clauses.get(1).hitsStartPointSorted()) {</span>
+				// Already start point sorted; no need to sort buckets again
+<span class="fc" id="L150">				filter = new SpansInBucketsPerDocument(spansFilter);</span>
+			} else {
+				// Not sorted yet; sort buckets
+<span class="nc" id="L153">				filter = new SpansInBucketsPerDocumentSorted(spansFilter, cmpStartPoint);</span>
+			}
+<span class="fc" id="L155">			return new SpansPositionFilter(spansProd, filter, filterFixedLength, op, invert, leftAdjust, rightAdjust);</span>
+		}
+	}
+
+	/** The different positional operations */
+<span class="pc" id="L160">	public enum Operation {</span>
+
+		/** Producer hit contains filter hit */
+<span class="fc" id="L163">		CONTAINING,</span>
+
+		/** Producer hit contained in filter hit */
+<span class="fc" id="L166">		WITHIN,</span>
+
+		/** Producer hit starts at filter hit */
+<span class="fc" id="L169">		STARTS_AT,</span>
+
+		/** Producer hit ends at filter hit */
+<span class="fc" id="L172">		ENDS_AT,</span>
+
+		/** Producer hit exactly matches filter hit */
+<span class="fc" id="L175">		MATCHES,</span>
+
+		/** Producer hit contains filter hit, at its end */
+<span class="fc" id="L178">		CONTAINING_AT_START,</span>
+
+		/** Producer hit contains filter hit, at its start*/
+<span class="fc" id="L181">		CONTAINING_AT_END</span>
+
+	}
+
+	@Override
+	public String toString(String field) {
+<span class="fc bfc" id="L187" title="All 2 branches covered.">		String not = invert ? &quot;NOT&quot; : &quot;&quot;;</span>
+<span class="fc bfc" id="L188" title="All 4 branches covered.">		String adj = (leftAdjust != 0 || rightAdjust != 0 ? &quot;, &quot; + leftAdjust + &quot;, &quot; + rightAdjust : &quot;&quot;);</span>
+<span class="fc" id="L189">		return &quot;POSFILTER(&quot; + clausesToString(field) + &quot;, &quot; + not + op + adj + &quot;)&quot;;</span>
+	}
+
+	public SpanQueryPositionFilter copy() {
+<span class="nc" id="L193">		return new SpanQueryPositionFilter(clauses.get(0), clauses.get(1), op, invert, leftAdjust, rightAdjust);</span>
+	}
+
+	/**
+	 * Adjust the left edge of the producer hits for matching only.
+	 *
+	 * That is, the original producer hit is returned, not the adjusted one.
+	 *
+	 * @param delta how to adjust the edge
+	 */
+	public void adjustLeft(int delta) {
+<span class="fc" id="L204">		leftAdjust += delta;</span>
+<span class="fc" id="L205">	}</span>
+
+	/**
+	 * Adjust the right edge of the producer hits for matching only.
+	 *
+	 * That is, the original producer hit is returned, not the adjusted one.
+	 *
+	 * @param delta how to adjust the edge
+	 */
+	public void adjustRight(int delta) {
+<span class="fc" id="L215">		rightAdjust += delta;</span>
+<span class="fc" id="L216">	}</span>
+
+	@Override
+	public boolean matchesEmptySequence() {
+<span class="fc" id="L220">		return clauses.get(0).matchesEmptySequence();</span>
+	}
+
+	@Override
+	public BLSpanQuery noEmpty() {
+<span class="fc" id="L225">		return new SpanQueryPositionFilter(clauses.get(0).noEmpty(), clauses.get(1), op, invert, leftAdjust, rightAdjust);</span>
+	}
+
+	@Override
+	public boolean hitsAllSameLength() {
+<span class="fc" id="L230">		return clauses.get(0).hitsAllSameLength();</span>
+	}
+
+	@Override
+	public int hitsLengthMin() {
+<span class="fc" id="L235">		return clauses.get(0).hitsLengthMin();</span>
+	}
+
+	@Override
+	public int hitsLengthMax() {
+<span class="fc" id="L240">		return clauses.get(0).hitsLengthMax();</span>
+	}
+
+	@Override
+	public boolean hitsStartPointSorted() {
+<span class="fc" id="L245">		return true;</span>
+	}
+
+	@Override
+	public boolean hitsEndPointSorted() {
+<span class="nc" id="L250">		return clauses.get(0).hitsEndPointSorted();</span>
+	}
+
+	@Override
+	public boolean hitsHaveUniqueStart() {
+<span class="fc" id="L255">		return clauses.get(0).hitsHaveUniqueStart();</span>
+	}
+
+	@Override
+	public boolean hitsHaveUniqueEnd() {
+<span class="fc" id="L260">		return clauses.get(0).hitsHaveUniqueEnd();</span>
+	}
+
+	@Override
+	public boolean hitsAreUnique() {
+<span class="fc" id="L265">		return clauses.get(0).hitsAreUnique();</span>
+	}
+
+	@Override
+	public long reverseMatchingCost(IndexReader reader) {
+<span class="fc" id="L270">		return clauses.get(0).reverseMatchingCost(reader);</span>
+	}
+
+	@Override
+	public int forwardMatchingCost() {
+<span class="fc" id="L275">		return clauses.get(0).forwardMatchingCost();</span>
+	}
+	
+	@Override
+	public boolean canInternalizeNeighbour(BLSpanQuery clause, boolean onTheRight) {
+<span class="fc" id="L280">		return clause.hitsAllSameLength();</span>
+	}
+
+	@Override
+	public BLSpanQuery internalizeNeighbour(BLSpanQuery clause, boolean addToRight) {
+<span class="pc bpc" id="L285" title="1 of 2 branches missed.">		if (!clause.hitsAllSameLength())</span>
+<span class="nc" id="L286">			throw new RuntimeException(&quot;Trying to internalize non-constant-length clause: &quot; + clause);</span>
+		// Create a new position filter query with a constant-length clause added to our producer.
+		// leftAdjust and rightAdjust are updated according to the clause's length, so it is not
+		// actually filtered.
+<span class="fc" id="L290">		BLSpanQuery producer = clauses.get(0);</span>
+<span class="fc" id="L291">		SpanQuerySequence seq = SpanQuerySequence.sequenceInternalize(producer, clause, addToRight);</span>
+<span class="fc bfc" id="L292" title="All 2 branches covered.">		if (addToRight)</span>
+<span class="fc" id="L293">			return new SpanQueryPositionFilter(seq, clauses.get(1), op, invert, leftAdjust, rightAdjust - clause.hitsLengthMin());</span>
+<span class="fc" id="L294">		return new SpanQueryPositionFilter(seq, clauses.get(1), op, invert, leftAdjust + clause.hitsLengthMin(), rightAdjust);</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

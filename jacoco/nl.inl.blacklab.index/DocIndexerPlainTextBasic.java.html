@@ -1,0 +1,304 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DocIndexerPlainTextBasic.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.index</a> &gt; <span class="el_source">DocIndexerPlainTextBasic.java</span></div><h1>DocIndexerPlainTextBasic.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.index;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.Reader;
+import java.lang.reflect.Constructor;
+import java.util.Set;
+
+import org.apache.lucene.document.Document;
+import org.apache.lucene.document.Field;
+import org.apache.lucene.document.Field.Store;
+import org.apache.lucene.document.IntField;
+
+import nl.inl.blacklab.index.complex.ComplexField;
+import nl.inl.blacklab.index.complex.ComplexFieldProperty;
+import nl.inl.blacklab.index.complex.ComplexFieldProperty.SensitivitySetting;
+import nl.inl.blacklab.index.complex.ComplexFieldUtil;
+import nl.inl.blacklab.search.Searcher;
+import nl.inl.blacklab.search.indexstructure.IndexStructure;
+import nl.inl.blacklab.search.indexstructure.MetadataFieldDesc;
+import nl.inl.blacklab.search.indexstructure.MetadataFieldDesc.UnknownCondition;
+import nl.inl.util.ExUtil;
+
+/**
+ * Simple example indexer for plain text files. Reads a line, chops it into
+ * words to index and keeps track of word positions.
+ */
+public class DocIndexerPlainTextBasic extends DocIndexerAbstract {
+
+	/**
+	 * Complex field where different aspects (word form, named entity status,
+	 * etc.) of the main content of the document are captured for indexing.
+	 */
+	ComplexField contentsField;
+
+	/** The main property (usually &quot;word&quot;) */
+	ComplexFieldProperty propMain;
+
+	/** The punctuation property */
+	ComplexFieldProperty propPunct;
+
+	/**
+	 * Our external metadata fetcher (if any), responsible for looking up the
+	 * metadata and adding it to the Lucene document.
+	 */
+	MetadataFetcher metadataFetcher;
+
+	@SuppressWarnings(&quot;deprecation&quot;)
+    public DocIndexerPlainTextBasic(Indexer indexer, String fileName, Reader reader) {
+<span class="nc" id="L65">    	super(indexer, fileName, reader);</span>
+
+    	// Define the properties that make up our complex field
+<span class="nc" id="L68">    	String mainPropName = ComplexFieldUtil.getDefaultMainPropName();</span>
+<span class="nc" id="L69">    	contentsField = new ComplexField(Searcher.DEFAULT_CONTENTS_FIELD_NAME, mainPropName, getSensitivitySetting(mainPropName), false);</span>
+<span class="nc" id="L70">    	propMain = contentsField.getMainProperty();</span>
+<span class="nc" id="L71">        String propName = ComplexFieldUtil.PUNCTUATION_PROP_NAME;</span>
+<span class="nc" id="L72">    	propPunct = contentsField.addProperty(propName, getSensitivitySetting(propName), false);</span>
+<span class="nc" id="L73">    	IndexStructure indexStructure = indexer.getSearcher().getIndexStructure();</span>
+<span class="nc" id="L74">    	indexStructure.registerComplexField(contentsField.getName(), propMain.getName());</span>
+
+    	// If the indexmetadata file specified a list of properties that shouldn't get a forward
+    	// index,
+    	// make the new complex field aware of this.
+<span class="nc" id="L79">    	Set&lt;String&gt; noForwardIndexProps = indexStructure.getComplexFieldDesc(Searcher.DEFAULT_CONTENTS_FIELD_NAME).getNoForwardIndexProps();</span>
+<span class="nc" id="L80">    	contentsField.setNoForwardIndexProps(noForwardIndexProps);</span>
+<span class="nc" id="L81">    }</span>
+
+    /**
+	 * Get the external metadata fetcher for this indexer, if any.
+	 *
+	 * The metadata fetcher can be configured through the &quot;metadataFetcherClass&quot;
+	 * parameter.
+	 *
+	 * @return the metadata fetcher if any, or null if there is none.
+	 */
+	MetadataFetcher getMetadataFetcher() {
+<span class="nc bnc" id="L92" title="All 2 branches missed.">		if (metadataFetcher == null) {</span>
+			@SuppressWarnings(&quot;deprecation&quot;)
+<span class="nc" id="L94">            String metadataFetcherClassName = getParameter(&quot;metadataFetcherClass&quot;);</span>
+<span class="nc bnc" id="L95" title="All 2 branches missed.">			if (metadataFetcherClassName != null) {</span>
+				try {
+<span class="nc" id="L97">					Class&lt;? extends MetadataFetcher&gt; metadataFetcherClass = Class.forName(metadataFetcherClassName)</span>
+<span class="nc" id="L98">							.asSubclass(MetadataFetcher.class);</span>
+<span class="nc" id="L99">					Constructor&lt;? extends MetadataFetcher&gt; ctor = metadataFetcherClass.getConstructor(DocIndexer.class);</span>
+<span class="nc" id="L100">					metadataFetcher = ctor.newInstance(this);</span>
+<span class="nc" id="L101">				} catch (Exception e) {</span>
+<span class="nc" id="L102">					throw new RuntimeException(e);</span>
+<span class="nc" id="L103">				}</span>
+			}
+		}
+<span class="nc" id="L106">		return metadataFetcher;</span>
+	}
+
+	public ComplexFieldProperty getPropPunct() {
+<span class="nc" id="L110">		return propPunct;</span>
+	}
+
+	public ComplexFieldProperty getMainProperty() {
+<span class="nc" id="L114">		return propMain;</span>
+	}
+
+	public ComplexField getContentsField() {
+<span class="nc" id="L118">		return contentsField;</span>
+	}
+
+	/**
+	 * Returns the current word in the content.
+	 *
+	 * This is the position the next word will be stored at.
+	 *
+	 * @return the current word position
+	 */
+	public int getWordPosition() {
+<span class="nc" id="L129">		return propMain.lastValuePosition() + 1;</span>
+	}
+
+	public ComplexFieldProperty addProperty(String propName, SensitivitySetting sensitivity) {
+<span class="nc" id="L133">		return contentsField.addProperty(propName, sensitivity);</span>
+	}
+
+	@Override
+	public void index() throws IOException, MalformedInputFileException {
+<span class="nc" id="L138">		BufferedReader r = new BufferedReader(reader);</span>
+<span class="nc" id="L139">		boolean firstWord = true;</span>
+
+		// Start a new Lucene document
+<span class="nc" id="L142">		currentLuceneDoc = new Document();</span>
+<span class="nc" id="L143">		currentLuceneDoc.add(new Field(&quot;fromInputFile&quot;, documentName, indexer.getMetadataFieldType(false)));</span>
+<span class="nc" id="L144">		addMetadataFieldsFromParameters();</span>
+<span class="nc" id="L145">		indexer.getListener().documentStarted(documentName);</span>
+
+		while (true) {
+			// For each line, split on whitespace and index each word.
+<span class="nc" id="L149">			String line = r.readLine();</span>
+<span class="nc bnc" id="L150" title="All 2 branches missed.">			if (line == null)</span>
+<span class="nc" id="L151">				break;</span>
+<span class="nc" id="L152">			String[] words = line.trim().split(&quot;\\s+&quot;);</span>
+<span class="nc bnc" id="L153" title="All 2 branches missed.">			for (int i = 0; i &lt; words.length; i++) {</span>
+				// Handle space and punctuation between words. Instead of always using a hardcoded
+				// space,
+				// you would want to use smarter tokenization and actually capture the space and
+				// punctuation between words (right now the punctuation becomes part of the word,
+				// because
+				// we naively split on whitespace).
+<span class="nc" id="L160">				String punctuation = &quot;&quot;;</span>
+<span class="nc bnc" id="L161" title="All 2 branches missed.">				if (!firstWord) {</span>
+<span class="nc" id="L162">					punctuation = &quot; &quot;;</span>
+<span class="nc" id="L163">					processContent(punctuation);</span>
+				}
+<span class="nc" id="L165">				firstWord = false;</span>
+<span class="nc" id="L166">				propPunct.addValue(punctuation);</span>
+
+				// Handle the word itself, including character positions.
+<span class="nc" id="L169">				contentsField.addStartChar(getCharacterPosition());</span>
+<span class="nc" id="L170">				processContent(words[i]); // add word to content store</span>
+<span class="nc" id="L171">				contentsField.addEndChar(getCharacterPosition());</span>
+<span class="nc" id="L172">				propMain.addValue(words[i]); // add word to index</span>
+
+				// Report progress regularly but not too often
+<span class="nc" id="L175">				wordsDone++;</span>
+<span class="nc bnc" id="L176" title="All 4 branches missed.">				if (wordsDone != 0 &amp;&amp; wordsDone % 5000 == 0) {</span>
+<span class="nc" id="L177">					reportCharsProcessed();</span>
+<span class="nc" id="L178">					reportTokensProcessed();</span>
+				}
+			}
+
+			// Make sure all the properties have an equal number of values.
+			// See what property has the highest position
+			// (in practice, only starttags and endtags should be able to have
+			// a position one higher than the rest)
+<span class="nc" id="L186">			int lastValuePos = 0;</span>
+<span class="nc bnc" id="L187" title="All 2 branches missed.">			for (ComplexFieldProperty prop: contentsField.getProperties()) {</span>
+<span class="nc bnc" id="L188" title="All 2 branches missed.">				if (prop.lastValuePosition() &gt; lastValuePos)</span>
+<span class="nc" id="L189">					lastValuePos = prop.lastValuePosition();</span>
+<span class="nc" id="L190">			}</span>
+
+			// Make sure we always have one more token than the number of
+			// words, so there's room for any tags after the last word, and we
+			// know we should always skip the last token when matching.
+<span class="nc bnc" id="L195" title="All 2 branches missed.">			if (propMain.lastValuePosition() == lastValuePos)</span>
+<span class="nc" id="L196">				lastValuePos++;</span>
+
+			// Add empty values to all lagging properties
+<span class="nc bnc" id="L199" title="All 2 branches missed.">			for (ComplexFieldProperty prop: contentsField.getProperties()) {</span>
+<span class="nc bnc" id="L200" title="All 2 branches missed.">				while (prop.lastValuePosition() &lt; lastValuePos) {</span>
+<span class="nc" id="L201">					prop.addValue(&quot;&quot;);</span>
+<span class="nc bnc" id="L202" title="All 2 branches missed.">					if (prop.hasPayload())</span>
+<span class="nc" id="L203">						prop.addPayload(null);</span>
+<span class="nc bnc" id="L204" title="All 2 branches missed.">					if (prop == propMain) {</span>
+<span class="nc" id="L205">						contentsField.addStartChar(getCharacterPosition());</span>
+<span class="nc" id="L206">						contentsField.addEndChar(getCharacterPosition());</span>
+					}
+				}
+<span class="nc" id="L209">			}</span>
+
+			// Finish storing the document in the document store (parts of it
+			// may already have been written because we write in chunks to save memory),
+			// retrieve the content id, and store that in Lucene.
+			// (Note that we do this after adding the dummy token, so the character
+			// positions for the dummy token still make (some) sense)
+<span class="nc" id="L216">			int contentId = storeCapturedContent();</span>
+<span class="nc" id="L217">			currentLuceneDoc.add(new IntField(ComplexFieldUtil.contentIdField(contentsField.getName()), contentId, Store.YES));</span>
+
+			// Store the different properties of the complex contents field that
+			// were gathered in lists while parsing.
+<span class="nc" id="L221">			contentsField.addToLuceneDoc(currentLuceneDoc);</span>
+
+			// Add all properties to forward index
+<span class="nc bnc" id="L224" title="All 2 branches missed.">			for (ComplexFieldProperty prop: contentsField.getProperties()) {</span>
+<span class="nc bnc" id="L225" title="All 2 branches missed.">				if (!prop.hasForwardIndex())</span>
+<span class="nc" id="L226">					continue;</span>
+
+				// Add property (case-sensitive tokens) to forward index and add
+				// id to Lucene doc
+<span class="nc" id="L230">				String propName = prop.getName();</span>
+<span class="nc" id="L231">				String fieldName = ComplexFieldUtil.propertyField(contentsField.getName(), propName);</span>
+<span class="nc" id="L232">				int fiid = indexer.addToForwardIndex(fieldName, prop);</span>
+<span class="nc" id="L233">				currentLuceneDoc.add(new IntField(ComplexFieldUtil.forwardIndexIdField(fieldName), fiid, Store.YES));</span>
+<span class="nc" id="L234">			}</span>
+
+			// If there's an external metadata fetcher, call it now so it can
+			// add the metadata for this document and (optionally) store the
+			// metadata document in the content store (and the corresponding id in the
+			// Lucene doc)
+<span class="nc" id="L240">			MetadataFetcher m = getMetadataFetcher();</span>
+<span class="nc bnc" id="L241" title="All 2 branches missed.">			if (m != null) {</span>
+<span class="nc" id="L242">				m.addMetadata();</span>
+			}
+
+			// See what metadatafields are missing or empty and add unknown value
+			// if desired.
+<span class="nc" id="L247">			IndexStructure struct = indexer.getSearcher().getIndexStructure();</span>
+<span class="nc bnc" id="L248" title="All 2 branches missed.">			for (String fieldName: struct.getMetadataFields()) {</span>
+<span class="nc" id="L249">				MetadataFieldDesc fd = struct.getMetadataFieldDesc(fieldName);</span>
+<span class="nc" id="L250">				boolean missing = false, empty = false;</span>
+<span class="nc" id="L251">				String currentValue = currentLuceneDoc.get(fieldName);</span>
+<span class="nc bnc" id="L252" title="All 2 branches missed.">				if (currentValue == null)</span>
+<span class="nc" id="L253">					missing = true;</span>
+<span class="nc bnc" id="L254" title="All 2 branches missed.">				else if (currentValue.length() == 0)</span>
+<span class="nc" id="L255">					empty = true;</span>
+<span class="nc" id="L256">				UnknownCondition cond = fd.getUnknownCondition();</span>
+<span class="nc" id="L257">				boolean useUnknownValue = false;</span>
+<span class="nc bnc" id="L258" title="All 5 branches missed.">				switch (cond) {</span>
+				case EMPTY:
+<span class="nc" id="L260">					useUnknownValue = empty;</span>
+<span class="nc" id="L261">					break;</span>
+				case MISSING:
+<span class="nc" id="L263">					useUnknownValue = missing;</span>
+<span class="nc" id="L264">					break;</span>
+				case MISSING_OR_EMPTY:
+<span class="nc" id="L266">					useUnknownValue = missing | empty;</span>
+<span class="nc" id="L267">					break;</span>
+				case NEVER:
+<span class="nc" id="L269">					useUnknownValue = false;</span>
+					break;
+				}
+<span class="nc bnc" id="L272" title="All 2 branches missed.">				if (useUnknownValue)</span>
+<span class="nc" id="L273">					addMetadataField(fieldName, fd.getUnknownValue());</span>
+<span class="nc" id="L274">			}</span>
+
+			try {
+				// Add Lucene doc to indexer
+<span class="nc" id="L278">				indexer.add(currentLuceneDoc);</span>
+<span class="nc" id="L279">			} catch (Exception e) {</span>
+<span class="nc" id="L280">				throw ExUtil.wrapRuntimeException(e);</span>
+<span class="nc" id="L281">			}</span>
+
+			// Report progress
+<span class="nc" id="L284">			reportCharsProcessed();</span>
+<span class="nc" id="L285">			reportTokensProcessed();</span>
+
+<span class="nc" id="L287">			indexer.getListener().documentDone(documentName);</span>
+
+			// Reset contents field for next document
+<span class="nc" id="L290">			contentsField.clear(true);</span>
+<span class="nc" id="L291">			currentLuceneDoc = null;</span>
+
+			// Stop if required
+<span class="nc bnc" id="L294" title="All 2 branches missed.">			if (!indexer.continueIndexing())</span>
+<span class="nc" id="L295">				throw new MaxDocsReachedException();</span>
+
+<span class="nc" id="L297">		}</span>
+
+<span class="nc bnc" id="L299" title="All 2 branches missed.">		if (nDocumentsSkipped &gt; 0)</span>
+<span class="nc" id="L300">			System.err.println(&quot;Skipped &quot; + nDocumentsSkipped + &quot; large documents&quot;);</span>
+<span class="nc" id="L301">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

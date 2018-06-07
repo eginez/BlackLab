@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HitsSampleImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search</a> &gt; <span class="el_source">HitsSampleImpl.java</span></div><h1>HitsSampleImpl.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.search;
+
+import java.util.Set;
+import java.util.TreeSet;
+
+/**
+ * Implements HitsSample by wrapping a Hits object.
+ */
+public class HitsSampleImpl extends HitsSample {
+
+    Hits source;
+
+	HitsSampleImpl(Hits hits, float ratio, long seed) {
+<span class="fc" id="L14">		super(hits.getSearcher(), ratio, seed);</span>
+<span class="pc bpc" id="L15" title="2 of 4 branches missed.">		if (ratio &lt; 0 || ratio &gt; 1)</span>
+<span class="nc" id="L16">			throw new IllegalArgumentException(&quot;ratio must be in the range 0-1&quot;);</span>
+<span class="fc" id="L17">		this.source = hits;</span>
+
+		// Determine how many hits there are, and how many to choose
+<span class="fc" id="L20">		int totalNumberOfHits = hits.size();</span>
+<span class="fc" id="L21">		numberOfHitsToSelect = Math.round(totalNumberOfHits * ratio);</span>
+<span class="pc bpc" id="L22" title="2 of 6 branches missed.">		if (numberOfHitsToSelect == 0 &amp;&amp; totalNumberOfHits &gt; 0 &amp;&amp; ratio &gt; 0)</span>
+<span class="nc" id="L23">			numberOfHitsToSelect = 1; // always choose at least one hit, unless we specify ratio 0 (why..??)</span>
+
+		// Copy relevant information from Hits object
+<span class="fc" id="L26">		setMaxHitsCounted(hits.maxHitsCounted());</span>
+<span class="fc" id="L27">		setMaxHitsRetrieved(hits.maxHitsRetrieved());</span>
+
+<span class="fc" id="L29">		selectHits(hits);</span>
+<span class="fc" id="L30">	}</span>
+
+	HitsSampleImpl(Hits hits, int number, long seed) {
+<span class="fc" id="L33">		super(hits.getSearcher(), number, seed);</span>
+<span class="pc bpc" id="L34" title="1 of 2 branches missed.">		if (number &lt; 0)</span>
+<span class="nc" id="L35">			throw new IllegalArgumentException(&quot;Negative sample number specified&quot;);</span>
+<span class="pc bpc" id="L36" title="1 of 2 branches missed.">		if (number &gt; hits.size())</span>
+<span class="nc" id="L37">			numberOfHitsToSelect = number = hits.size(); // default to all hits in this case</span>
+<span class="fc" id="L38">        this.source = hits;</span>
+
+		// Determine how many hits there are, and how many to choose
+<span class="fc" id="L41">		ratioOfHitsToSelect = (float)number / hits.size();</span>
+
+<span class="fc" id="L43">		selectHits(hits);</span>
+<span class="fc" id="L44">	}</span>
+
+	private void selectHits(Hits selectFrom) {
+		// Choose the hits
+<span class="fc" id="L48">		Set&lt;Integer&gt; chosenHitIndices = new TreeSet&lt;&gt;();</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">		for (int i = 0; i &lt; numberOfHitsToSelect; i++) {</span>
+			// Choose a hit we haven't chosen yet
+			int hitIndex;
+			do {
+<span class="fc" id="L53">				hitIndex = random.nextInt(selectFrom.size());</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">			} while (chosenHitIndices.contains(hitIndex));</span>
+<span class="fc" id="L55">			chosenHitIndices.add(hitIndex);</span>
+		}
+
+		// Add the hits in order of their index
+<span class="fc bfc" id="L59" title="All 2 branches covered.">		for (Integer hitIndex: chosenHitIndices) {</span>
+<span class="fc" id="L60">			Hit hit = selectFrom.get(hitIndex);</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">			if (hit.doc != previousHitDoc) {</span>
+<span class="fc" id="L62">				docsRetrieved++;</span>
+<span class="fc" id="L63">				docsCounted++;</span>
+<span class="fc" id="L64">				previousHitDoc = hit.doc;</span>
+			}
+<span class="fc" id="L66">			this.hits.add(hit);</span>
+<span class="fc" id="L67">			hitsCounted++;</span>
+<span class="fc" id="L68">		}</span>
+<span class="fc" id="L69">	}</span>
+
+	private HitsSampleImpl(HitsSampleImpl copyFrom) {
+<span class="nc" id="L72">		super(copyFrom.searcher, copyFrom.hits, copyFrom.ratioOfHitsToSelect, copyFrom.seed);</span>
+<span class="nc" id="L73">	}</span>
+
+	@Override
+	public Hits copy() {
+<span class="nc" id="L77">		return new HitsSampleImpl(this);</span>
+	}
+
+    @Override
+    public String toString() {
+<span class="nc" id="L82">        return &quot;HitsSampleImpl#&quot; + hitsObjId + &quot; (source=&quot; + source + &quot;)&quot;;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

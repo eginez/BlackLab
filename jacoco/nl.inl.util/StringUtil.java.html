@@ -1,0 +1,644 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StringUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.util</a> &gt; <span class="el_source">StringUtil.java</span></div><h1>StringUtil.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.util;
+
+import java.text.Collator;
+import java.text.Normalizer;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.apache.commons.lang3.StringUtils;
+
+/**
+ * A collection of String-related utility methods and regular expression patterns.
+ */
+public class StringUtil {
+	/** String containing nbsp character (decimal 160 = hex A0) */
+	public static final String STR_NON_BREAKING_SPACE = &quot;\u00A0&quot;;
+
+	/** nbsp character (decimal 160 = hex A0) */
+	public static final char CHAR_NON_BREAKING_SPACE = '\u00A0';
+
+	/** Matches whitespace. */
+<span class="fc" id="L41">	public static final Pattern PATT_WHITESPACE = Pattern.compile(&quot;\\s+&quot;);</span>
+
+	/** Matches trailing whitespace. */
+<span class="fc" id="L44">	public final static Pattern PATT_LEADING_WHITESPACE = Pattern.compile(&quot;^\\s+&quot;);</span>
+
+	/** Matches trailing whitespace. */
+<span class="fc" id="L47">	public final static Pattern PATT_TRAILING_WHITESPACE = Pattern.compile(&quot;\\s+$&quot;);</span>
+
+	/** Matcht een niet-lege string die alleen whitespace bevat */
+<span class="fc" id="L50">	public final static Pattern PATT_ONLY_WHITESPACE = Pattern.compile(&quot;^\\s+$&quot;);</span>
+
+	/**
+	 * Matches Unicode diacritics composition characters, which are separated out by the Normalizer
+	 * and then discarded using this regex.
+	 */
+<span class="fc" id="L56">	private static final Pattern PATT_DIACRITICS = Pattern.compile(&quot;\\p{InCombiningDiacriticalMarks}+&quot;);</span>
+
+	/** Whitespace and/or punctuation at end */
+<span class="fc" id="L59">	final static Pattern PATT_WS_PUNCT_AT_END = Pattern.compile(&quot;[\\p{P}\\s]+$&quot;);</span>
+
+	/** Whitespace and/or punctuation at start */
+<span class="fc" id="L62">	final static Pattern PATT_WS_PUNCT_AT_START = Pattern.compile(&quot;^[\\p{P}\\s]+&quot;);</span>
+
+	/** Punctuation. */
+<span class="fc" id="L65">	public static final Pattern PATT_PUNCTUATION = Pattern.compile(&quot;\\p{P}&quot;);</span>
+
+	/** Dutch locale */
+<span class="fc" id="L68">	private static Locale dutchLocale = new Locale(&quot;nl&quot;, &quot;NL&quot;);</span>
+
+	/** English locale */
+<span class="fc" id="L71">	private static Locale englishLocale = new Locale(&quot;en&quot;, &quot;GB&quot;);</span>
+
+	/** The default collator: Dutch, case-insensitive */
+<span class="fc" id="L74">	protected static Collator dutchInsensitiveCollator = null;</span>
+
+	private static Collator englishInsensitiveCollator;
+
+<span class="nc" id="L78">	private StringUtil() {</span>
+<span class="nc" id="L79">	}</span>
+
+	/**
+	 * Abbreviates a string for display if necessary.
+	 *
+	 * Also replaces line breaks with spaces. Uses overshootAllowed of 0, and adds ellipsis if
+	 * abbreviated.
+	 *
+	 * @param str
+	 *            the string to abbreviate
+	 * @param preferredLength
+	 *            the maximum length we would like to see
+	 * @return the (possibly) abbreviated string
+	 */
+	public static String abbreviate(String str, int preferredLength) {
+<span class="nc" id="L94">		return abbreviate(str, preferredLength, 0, true);</span>
+	}
+
+	/**
+	 * Abbreviates a string for display if necessary.
+	 *
+	 * Also normalizes whitspace (replacing a line break with a space).
+	 *
+	 * @param str
+	 *            the string to abbreviate
+	 * @param preferredLength
+	 *            the maximum length we would like to see
+	 * @param overshootAllowed
+	 *            how many more characters than the previous value is allowable
+	 * @param addEllipsis
+	 *            whether or not we should add &quot;...&quot; at the end if we abbreviated
+	 * @return the (possibly) abbreviated string
+	 */
+	public static String abbreviate(String str, int preferredLength, int overshootAllowed, boolean addEllipsis) {
+<span class="nc" id="L113">		String result = str.replaceAll(&quot;\\s+&quot;, &quot; &quot;); // normalize whitespace</span>
+<span class="nc bnc" id="L114" title="All 2 branches missed.">		if (result.length() &gt; preferredLength + overshootAllowed) {</span>
+<span class="nc" id="L115">			int i = result.substring(0, preferredLength + 1).lastIndexOf(&quot; &quot;);</span>
+<span class="nc bnc" id="L116" title="All 2 branches missed.">			if (i &gt;= 1)</span>
+<span class="nc" id="L117">				result = result.substring(0, i);</span>
+			else
+<span class="nc" id="L119">				result = result.substring(0, preferredLength);</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">			if (addEllipsis)</span>
+<span class="nc" id="L121">				result += &quot;...&quot;;</span>
+		}
+<span class="nc" id="L123">		return result.trim();</span>
+	}
+    
+<span class="fc" id="L126">	static final Pattern regexCharacters = Pattern.compile(&quot;([\\|\\\\\\?\\*\\+\\(\\)\\[\\]\\-\\^\\$\\{\\}\\.])&quot;);</span>
+
+	/**
+	 * Escape regex special characters
+	 *
+	 * @param termStr
+	 *            the string to escape characters in
+	 * @return the escaped string
+	 */
+	public static String escapeRegexCharacters(String termStr) {
+<span class="fc" id="L136">		Matcher m = regexCharacters.matcher(termStr);</span>
+<span class="fc" id="L137">		termStr = m.replaceAll(&quot;\\\\$1&quot;);</span>
+<span class="fc" id="L138">		return termStr;</span>
+	}
+
+	/**
+	 * Escape the special XML chars (&lt;, &gt;, &amp;, &quot;) with their named entity equivalents.
+	 *
+	 * @param source
+	 *            the source string
+	 * @return the escaped string
+	 */
+	public static String escapeXmlChars(String source) {
+<span class="pc bpc" id="L149" title="1 of 2 branches missed.">		if (source == null)</span>
+<span class="nc" id="L150">			source = &quot;&quot;;</span>
+<span class="fc" id="L151">		int estResultLength = source.length() * 5 / 4; // reasonable estimate of max. space needed</span>
+<span class="fc" id="L152">		StringBuilder sb = new StringBuilder(estResultLength);</span>
+<span class="fc" id="L153">		int start = 0;</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">		for (int i = 0; i &lt; source.length(); i++) {</span>
+<span class="fc" id="L155">			char c = source.charAt(i);</span>
+<span class="fc bfc" id="L156" title="All 8 branches covered.">			if (c == '&lt;' || c == '&gt;' || c == '&amp;' || c == '&quot;') {</span>
+<span class="fc" id="L157">				sb.append(source.substring(start, i));</span>
+<span class="pc bpc" id="L158" title="1 of 5 branches missed.">				switch (c) {</span>
+				case '&lt;':
+<span class="fc" id="L160">					sb.append(&quot;&amp;lt;&quot;);</span>
+<span class="fc" id="L161">					break;</span>
+				case '&gt;':
+<span class="fc" id="L163">					sb.append(&quot;&amp;gt;&quot;);</span>
+<span class="fc" id="L164">					break;</span>
+				case '&amp;':
+<span class="fc" id="L166">					sb.append(&quot;&amp;amp;&quot;);</span>
+<span class="fc" id="L167">					break;</span>
+				case '&quot;':
+<span class="fc" id="L169">					sb.append(&quot;&amp;quot;&quot;);</span>
+					break;
+				}
+<span class="fc" id="L172">				start = i + 1;</span>
+			}
+		}
+<span class="fc" id="L175">		sb.append(source.substring(start));</span>
+<span class="fc" id="L176">		return sb.toString();</span>
+	}
+
+	/**
+	 * Get the default collator.
+	 *
+	 * @return the default collator.
+	 */
+	public static Collator getDefaultCollator() {
+<span class="fc" id="L185">		return getDutchInsensitiveCollator();</span>
+	}
+
+	/**
+	 * Get a Dutch, case-insensitive collator.
+	 *
+	 * @return the Dutch, case-insensitive collator.
+	 */
+	public static Collator getDutchInsensitiveCollator() {
+<span class="pc bpc" id="L194" title="1 of 2 branches missed.">		if (dutchInsensitiveCollator == null) {</span>
+<span class="fc" id="L195">			dutchInsensitiveCollator = Collator.getInstance(dutchLocale);</span>
+<span class="fc" id="L196">			dutchInsensitiveCollator.setStrength(Collator.SECONDARY);</span>
+		}
+<span class="fc" id="L198">		return dutchInsensitiveCollator;</span>
+	}
+
+	/**
+	 * Get a Dutch, case-insensitive collator.
+	 *
+	 * @return the Dutch, case-insensitive collator.
+	 */
+	public static Collator getEnglishInsensitiveCollator() {
+<span class="nc bnc" id="L207" title="All 2 branches missed.">		if (englishInsensitiveCollator == null) {</span>
+<span class="nc" id="L208">			englishInsensitiveCollator = Collator.getInstance(englishLocale);</span>
+<span class="nc" id="L209">			englishInsensitiveCollator.setStrength(Collator.SECONDARY);</span>
+		}
+<span class="nc" id="L211">		return englishInsensitiveCollator;</span>
+	}
+
+	/**
+	 * Join a number of (string representations of) items to a single string using a delimiter
+	 *
+	 * @param &lt;T&gt;
+	 *            the type of items to join
+	 * @param parts
+	 *            the parts to join
+	 * @param delimiter
+	 *            the delimiter to use
+	 * @return the joined string
+	 */
+	public static &lt;T&gt; String join(Iterable&lt;T&gt; parts, String delimiter) {
+<span class="fc" id="L226">		StringBuilder builder = new StringBuilder();</span>
+<span class="fc" id="L227">		Iterator&lt;T&gt; iter = parts.iterator();</span>
+<span class="fc bfc" id="L228" title="All 2 branches covered.">		while (iter.hasNext()) {</span>
+<span class="fc" id="L229">			T value = iter.next();</span>
+<span class="pc bpc" id="L230" title="1 of 2 branches missed.">			builder.append(value == null ? &quot;(null)&quot; : value.toString());</span>
+<span class="fc bfc" id="L231" title="All 2 branches covered.">			if (!iter.hasNext()) {</span>
+<span class="fc" id="L232">				break;</span>
+			}
+<span class="fc" id="L234">			builder.append(delimiter);</span>
+<span class="fc" id="L235">		}</span>
+<span class="fc" id="L236">		return builder.toString();</span>
+	}
+
+	/**
+	 * Join a number of (string representations of) items to a single string using a delimiter
+	 *
+	 * @param &lt;T&gt;
+	 *            the type of items to join
+	 * @param parts
+	 *            the array of parts to join
+	 * @param delimiter
+	 *            the delimiter to use
+	 * @return the joined string
+	 */
+	public static &lt;T&gt; String join(T[] parts, String delimiter) {
+<span class="nc" id="L251">		StringBuilder builder = new StringBuilder();</span>
+<span class="nc bnc" id="L252" title="All 2 branches missed.">		for (T value: parts) {</span>
+<span class="nc bnc" id="L253" title="All 2 branches missed.">			if (builder.length() &gt; 0)</span>
+<span class="nc" id="L254">				builder.append(delimiter);</span>
+<span class="nc bnc" id="L255" title="All 2 branches missed.">			builder.append(value == null ? &quot;(null)&quot; : value.toString());</span>
+		}
+<span class="nc" id="L257">		return builder.toString();</span>
+	}
+
+	/**
+	 * Join keys and values from a map to produce a string.
+	 *
+	 * @param map the map to join
+	 * @param delimiter how to delimit map entries
+	 * @param keyValueDelimiter what to put between key and value
+	 * @return the resulting string
+	 */
+	public static &lt;T, U&gt; String join(Map&lt;T, U&gt; map, String delimiter, String keyValueDelimiter) {
+<span class="fc" id="L269">		StringBuilder builder = new StringBuilder();</span>
+<span class="fc bfc" id="L270" title="All 2 branches covered.">		for (Map.Entry&lt;T, U&gt; e: map.entrySet()) {</span>
+<span class="pc bpc" id="L271" title="1 of 2 branches missed.">			if (builder.length() &gt; 0)</span>
+<span class="nc" id="L272">				builder.append(delimiter);</span>
+<span class="fc" id="L273">			U value = e.getValue();</span>
+<span class="pc bpc" id="L274" title="1 of 2 branches missed.">			builder.append(e.getKey().toString()).append(keyValueDelimiter).append(value == null ? &quot;(null)&quot; : value.toString());</span>
+<span class="fc" id="L275">		}</span>
+<span class="fc" id="L276">		return builder.toString();</span>
+	}
+
+	/**
+	 * Join keys and values from a map to produce a string.
+	 *
+	 * Uses an equals sign between key and value.
+	 *
+	 * @param map the map to join
+	 * @param delimiter how to delimit map entries
+	 * @return the resulting string
+	 */
+	public static &lt;T, U&gt; String join(Map&lt;T, U&gt; map, String delimiter) {
+<span class="fc" id="L289">		return join(map, delimiter, &quot;=&quot;);</span>
+	}
+
+	/**
+	 * Join keys and values from a map to produce a string.
+	 *
+	 * Uses an equals sign between key and value and a semicolon and
+	 * space between entries.
+	 *
+	 * @param map the map to join
+	 * @return the resulting string
+	 */
+	public static &lt;T, U&gt; String join(Map&lt;T, U&gt; map) {
+<span class="fc" id="L302">		return join(map, &quot;; &quot;);</span>
+	}
+
+	/**
+	 * Custom stringifier for a type
+	 * @param &lt;T&gt; the type we can stringify
+	 */
+	public interface Stringifier&lt;T&gt; {
+		String toString(T o);
+	}
+
+	/**
+	 * Join a number of (string representations of) items to a single string using a delimiter
+	 *
+	 * @param &lt;T&gt; the type of items to join
+	 * @param parts the parts to join
+	 * @param j how to convert objects to string
+	 * @param delimiter the delimiter to use
+	 * @return the joined string
+	 */
+	public static &lt;T&gt; String join(Iterable&lt;T&gt; parts, Stringifier&lt;T&gt; j, String delimiter) {
+<span class="nc" id="L323">		StringBuilder builder = new StringBuilder();</span>
+<span class="nc" id="L324">		Iterator&lt;T&gt; iter = parts.iterator();</span>
+<span class="nc bnc" id="L325" title="All 2 branches missed.">		while (iter.hasNext()) {</span>
+<span class="nc" id="L326">			builder.append(j.toString(iter.next()));</span>
+<span class="nc bnc" id="L327" title="All 2 branches missed.">			if (!iter.hasNext()) {</span>
+<span class="nc" id="L328">				break;</span>
+			}
+<span class="nc" id="L330">			builder.append(delimiter);</span>
+		}
+<span class="nc" id="L332">		return builder.toString();</span>
+	}
+
+	/**
+	 * Replace adjacent whitespace characters with a single space
+	 *
+	 * @param s
+	 *            source string
+	 * @return the result
+	 */
+	public static String normalizeWhitespace(String s) {
+<span class="nc" id="L343">		Matcher m = PATT_WHITESPACE.matcher(s);</span>
+<span class="nc" id="L344">		return m.replaceAll(&quot; &quot;);</span>
+	}
+
+	/**
+	 * Wrap text at the specified number of characters,
+	 * adding newlines at the right places.
+	 *
+	 * @param message
+	 *            the text to wrap
+	 * @param wrapAt
+	 *            the maximum number of characters per line
+	 * @return the wrapped text as a newline-joined string
+	 */
+	public static String wrapToString(String message, int wrapAt) {
+<span class="nc" id="L358">		return join(wrap(message, wrapAt), &quot;\n&quot;);</span>
+	}
+
+	/**
+	 * Wrap text at the specified number of characters,
+	 * returning a list of lines.
+	 *
+	 * @param message
+	 *            the text to wrap
+	 * @param wrapAt
+	 *            the maximum number of characters per line
+	 * @return the wrapped text as a newline-joined string
+	 */
+	public static List&lt;String&gt; wrap(String message, int wrapAt) {
+<span class="nc" id="L372">		List&lt;String&gt; wrapped = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L373">		String lines[] = message.split(&quot;\n&quot;);</span>
+<span class="nc bnc" id="L374" title="All 2 branches missed.">		for (String line: lines) {</span>
+<span class="nc bnc" id="L375" title="All 2 branches missed.">			if (line.length() &gt; 0) {</span>
+<span class="nc bnc" id="L376" title="All 2 branches missed.">				while (line.length() &gt; 0) {</span>
+<span class="nc" id="L377">					int i = wrapAt + 1;</span>
+<span class="nc bnc" id="L378" title="All 2 branches missed.">					if (i &lt; line.length()) {</span>
+<span class="nc bnc" id="L379" title="All 2 branches missed.">						while (i &gt; 0) {</span>
+<span class="nc" id="L380">							char c = line.charAt(i);</span>
+<span class="nc bnc" id="L381" title="All 8 branches missed.">							if (c == ' ' || c == '\t' || c == '\r' || c == '\n') {</span>
+<span class="nc" id="L382">								i++;</span>
+<span class="nc" id="L383">								break;</span>
+							}
+<span class="nc" id="L385">							i--;</span>
+<span class="nc" id="L386">						}</span>
+<span class="nc bnc" id="L387" title="All 2 branches missed.">						if (i == 0)</span>
+<span class="nc" id="L388">							i = wrapAt + 1;</span>
+					} else
+<span class="nc" id="L390">						i = line.length();</span>
+<span class="nc" id="L391">					wrapped.add(rtrim(line.substring(0, i)));</span>
+<span class="nc" id="L392">					line = rtrim(line.substring(i));</span>
+<span class="nc" id="L393">				}</span>
+			} else {
+<span class="nc" id="L395">				wrapped.add(&quot;&quot;);</span>
+			}
+		}
+<span class="nc" id="L398">		return wrapped;</span>
+	}
+
+	/**
+	 * Remove trailing whitespace from a string.
+	 *
+	 * @param input a string
+	 * @return the string without trailing whitespace
+	 */
+	public static String rtrim(String input) {
+<span class="nc" id="L408">		return PATT_TRAILING_WHITESPACE.matcher(input).replaceAll(&quot;&quot;);</span>
+	}
+
+	/**
+	 * When called with a null reference, returns the empty string. Otherwise, returns the string
+	 * unchanged
+	 *
+	 * @param str
+	 *            the input string (or a null reference)
+	 * @return the original string, or the empty string
+	 */
+	public static String nullToEmpty(String str) {
+<span class="nc bnc" id="L420" title="All 2 branches missed.">		return str == null ? &quot;&quot; : str;</span>
+	}
+
+	/**
+	 * Convert accented letters to their unaccented counterparts.
+	 *
+	 * @param input
+	 *            the string possibly containing accented letters.
+	 * @return the unaccented version
+	 * @deprecated use stripAccents(input)
+	 */
+	@Deprecated
+	public static String removeAccents(String input) {
+		// Separate characters into base character and diacritics characters
+<span class="nc" id="L434">		String normalized = Normalizer.normalize(input, Normalizer.Form.NFD);</span>
+
+		// Remove diacritics
+<span class="nc" id="L437">		return PATT_DIACRITICS.matcher(normalized).replaceAll(&quot;&quot;);</span>
+	}
+
+<span class="fc" id="L440">    final static Pattern pattern = Pattern.compile(&quot;\\p{InCombiningDiacriticalMarks}+&quot;);</span>
+
+    /**
+     * &lt;p&gt;Removes diacritics (~= accents) from a string. The case will not be altered.&lt;/p&gt;
+     * &lt;p&gt;For instance, '&amp;agrave;' will be replaced by 'a'.&lt;/p&gt;
+     * &lt;p&gt;Note that ligatures will be left as is.&lt;/p&gt;
+     *
+     * &lt;pre&gt;
+     * StringUtils.stripAccents(null)                = null
+     * StringUtils.stripAccents(&quot;&quot;)                  = &quot;&quot;
+     * StringUtils.stripAccents(&quot;control&quot;)           = &quot;control&quot;
+     * StringUtils.stripAccents(&quot;&amp;eacute;clair&quot;)     = &quot;eclair&quot;
+     * &lt;/pre&gt;
+     *
+     * NOTE: this method was copied from Apache StringUtils. The only change is precompiling
+     * the regular expression for efficiency.
+     *
+     * @param input String to be stripped
+     * @return input text with diacritics removed
+     *
+     * @since 3.0
+     */
+    // See also Lucene's ASCIIFoldingFilter (Lucene 2.9) that replaces accented characters by their unaccented equivalent (and uncommitted bug fix: https://issues.apache.org/jira/browse/LUCENE-1343?focusedCommentId=12858907&amp;page=com.atlassian.jira.plugin.system.issuetabpanels%3Acomment-tabpanel#action_12858907).
+    public static String stripAccents(final String input) {
+<span class="pc bpc" id="L464" title="1 of 2 branches missed.">        if(input == null) {</span>
+<span class="nc" id="L465">            return null;</span>
+        }
+<span class="fc" id="L467">        final StringBuilder decomposed = new StringBuilder(Normalizer.normalize(input, Normalizer.Form.NFD));</span>
+<span class="fc" id="L468">        convertRemainingAccentCharacters(decomposed);</span>
+        // Note that this doesn't correctly remove ligatures...
+<span class="fc" id="L470">        return pattern.matcher(decomposed).replaceAll(StringUtils.EMPTY);</span>
+    }
+
+    private static void convertRemainingAccentCharacters(StringBuilder decomposed) {
+<span class="fc bfc" id="L474" title="All 2 branches covered.">        for (int i = 0; i &lt; decomposed.length(); i++) {</span>
+<span class="pc bpc" id="L475" title="1 of 2 branches missed.">            if (decomposed.charAt(i) == '\u0141') {</span>
+<span class="nc" id="L476">                decomposed.deleteCharAt(i);</span>
+<span class="nc" id="L477">                decomposed.insert(i, 'L');</span>
+<span class="pc bpc" id="L478" title="1 of 2 branches missed.">            } else if (decomposed.charAt(i) == '\u0142') {</span>
+<span class="nc" id="L479">                decomposed.deleteCharAt(i);</span>
+<span class="nc" id="L480">                decomposed.insert(i, 'l');</span>
+            }
+        }
+<span class="fc" id="L483">    }</span>
+
+	/**
+	 * Remove any punctuation and whitespace at the start and end of input.
+	 *
+	 * @param input
+	 *            the input string
+	 * @return the string without punctuation or whitespace at the edges.
+	 */
+	public static String trimWhitespaceAndPunctuation(String input) {
+<span class="nc" id="L493">		input = PATT_WS_PUNCT_AT_END.matcher(input).replaceAll(&quot;&quot;);</span>
+<span class="nc" id="L494">		input = PATT_WS_PUNCT_AT_START.matcher(input).replaceAll(&quot;&quot;);</span>
+<span class="nc" id="L495">		return input;</span>
+	}
+
+	/**
+	 * Return the singular or the plural form of a noun depending on a number.
+	 *
+	 * This version of the method simply appends an &quot;s&quot; to form the plural.
+	 * For irregular plural forms, use the version that takes 3 parameters.
+	 *
+	 * @param singular the singular to 'pluralize'
+	 * @param number if this equals 1, no s is added
+	 * @return the possibly pluralized form
+	 */
+	public static String pluralize(String singular, long number) {
+<span class="nc" id="L509">		return pluralize(singular, singular + &quot;s&quot;, number);</span>
+	}
+
+	/**
+	 * Return the singular or the plural form of a noun depending on a number.
+	 *
+	 * @param singular the singular form of the word
+	 * @param plural the plural form of the word
+	 * @param number if this equals 1, the sinular is returned, otherwise the plural
+	 * @return the possibly pluralized form
+	 */
+	public static String pluralize(String singular, String plural, long number) {
+<span class="nc bnc" id="L521" title="All 2 branches missed.">		return number == 1 ? singular : plural;</span>
+	}
+
+	/**
+	 * Escape double quote and backslash with a backslash character.
+	 *
+	 * Useful for putting strings between double quotes.
+	 *
+	 * @param str the string to escape
+	 * @return the escaped string
+	 */
+	public static String escapeDoubleQuotedString(String str) {
+<span class="nc" id="L533">		str = str.replaceAll(&quot;[\&quot;\\\\]&quot;, &quot;\\\\$0&quot;);</span>
+<span class="nc" id="L534">		str = str.replaceAll(&quot;\r&quot;, &quot;\\\\r&quot;);</span>
+<span class="nc" id="L535">		str = str.replaceAll(&quot;\n&quot;, &quot;\\\\n&quot;);</span>
+<span class="nc" id="L536">		return str;</span>
+	}
+
+	/**
+	 * A lowercase letter followed by an uppercase one,
+	 * both matched in groups.
+	 */
+<span class="fc" id="L543">	static Pattern lcaseUcase = Pattern.compile(&quot;(\\p{Ll})(\\p{Lu})&quot;);</span>
+
+	/**
+	 * Convert a string from a camel-case &quot;identifier&quot; style to
+	 * a human-readable version, by putting spaces between words,
+	 * uppercasing the first letter and lowercasing the rest.
+	 *
+	 * E.g. myCamelCaseString becomes &quot;My camel case string&quot;.
+	 *
+	 * @param camelCaseString a string in camel case, i.e. multiple capitalized
+	 *   words glued together.
+	 * @return a human-readable version of the input string
+	 */
+	public static String camelCaseToDisplayable(String camelCaseString) {
+<span class="nc" id="L557">		return camelCaseToDisplayable(camelCaseString, false);</span>
+	}
+
+	/**
+	 * Convert a string from a camel-case &quot;identifier&quot; style to
+	 * a human-readable version, by putting spaces between words,
+	 * uppercasing the first letter and lowercasing the rest.
+	 *
+	 * E.g. myCamelCaseString becomes &quot;My camel case string&quot;.
+	 *
+	 * @param camelCaseString a string in camel case, i.e. multiple capitalized
+	 *   words glued together.
+	 * @param dashesToSpaces if true, also converts dashes and underscores to spaces
+	 * @return a human-readable version of the input string
+	 */
+	public static String camelCaseToDisplayable(String camelCaseString, boolean dashesToSpaces) {
+<span class="fc" id="L573">	    String spaceified = camelCaseString;</span>
+<span class="fc" id="L574">		spaceified = lcaseUcase.matcher(spaceified).replaceAll(&quot;$1 $2&quot;);</span>
+<span class="pc bpc" id="L575" title="1 of 2 branches missed.">        if (dashesToSpaces)</span>
+<span class="fc" id="L576">            spaceified = spaceified.replaceAll(&quot;[\\-_]&quot;, &quot; &quot;);</span>
+<span class="fc" id="L577">		return StringUtils.capitalize(spaceified.toLowerCase());</span>
+		//		if (str.length() == 0)
+		//			return str;
+		//		return str.substring(0, 1).toUpperCase() + str.substring(1);
+	}
+
+	/**
+	 * For a number n, return a string like &quot;nth&quot;.
+	 *
+	 * So 1 returns &quot;1st&quot;, 2 returns &quot;2nd&quot;, and so on.
+	 *
+	 * @param docNumber number
+	 * @return ordinal for that number
+	 */
+	public static String ordinal(int docNumber) {
+<span class="fc" id="L592">		final String[] ordSuffix = {&quot;th&quot;, &quot;st&quot;, &quot;nd&quot;, &quot;rd&quot;};</span>
+<span class="fc" id="L593">		int i = docNumber;</span>
+<span class="pc bpc" id="L594" title="1 of 4 branches missed.">		if (i &lt; 1 || i &gt; 3)</span>
+<span class="fc" id="L595">			i = 0;</span>
+<span class="fc" id="L596">		return docNumber + ordSuffix[i];</span>
+	}
+
+	/**
+	 * Convert wildcard string to regex string.
+	 *
+	 * Adapted from: http://stackoverflow.com/a/28758377
+	 *
+	 * @param wildcard wildcard pattern
+	 * @return equivalent regex pattern
+	 */
+	public static String wildcardToRegex(String wildcard) {
+<span class="nc" id="L608">		StringBuffer s = new StringBuffer(wildcard.length());</span>
+<span class="nc" id="L609">		s.append('^');</span>
+<span class="nc bnc" id="L610" title="All 2 branches missed.">		for (int i = 0, is = wildcard.length(); i &lt; is; i++) {</span>
+<span class="nc" id="L611">			char c = wildcard.charAt(i);</span>
+<span class="nc bnc" id="L612" title="All 4 branches missed.">			switch (c) {</span>
+			case '*':
+<span class="nc" id="L614">				s.append(&quot;.*&quot;);</span>
+<span class="nc" id="L615">				break;</span>
+			case '?':
+<span class="nc" id="L617">				s.append(&quot;.&quot;);</span>
+<span class="nc" id="L618">				break;</span>
+			// escape special regexp-characters
+			case '^': // escape character in cmd.exe
+			case '(':
+			case ')':
+			case '[':
+			case ']':
+			case '$':
+			case '.':
+			case '{':
+			case '}':
+			case '|':
+			case '\\':
+<span class="nc" id="L631">				s.append(&quot;\\&quot;);</span>
+<span class="nc" id="L632">				s.append(c);</span>
+<span class="nc" id="L633">				break;</span>
+			default:
+<span class="nc" id="L635">				s.append(c);</span>
+				break;
+			}
+		}
+<span class="nc" id="L639">		s.append('$');</span>
+<span class="nc" id="L640">		return s.toString();</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

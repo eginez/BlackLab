@@ -1,0 +1,222 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SpanQueryAnyToken.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">SpanQueryAnyToken.java</span></div><h1>SpanQueryAnyToken.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.lucene;
+
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.index.TermContext;
+import org.apache.lucene.search.IndexSearcher;
+
+import nl.inl.blacklab.search.fimatch.ForwardIndexAccessor;
+import nl.inl.blacklab.search.fimatch.Nfa;
+import nl.inl.blacklab.search.fimatch.NfaState;
+import nl.inl.util.LuceneUtil;
+
+/**
+ * A SpanQuery matching a number of tokens without any restrictions.
+ */
+public class SpanQueryAnyToken extends BLSpanQuery {
+
+	/** The minimum number of tokens in this stretch. */
+	protected int min;
+
+	/** The maximum number of tokens in this stretch. */
+	protected int max;
+
+<span class="fc" id="L45">	boolean alwaysHasClosingToken = true;</span>
+
+	String luceneField;
+
+<span class="fc" id="L49">	public SpanQueryAnyToken(int min, int max, String luceneField) {</span>
+<span class="fc" id="L50">		this.min = min;</span>
+<span class="fc" id="L51">		this.max = max;</span>
+<span class="fc" id="L52">		this.luceneField = luceneField;</span>
+<span class="fc" id="L53">	}</span>
+
+	public void setAlwaysHasClosingToken(boolean alwaysHasClosingToken) {
+<span class="fc" id="L56">		this.alwaysHasClosingToken = alwaysHasClosingToken;</span>
+<span class="fc" id="L57">	}</span>
+
+	@Override
+	public boolean matchesEmptySequence() {
+<span class="fc bfc" id="L61" title="All 2 branches covered.">		return min == 0;</span>
+	}
+
+	@Override
+	public BLSpanQuery noEmpty() {
+<span class="nc bnc" id="L66" title="All 2 branches missed.">		if (min &gt; 0)</span>
+<span class="nc" id="L67">			return this;</span>
+<span class="nc" id="L68">		SpanQueryAnyToken result = new SpanQueryAnyToken(1, max, luceneField);</span>
+<span class="nc bnc" id="L69" title="All 2 branches missed.">		if (!alwaysHasClosingToken)</span>
+<span class="nc" id="L70">			result.setAlwaysHasClosingToken(false);</span>
+<span class="nc" id="L71">		return result;</span>
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+<span class="fc bfc" id="L76" title="All 2 branches covered.">		if (obj instanceof SpanQueryAnyToken) {</span>
+<span class="fc" id="L77">			SpanQueryAnyToken tp = ((SpanQueryAnyToken) obj);</span>
+<span class="pc bpc" id="L78" title="3 of 4 branches missed.">			return min == tp.min &amp;&amp; max == tp.max;</span>
+		}
+<span class="fc" id="L80">		return false;</span>
+	}
+
+	@Override
+	public BLSpanWeight createWeight(final IndexSearcher searcher, boolean needsScores) throws IOException {
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">		final int realMin = min == 0 ? 1 : min; // always rewritten unless the whole query is optional</span>
+<span class="fc" id="L86">		return new BLSpanWeight(SpanQueryAnyToken.this, searcher, null) {</span>
+			@Override
+			public void extractTerms(Set&lt;Term&gt; terms) {
+				// No terms
+<span class="fc" id="L90">			}</span>
+
+			@Override
+			public void extractTermContexts(Map&lt;Term, TermContext&gt; contexts) {
+				// No terms
+<span class="nc" id="L95">			}</span>
+
+			@Override
+			public BLSpans getSpans(final LeafReaderContext context, Postings requiredPostings) throws IOException {
+<span class="fc" id="L99">				return new SpansNGrams(alwaysHasClosingToken, context.reader(), luceneField, realMin, max);</span>
+			}
+		};
+	}
+
+	@Override
+	public String toString(String field) {
+<span class="fc" id="L106">		return &quot;ANYTOKEN(&quot; + min + &quot;, &quot; + inf(max) + &quot;)&quot;;</span>
+	}
+
+	@Override
+	public String getRealField() {
+<span class="fc" id="L111">		return luceneField;</span>
+	}
+
+	@Override
+	public int hashCode() {
+<span class="nc bnc" id="L116" title="All 2 branches missed.">		return min + 31 * max + luceneField.hashCode() + (alwaysHasClosingToken ? 37 : 0);</span>
+	}
+
+	public boolean getAlwaysHasClosingToken() {
+<span class="fc" id="L120">		return alwaysHasClosingToken;</span>
+	}
+
+	@Override
+	public BLSpanQuery inverted() {
+<span class="nc" id="L125">		return new SpanQueryNoHits(luceneField); // Just return our clause, dropping the NOT operation</span>
+	}
+
+	@Override
+	protected boolean okayToInvertForOptimization() {
+		// Yes, inverting is actually an improvement
+<span class="nc bnc" id="L131" title="All 4 branches missed.">		return min == 1 &amp;&amp; max == 1;</span>
+	}
+
+	@Override
+	public boolean hitsAllSameLength() {
+<span class="fc bfc" id="L136" title="All 2 branches covered.">		return min == max;</span>
+	}
+
+	@Override
+	public int hitsLengthMin() {
+<span class="fc" id="L141">		return min;</span>
+	}
+
+	@Override
+	public int hitsLengthMax() {
+<span class="fc" id="L146">		return max;</span>
+	}
+
+	@Override
+	public boolean hitsEndPointSorted() {
+<span class="fc" id="L151">		return hitsAllSameLength();</span>
+	}
+
+	@Override
+	public boolean hitsStartPointSorted() {
+<span class="fc" id="L156">		return true;</span>
+	}
+
+	@Override
+	public boolean hitsHaveUniqueStart() {
+<span class="fc bfc" id="L161" title="All 2 branches covered.">		return min == max;</span>
+	}
+
+	@Override
+	public boolean hitsHaveUniqueEnd() {
+<span class="fc bfc" id="L166" title="All 2 branches covered.">		return min == max;</span>
+	}
+
+	@Override
+	public boolean hitsAreUnique() {
+<span class="fc" id="L171">		return true;</span>
+	}
+
+	@Override
+	public Nfa getNfa(ForwardIndexAccessor fiAccessor, int direction) {
+<span class="pc bpc" id="L176" title="1 of 2 branches missed.">		final int realMin = min == 0 ? 1 : min; // always rewritten unless the whole query is optional</span>
+<span class="fc" id="L177">		NfaState state = NfaState.anyToken(luceneField, null);</span>
+<span class="fc" id="L178">		Nfa frag = new Nfa(state, Arrays.asList(state));</span>
+<span class="pc bpc" id="L179" title="1 of 4 branches missed.">		if (realMin != 1 || max != 1) {</span>
+<span class="fc" id="L180">			frag.repeat(realMin, max);</span>
+		}
+<span class="fc" id="L182">		return frag;</span>
+	}
+
+	@Override
+	public boolean canMakeNfa() {
+<span class="fc" id="L187">		return true;</span>
+	}
+
+	@Override
+	public long reverseMatchingCost(IndexReader reader) {
+		// Should be rewritten, and if not, it matches all positions in the index.
+<span class="pc bpc" id="L193" title="1 of 2 branches missed.">		int numberOfExpansionSteps = max &lt; 0 ? 50 : max - min + 1;</span>
+<span class="fc" id="L194">		return LuceneUtil.getSumTotalTermFreq(reader, luceneField) * numberOfExpansionSteps;</span>
+	}
+
+	@Override
+	public int forwardMatchingCost() {
+<span class="fc" id="L199">		int cost = 0;</span>
+<span class="fc bfc" id="L200" title="All 2 branches covered.">		int nMax = max == MAX_UNLIMITED ? 50 : max;</span>
+<span class="fc bfc" id="L201" title="All 2 branches covered.">		for (int i = min; i &lt;= nMax; i++) {</span>
+<span class="fc" id="L202">			cost += i;</span>
+		}
+<span class="fc" id="L204">		return cost;</span>
+	}
+
+	public BLSpanQuery addRep(int addMin, int addMax) {
+<span class="nc" id="L208">		int nMin = min + addMin;</span>
+<span class="nc" id="L209">		int nMax = BLSpanQuery.addMaxValues(max, addMax);</span>
+<span class="nc" id="L210">		SpanQueryAnyToken q = new SpanQueryAnyToken(nMin, nMax, luceneField);</span>
+<span class="nc bnc" id="L211" title="All 2 branches missed.">		if (!alwaysHasClosingToken)</span>
+<span class="nc" id="L212">			q.setAlwaysHasClosingToken(false);</span>
+<span class="nc" id="L213">		return q;</span>
+	}
+
+	@Override
+	public BLSpanQuery rewrite(IndexReader reader) throws IOException {
+<span class="fc" id="L218">		return this;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

@@ -1,0 +1,1652 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>QueryTool.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.tools</a> &gt; <span class="el_source">QueryTool.java</span></div><h1>QueryTool.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.tools;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
+import java.io.UnsupportedEncodingException;
+import java.lang.reflect.Method;
+import java.nio.charset.Charset;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.apache.lucene.document.Document;
+import org.apache.lucene.index.CorruptIndexException;
+import org.apache.lucene.index.IndexableField;
+import org.apache.lucene.search.Query;
+
+import nl.inl.blacklab.perdocument.DocResult;
+import nl.inl.blacklab.perdocument.DocResults;
+import nl.inl.blacklab.perdocument.DocResultsWindow;
+import nl.inl.blacklab.queryParser.contextql.ContextualQueryLanguageParser;
+import nl.inl.blacklab.queryParser.corpusql.CorpusQueryLanguageParser;
+import nl.inl.blacklab.search.CompleteQuery;
+import nl.inl.blacklab.search.Concordance;
+import nl.inl.blacklab.search.ConcordanceType;
+import nl.inl.blacklab.search.Hit;
+import nl.inl.blacklab.search.Hits;
+import nl.inl.blacklab.search.HitsWindow;
+import nl.inl.blacklab.search.Searcher;
+import nl.inl.blacklab.search.Span;
+import nl.inl.blacklab.search.TermFrequency;
+import nl.inl.blacklab.search.TermFrequencyList;
+import nl.inl.blacklab.search.TextPattern;
+import nl.inl.blacklab.search.grouping.GroupProperty;
+import nl.inl.blacklab.search.grouping.GroupPropertyIdentity;
+import nl.inl.blacklab.search.grouping.GroupPropertySize;
+import nl.inl.blacklab.search.grouping.HitGroup;
+import nl.inl.blacklab.search.grouping.HitGroups;
+import nl.inl.blacklab.search.grouping.HitProperty;
+import nl.inl.blacklab.search.grouping.HitPropertyDocumentId;
+import nl.inl.blacklab.search.grouping.HitPropertyDocumentStoredField;
+import nl.inl.blacklab.search.grouping.HitPropertyHitText;
+import nl.inl.blacklab.search.grouping.HitPropertyLeftContext;
+import nl.inl.blacklab.search.grouping.HitPropertyMultiple;
+import nl.inl.blacklab.search.grouping.HitPropertyRightContext;
+import nl.inl.blacklab.search.grouping.HitPropertyWordLeft;
+import nl.inl.blacklab.search.grouping.HitPropertyWordRight;
+import nl.inl.blacklab.search.indexstructure.ComplexFieldDesc;
+import nl.inl.blacklab.search.indexstructure.IndexStructure;
+import nl.inl.blacklab.search.lucene.BLSpanQuery;
+import nl.inl.util.FileUtil;
+import nl.inl.util.LogUtil;
+import nl.inl.util.LuceneUtil;
+import nl.inl.util.StringUtil;
+import nl.inl.util.TimeUtil;
+import nl.inl.util.Timer;
+import nl.inl.util.XmlUtil;
+
+/**
+ * Simple command-line querying tool for BlackLab indices.
+ */
+public class QueryTool {
+
+<span class="nc" id="L88">	static final Charset INPUT_FILE_ENCODING = Charset.forName(&quot;utf-8&quot;);</span>
+
+	/** Our output writer. */
+	public PrintWriter out;
+
+	/** Our error writer (if null, output errors to out as well) */
+	public PrintWriter err;
+
+<span class="nc" id="L96">	static boolean batchMode = false;</span>
+
+	/** Our BlackLab Searcher object. */
+	Searcher searcher;
+
+	/** The hits that are the result of our query. */
+<span class="nc" id="L102">	private Hits hits = null;</span>
+
+	/** The docs that are the result of our query. */
+<span class="nc" id="L105">	private DocResults docs = null;</span>
+
+	/** The groups, or null if we haven't grouped our results. */
+<span class="nc" id="L108">	private HitGroups groups = null;</span>
+
+	/** If all hits or the current group of hits have been sorted, this contains the sorted hits. */
+<span class="nc" id="L111">	private Hits sortedHits = null;</span>
+
+	/** The collocations, or null if we're not looking at collocations. */
+<span class="nc" id="L114">	private TermFrequencyList collocations = null;</span>
+
+	/** What property to use for collocations */
+<span class="nc" id="L117">	private String collocProperty = null;</span>
+
+	/** The first hit or group to show on the current results page. */
+	private int firstResult;
+
+	/** Number of hits or groups to show per results page. */
+<span class="nc" id="L123">	private int resultsPerPage = 20;</span>
+
+	/** Show document titles between hits? */
+<span class="nc" id="L126">	private boolean showDocTitle = false;</span>
+
+	/** Show concordances or not? (if not, just shows number of hits) */
+<span class="nc" id="L129">	private boolean showConc = true;</span>
+
+	/** Show extra information about query being processed? */
+<span class="nc" id="L132">	private boolean verbose = false;</span>
+
+	/** Show total number of hits (takes extra time for large sets) */
+<span class="nc" id="L135">	private boolean determineTotalNumberOfHits = true;</span>
+
+	/** If true, describes time in minutes and seconds.
+	 *  If false, just gives the number of milliseconds. */
+<span class="nc" id="L139">	boolean timeDisplayHumanFriendly = false;</span>
+
+	/** The filter query, if any. */
+<span class="nc" id="L142">	private Query filterQuery = null;</span>
+
+	/** What results view do we want to see? */
+<span class="nc" id="L145">	enum ShowSetting {</span>
+<span class="nc" id="L146">		HITS, DOCS, GROUPS, COLLOC</span>
+	}
+
+	/**
+	 * What results view do we want to see? (hits, groups or collocations)
+	 */
+<span class="nc" id="L152">	private ShowSetting showSetting = ShowSetting.HITS;</span>
+
+	/**
+	 * If we're looking at hits in one group, this is the index of the group number. Otherwise, this
+	 * is -1.
+	 */
+<span class="nc" id="L158">	private int showWhichGroup = -1;</span>
+
+	/** Lists of words read from file to choose random word from (for batch mode) */
+<span class="nc" id="L161">	private Map&lt;String, List&lt;String&gt;&gt; wordLists = new HashMap&lt;&gt;();</span>
+
+	/** Thrown when an error occurs during parsing */
+	class ParseException extends Exception {
+
+<span class="nc" id="L166">		public ParseException() {</span>
+<span class="nc" id="L167">			super();</span>
+<span class="nc" id="L168">		}</span>
+
+<span class="nc" id="L170">		public ParseException(String message, Throwable cause) {</span>
+<span class="nc" id="L171">			super(message, cause);</span>
+<span class="nc" id="L172">		}</span>
+
+<span class="nc" id="L174">		public ParseException(String message) {</span>
+<span class="nc" id="L175">			super(message);</span>
+<span class="nc" id="L176">		}</span>
+
+<span class="nc" id="L178">		public ParseException(Throwable cause) {</span>
+<span class="nc" id="L179">			super(cause);</span>
+<span class="nc" id="L180">		}</span>
+	}
+
+	/** Generic command parser interface */
+<span class="nc" id="L184">	abstract class Parser {</span>
+		public abstract String getPrompt();
+
+		public abstract String getName();
+
+		public abstract TextPattern parse(String query) throws ParseException;
+
+		/** Get the filter query included in the last query, if any. Only used for ContextQL.
+		 * @return the filter query, or null if there was none */
+<span class="nc" id="L193">		Query getIncludedFilterQuery() { return null; }</span>
+
+		public abstract void printHelp();
+	}
+
+	/** Parser for Corpus Query Language */
+<span class="nc" id="L199">	class ParserCorpusQl extends Parser {</span>
+
+		@Override
+		public String getPrompt() {
+<span class="nc" id="L203">			return &quot;CorpusQL&quot;;</span>
+		}
+
+		@Override
+		public String getName() {
+<span class="nc" id="L208">			return &quot;Corpus Query Language&quot;;</span>
+		}
+
+		/**
+		 * Parse a Corpus Query Language query to produce a TextPattern
+		 *
+		 * @param query
+		 *            the query
+		 * @return the corresponding TextPattern
+		 * @throws ParseException
+		 */
+		@Override
+		public TextPattern parse(String query) throws ParseException {
+			try {
+<span class="nc" id="L222">				return CorpusQueryLanguageParser.parse(query);</span>
+<span class="nc" id="L223">			} catch (nl.inl.blacklab.queryParser.corpusql.ParseException e) {</span>
+<span class="nc" id="L224">				throw new ParseException(e.getMessage());</span>
+<span class="nc" id="L225">			} catch (nl.inl.blacklab.queryParser.corpusql.TokenMgrError e) {</span>
+<span class="nc" id="L226">				throw new ParseException(e.getMessage());</span>
+<span class="nc" id="L227">			} catch (Exception e) {</span>
+<span class="nc" id="L228">				throw new ParseException(&quot;Fatale fout tijdens parsen: &quot; + e.getMessage());</span>
+			}
+		}
+
+		@Override
+		public void printHelp() {
+<span class="nc" id="L234">			outprintln(&quot;Corpus Query Language examples:&quot;);</span>
+<span class="nc" id="L235">			outprintln(&quot;  \&quot;city\&quot; | \&quot;town\&quot;               # the word \&quot;city\&quot; or the word \&quot;town\&quot;&quot;);</span>
+<span class="nc" id="L236">			outprintln(&quot;  \&quot;the\&quot; \&quot;cit.*\&quot;                 # \&quot;the\&quot; followed by word starting with \&quot;cit\&quot;&quot;);</span>
+<span class="nc" id="L237">			outprintln(&quot;  [lemma=\&quot;plan\&quot; &amp; pos=\&quot;N.*\&quot;]    # forms of the word \&quot;plan\&quot; as a noun&quot;);</span>
+<span class="nc" id="L238">			outprintln(&quot;  [lemma=\&quot;be\&quot;] [lemma=\&quot;stay\&quot;]   # form of \&quot;be\&quot; followed by form of \&quot;stay\&quot;&quot;);</span>
+<span class="nc" id="L239">			outprintln(&quot;  [lemma=\&quot;be\&quot;]{2,}              # two or more successive forms of \&quot;to be\&quot;&quot;);</span>
+<span class="nc" id="L240">			outprintln(&quot;  [pos=\&quot;J.*\&quot;]+ \&quot;man\&quot;            # adjectives applied to \&quot;man\&quot;&quot;);</span>
+<span class="nc" id="L241">			outprintln(&quot;  \&quot;town\&quot; []{0,5} \&quot;city\&quot;         # \&quot;city\&quot; after \&quot;town\&quot;, up to 5 words in between&quot;);</span>
+<span class="nc" id="L242">		}</span>
+
+	}
+
+	/** Parser for Contextual Query Language */
+<span class="nc" id="L247">	class ParserContextQl extends Parser {</span>
+
+<span class="nc" id="L249">		Query includedFilterQuery = null;</span>
+
+		@Override
+		public String getPrompt() {
+<span class="nc" id="L253">			return &quot;ContextQL&quot;;</span>
+		}
+
+		@Override
+		public String getName() {
+<span class="nc" id="L258">			return &quot;Contextual Query Language&quot;;</span>
+		}
+
+		/**
+		 * Parse a Contextual Query Language query to produce a TextPattern
+		 *
+		 * @param query
+		 *            the query
+		 * @return the corresponding TextPattern
+		 * @throws ParseException
+		 */
+		@Override
+		public TextPattern parse(String query) throws ParseException {
+
+			try {
+				//outprintln(&quot;WARNING: SRU CQL SUPPORT IS EXPERIMENTAL, MAY NOT WORK AS INTENDED&quot;);
+<span class="nc" id="L274">				CompleteQuery q = ContextualQueryLanguageParser.parse(searcher, query);</span>
+<span class="nc" id="L275">				includedFilterQuery = q.getFilterQuery();</span>
+<span class="nc" id="L276">				return q.getContentsQuery();</span>
+<span class="nc" id="L277">			} catch (nl.inl.blacklab.queryParser.contextql.ParseException e) {</span>
+<span class="nc" id="L278">				throw new ParseException(e.getMessage());</span>
+<span class="nc" id="L279">			} catch (nl.inl.blacklab.queryParser.contextql.TokenMgrError e) {</span>
+<span class="nc" id="L280">				throw new ParseException(e.getMessage());</span>
+			}
+
+			/*
+			Class&lt;?&gt; classXCQLParser = Class.forName(&quot;nl.inl.clarinsd.xcqlparser.XCQLParser&quot;);
+			Method methodParse = classXCQLParser.getDeclaredMethod(&quot;parse&quot;, String.class);
+			Object returnValue = methodParse.invoke(classXCQLParser, query);
+			return (TextPattern) returnValue;
+			*/
+		}
+
+		@Override
+		public Query getIncludedFilterQuery() {
+<span class="nc" id="L293">			return includedFilterQuery;</span>
+		}
+
+		@Override
+		public void printHelp() {
+<span class="nc" id="L298">			outprintln(&quot;Contextual Query Language examples:&quot;);</span>
+<span class="nc" id="L299">			outprintln(&quot;  city or town                  # Find the word \&quot;city\&quot; or the word \&quot;town\&quot;&quot;);</span>
+<span class="nc" id="L300">			outprintln(&quot;  \&quot;the cit*\&quot;                    # Find \&quot;the\&quot; followed by a word starting with \&quot;cit\&quot;&quot;);</span>
+<span class="nc" id="L301">			outprintln(&quot;  lemma=plan and pos=N*         # Find forms of \&quot;plan\&quot; as a noun&quot;);</span>
+<span class="nc" id="L302">			outprintln(&quot;  lemma=\&quot;be stay\&quot;               # form of \&quot;be\&quot; followed by form of \&quot;stay\&quot;&quot;);</span>
+<span class="nc" id="L303">			outprintln(&quot;  town prox//5//ordered city    # (NOTE: this is not supported yet!)&quot;);</span>
+<span class="nc" id="L304">			outprintln(&quot;                                # \&quot;city\&quot; after \&quot;town\&quot;, up to 5 words in between&quot;);</span>
+<span class="nc" id="L305">			outprintln(&quot;\nWARNING: THIS PARSER IS STILL VERY MUCH EXPERIMENTAL. NOT SUITABLE FOR PRODUCTION.&quot;);</span>
+<span class="nc" id="L306">		}</span>
+
+	}
+
+<span class="nc" id="L310">	private List&lt;Parser&gt; parsers = Arrays.asList(new ParserCorpusQl(), new ParserContextQl());</span>
+
+<span class="nc" id="L312">	private int currentParserIndex = 0;</span>
+
+	/** Where to read commands from */
+	private BufferedReader in;
+
+	/** For stats output (batch mode), extra info (such as # hits) */
+	private String statInfo;
+
+	/** If false, command was not a query, prefix stats line with # */
+	private boolean commandWasQuery;
+
+	/** Size of larger snippet */
+<span class="nc" id="L324">	private int snippetSize = 50;</span>
+
+	/** Don't allow file operations in web mode */
+<span class="nc" id="L327">	private boolean webSafeOperationOnly = false;</span>
+
+	/** Strip XML tags when displaying concordances? */
+<span class="nc" id="L330">	private boolean stripXML = true;</span>
+
+	private String contentsField;
+
+	/**
+	 * The main program.
+	 *
+	 * @param args
+	 *            commandline arguments
+	 * @throws IOException
+	 */
+	public static void main(String[] args) throws IOException {
+
+<span class="nc" id="L343">		LogUtil.setupBasicLoggingConfig();</span>
+
+		// Parse command line
+<span class="nc" id="L346">		File indexDir = null;</span>
+<span class="nc" id="L347">		File inputFile = null;</span>
+<span class="nc" id="L348">		String encoding = Charset.defaultCharset().name();</span>
+<span class="nc bnc" id="L349" title="All 2 branches missed.">		for (int i = 0; i &lt; args.length; i++)  {</span>
+<span class="nc" id="L350">			String arg = args[i].trim();</span>
+<span class="nc bnc" id="L351" title="All 4 branches missed.">			if (arg.length() &gt; 0 &amp;&amp; arg.charAt(0) == '-') {</span>
+<span class="nc bnc" id="L352" title="All 2 branches missed.">				if (arg.equals(&quot;-e&quot;)) {</span>
+<span class="nc bnc" id="L353" title="All 2 branches missed.">					if (i + 1 == args.length) {</span>
+<span class="nc" id="L354">						System.err.println(&quot;-e option needs argument&quot;);</span>
+<span class="nc" id="L355">						usage();</span>
+<span class="nc" id="L356">						return;</span>
+					}
+<span class="nc" id="L358">					encoding = args[i + 1];</span>
+<span class="nc" id="L359">					i++;</span>
+<span class="nc bnc" id="L360" title="All 2 branches missed.">				} else if (arg.equals(&quot;-f&quot;)) {</span>
+<span class="nc bnc" id="L361" title="All 2 branches missed.">					if (i + 1 == args.length) {</span>
+<span class="nc" id="L362">						System.err.println(&quot;-f option needs argument&quot;);</span>
+<span class="nc" id="L363">						usage();</span>
+<span class="nc" id="L364">						return;</span>
+					}
+<span class="nc" id="L366">					inputFile = new File(args[i + 1]);</span>
+<span class="nc" id="L367">					i++;</span>
+<span class="nc" id="L368">					System.err.println(&quot;Batch mode; reading commands from &quot; + inputFile);</span>
+				} else {
+<span class="nc" id="L370">					System.err.println(&quot;Unknown option: &quot; + arg);</span>
+<span class="nc" id="L371">					usage();</span>
+<span class="nc" id="L372">					return;</span>
+				}
+			} else {
+<span class="nc bnc" id="L375" title="All 2 branches missed.">				if (indexDir != null) {</span>
+<span class="nc" id="L376">					System.err.println(&quot;Can only specify 1 index directory&quot;);</span>
+<span class="nc" id="L377">					usage();</span>
+<span class="nc" id="L378">					return;</span>
+				}
+<span class="nc" id="L380">				indexDir = new File(arg);</span>
+			}
+		}
+<span class="nc bnc" id="L383" title="All 2 branches missed.">		if (indexDir == null) {</span>
+<span class="nc" id="L384">			usage();</span>
+<span class="nc" id="L385">			return;</span>
+		}
+
+<span class="nc" id="L388">		run(indexDir, inputFile, encoding);</span>
+<span class="nc" id="L389">	}</span>
+
+	/**
+	 * Run the QueryTool in batch mode
+	 * @param indexDir the index to search
+	 * @param commandFile the command file to execute
+	 * @param encoding the output encoding
+	 * @throws UnsupportedEncodingException
+	 * @throws CorruptIndexException
+	 */
+	public static void runBatch(File indexDir, File commandFile, String encoding) throws UnsupportedEncodingException, CorruptIndexException {
+<span class="nc" id="L400">		run(indexDir, commandFile, encoding);</span>
+<span class="nc" id="L401">	}</span>
+
+	/**
+	 * Run the QueryTool in batch mode
+	 * @param indexDir the index to search
+	 * @param commandFile the command file to execute
+	 * @throws CorruptIndexException
+	 */
+	public static void runBatch(File indexDir, File commandFile) throws CorruptIndexException {
+		try {
+<span class="nc" id="L411">			run(indexDir, commandFile, Charset.defaultCharset().name());</span>
+<span class="nc" id="L412">		} catch (UnsupportedEncodingException e) {</span>
+<span class="nc" id="L413">			throw new RuntimeException(e);</span>
+<span class="nc" id="L414">		}</span>
+<span class="nc" id="L415">	}</span>
+
+	/**
+	 * Run the QueryTool in interactive mode
+	 * @param indexDir the index to search
+	 * @param encoding the output encoding
+	 * @throws UnsupportedEncodingException
+	 * @throws CorruptIndexException
+	 */
+	public static void runInteractive(File indexDir, String encoding) throws UnsupportedEncodingException, CorruptIndexException {
+<span class="nc" id="L425">		run(indexDir, null, encoding);</span>
+<span class="nc" id="L426">	}</span>
+
+	/**
+	 * Run the QueryTool in interactive mode
+	 * @param indexDir the index to search
+	 * @throws CorruptIndexException
+	 */
+	public static void runInteractive(File indexDir) throws CorruptIndexException {
+		try {
+<span class="nc" id="L435">			run(indexDir, null, Charset.defaultCharset().name());</span>
+<span class="nc" id="L436">		} catch (Exception e) {</span>
+<span class="nc" id="L437">			throw new RuntimeException(e);</span>
+<span class="nc" id="L438">		}</span>
+<span class="nc" id="L439">	}</span>
+
+	/**
+	 * Run the query tool.
+	 * @param indexDir the index to query
+	 * @param inputFile if specified, run in batch mode. If null, run in interactive mode
+	 * @param encoding the output encoding to use
+	 * @throws UnsupportedEncodingException
+	 * @throws CorruptIndexException
+	 * @throws IOException
+	 */
+	private static void run(File indexDir, File inputFile, String encoding)
+			throws UnsupportedEncodingException, CorruptIndexException {
+<span class="nc bnc" id="L452" title="All 4 branches missed.">		if (!indexDir.exists() || !indexDir.isDirectory()) {</span>
+<span class="nc" id="L453">			System.err.println(&quot;Index dir &quot; + indexDir.getPath() + &quot; doesn't exist.&quot;);</span>
+<span class="nc" id="L454">			return;</span>
+		}
+
+		// Use correct output encoding
+		PrintWriter out, err;
+		try {
+			// Yes
+<span class="nc" id="L461">			out = new PrintWriter(new OutputStreamWriter(System.out, encoding), true);</span>
+<span class="nc" id="L462">			err = new PrintWriter(new OutputStreamWriter(System.err, encoding), true);</span>
+<span class="nc" id="L463">			out.println(&quot;Using output encoding &quot; + encoding + &quot;\n&quot;);</span>
+<span class="nc" id="L464">		} catch (UnsupportedEncodingException e) {</span>
+			// Nope; fall back to default
+<span class="nc" id="L466">			System.err.println(&quot;Unknown encoding &quot; + encoding + &quot;; using default&quot;);</span>
+<span class="nc" id="L467">			out = new PrintWriter(new OutputStreamWriter(System.out, Charset.defaultCharset()), true);</span>
+<span class="nc" id="L468">			err = new PrintWriter(new OutputStreamWriter(System.err, Charset.defaultCharset()), true);</span>
+<span class="nc" id="L469">		}</span>
+
+<span class="nc bnc" id="L471" title="All 2 branches missed.">		if (inputFile != null)</span>
+<span class="nc" id="L472">		    batchMode = true;</span>
+<span class="nc bnc" id="L473" title="All 2 branches missed.">		try (BufferedReader in = inputFile == null ?</span>
+		        new BufferedReader(new InputStreamReader(System.in, encoding)) :
+<span class="nc" id="L475">		        FileUtil.openForReading(inputFile, INPUT_FILE_ENCODING)) {</span>
+<span class="nc" id="L476">			QueryTool c = new QueryTool(indexDir, in, out, err);</span>
+<span class="nc" id="L477">			c.commandProcessor();</span>
+<span class="nc bnc" id="L478" title="All 8 branches missed.">		} catch (IOException e) {</span>
+            // TODO Auto-generated catch block
+<span class="nc" id="L480">            throw new RuntimeException(e);</span>
+<span class="nc" id="L481">        }</span>
+<span class="nc" id="L482">	}</span>
+
+	private static void usage() {
+<span class="nc" id="L485">		System.err.println(</span>
+<span class="nc" id="L486">			&quot;Usage: &quot; + QueryTool.class.getName() + &quot; [options] &lt;indexDir&gt;\n&quot; +</span>
+			&quot;\n&quot; +
+			&quot;Options:\n&quot; +
+			&quot;-e &lt;encoding&gt;   Specify what output encoding to use\n&quot; +
+			&quot;-f &lt;file&gt;       Execute batch commands from file, print performance\n&quot; +
+			&quot;                info and exit\n&quot; +
+			&quot;\n&quot; +
+			&quot;In batch mode, for every command executed, the command is printed\n&quot; +
+			&quot;to stdout with the elapsed time and (if applicable) the number of\n&quot; +
+			&quot;hits found (tab-separated). Non-query commands are preceded by @.\n&quot; +
+			&quot;\n&quot; +
+			&quot;Batch command files should contain one command per line, or multiple\n&quot; +
+			&quot;commands on a single line separated by &amp;&amp; (use this e.g. to time\n&quot; +
+			&quot;querying and sorting together). Lines starting with # are comments.\n&quot; +
+			&quot;Comments are printed on stdout as well. Lines starting with - will\n&quot; +
+			&quot;not be reported. Start a line with -# for an unreported comment.&quot;);
+<span class="nc" id="L502">	}</span>
+
+	/**
+	 * Construct the query tool object.
+	 * @param searcher the searcher object (our index)
+	 * @param in where to read commands from
+	 * @param out where to write output to
+	 * @param err where to write errors to
+	 * @throws CorruptIndexException
+	 */
+<span class="nc" id="L512">	public QueryTool(Searcher searcher, BufferedReader in, PrintWriter out, PrintWriter err) throws CorruptIndexException {</span>
+<span class="nc" id="L513">		this.searcher = searcher;</span>
+<span class="nc" id="L514">		this.contentsField = searcher.getMainContentsFieldName();</span>
+<span class="nc" id="L515">		shouldCloseSearcher = false; // caller is responsible</span>
+
+<span class="nc" id="L517">		this.in = in;</span>
+<span class="nc" id="L518">		this.out = out;</span>
+<span class="nc" id="L519">		this.err = err;</span>
+
+<span class="nc bnc" id="L521" title="All 2 branches missed.">		if (in == null) {</span>
+<span class="nc" id="L522">			webSafeOperationOnly = true; // don't allow file operations in web mode</span>
+<span class="nc" id="L523">			this.err = out; // send errors to the same output writer in web mode</span>
+		} else {
+<span class="nc" id="L525">			printProgramHead();</span>
+		}
+
+<span class="nc" id="L528">		contextSize = searcher.hitsSettings().contextSize();</span>
+
+<span class="nc" id="L530">		wordLists.put(&quot;test&quot;, Arrays.asList(&quot;de&quot;, &quot;het&quot;, &quot;een&quot;, &quot;over&quot;, &quot;aan&quot;));</span>
+<span class="nc" id="L531">	}</span>
+
+	/**
+	 * Construct the query tool object.
+	 *
+	 * @param indexDir directory our index is in
+	 * @param in where to read commands from
+	 * @param out where to write output to
+	 * @param err where to write errors to
+	 * @throws CorruptIndexException
+	 */
+<span class="nc" id="L542">	public QueryTool(File indexDir, BufferedReader in, PrintWriter out, PrintWriter err) throws CorruptIndexException {</span>
+<span class="nc" id="L543">		this.in = in;</span>
+<span class="nc" id="L544">		this.out = out;</span>
+<span class="nc" id="L545">		this.err = err;</span>
+
+<span class="nc bnc" id="L547" title="All 2 branches missed.">		if (in != null) {</span>
+<span class="nc" id="L548">			printProgramHead();</span>
+			try {
+<span class="nc" id="L550">				outprintln(&quot;Opening index &quot; + indexDir.getCanonicalPath() + &quot;...&quot;);</span>
+<span class="nc" id="L551">			} catch (IOException e) {</span>
+<span class="nc" id="L552">				throw new RuntimeException(e);</span>
+<span class="nc" id="L553">			}</span>
+		}
+
+		// Create the BlackLab searcher object
+		try {
+<span class="nc" id="L558">			searcher = Searcher.open(indexDir);</span>
+<span class="nc" id="L559">			contentsField = searcher.getMainContentsFieldName();</span>
+<span class="nc" id="L560">		} catch (IOException e) {</span>
+<span class="nc" id="L561">			throw new RuntimeException(e);</span>
+<span class="nc" id="L562">		}</span>
+
+<span class="nc bnc" id="L564" title="All 2 branches missed.">		if (in == null) {</span>
+<span class="nc" id="L565">			webSafeOperationOnly = true; // don't allow file operations in web mode</span>
+<span class="nc" id="L566">			this.err = out; // send errors to the same output writer in web mode</span>
+		}
+
+<span class="nc" id="L569">		contextSize = searcher.hitsSettings().contextSize();</span>
+
+<span class="nc" id="L571">		wordLists.put(&quot;test&quot;, Arrays.asList(&quot;de&quot;, &quot;het&quot;, &quot;een&quot;, &quot;over&quot;, &quot;aan&quot;));</span>
+<span class="nc" id="L572">	}</span>
+
+	/**
+	 * Construct the query tool object.
+	 *
+	 * @param indexDir directory our index is in
+	 * @param out the output writer to use
+	 * @param err where to write errors to
+	 * @throws CorruptIndexException
+	 */
+	public QueryTool(File indexDir, PrintWriter out, PrintWriter err) throws CorruptIndexException {
+<span class="nc" id="L583">		this(indexDir, null, out, err);</span>
+<span class="nc" id="L584">	}</span>
+
+	/**
+	 * Switch to a different Searcher.
+	 * @param searcher the new Searcher to use
+	 */
+	public void setSearcher(Searcher searcher) {
+<span class="nc bnc" id="L591" title="All 2 branches missed.">		if (shouldCloseSearcher)</span>
+<span class="nc" id="L592">			searcher.close();</span>
+<span class="nc" id="L593">		this.searcher = searcher;</span>
+<span class="nc" id="L594">		contentsField = searcher.getMainContentsFieldName();</span>
+<span class="nc" id="L595">		shouldCloseSearcher = false; // caller is responsible</span>
+
+		// Reset results
+<span class="nc" id="L598">		hits = null;</span>
+<span class="nc" id="L599">		groups = null;</span>
+<span class="nc" id="L600">		sortedHits = null;</span>
+<span class="nc" id="L601">		collocations = null;</span>
+<span class="nc" id="L602">	}</span>
+
+	/**
+	 * Parse and execute commands and queries.
+	 */
+	public void commandProcessor() {
+<span class="nc" id="L608">		printHelp();</span>
+
+		while (true) {
+<span class="nc" id="L611">			Parser parser = parsers.get(currentParserIndex);</span>
+<span class="nc" id="L612">			String prompt = parser.getPrompt() + &quot;&gt; &quot;;</span>
+			String cmd;
+			try {
+<span class="nc" id="L615">				cmd = readCommand(prompt);</span>
+<span class="nc" id="L616">			} catch (IOException e1) {</span>
+<span class="nc" id="L617">				throw new RuntimeException(e1);</span>
+<span class="nc" id="L618">			}</span>
+<span class="nc bnc" id="L619" title="All 4 branches missed.">			if (cmd == null || cmd.trim().equals(&quot;exit&quot;)) {</span>
+<span class="nc" id="L620">				break;</span>
+			}
+
+<span class="nc" id="L623">			boolean printStat = true;</span>
+<span class="nc bnc" id="L624" title="All 4 branches missed.">			if (cmd.length() &gt; 0 &amp;&amp; cmd.charAt(0) == '-') {</span>
+				// Command preceded by &quot;-&quot;: silent, don't output stats
+<span class="nc" id="L626">				printStat = false;</span>
+<span class="nc" id="L627">				cmd = cmd.substring(1).trim();</span>
+			}
+
+<span class="nc bnc" id="L630" title="All 4 branches missed.">			if (cmd.length() &gt; 0 &amp;&amp; cmd.charAt(0) == '#') {</span>
+				// Line starting with &quot;#&quot;: comment
+<span class="nc bnc" id="L632" title="All 2 branches missed.">				if (printStat)</span>
+<span class="nc" id="L633">					statprintln(cmd);</span>
+				continue;
+			}
+
+			// Comment after command? Strip.
+<span class="nc" id="L638">			cmd = cmd.replaceAll(&quot;#.+$&quot;, &quot;&quot;).trim();</span>
+<span class="nc bnc" id="L639" title="All 2 branches missed.">			if (cmd.length() == 0) {</span>
+<span class="nc" id="L640">				statprintln(&quot;&quot;); // output empty lines in stats</span>
+<span class="nc" id="L641">				continue; // no actual command on line, skip</span>
+			}
+
+<span class="nc" id="L644">			Timer t = new Timer();</span>
+<span class="nc" id="L645">			statInfo = &quot;&quot;;</span>
+<span class="nc" id="L646">			commandWasQuery = false;</span>
+<span class="nc" id="L647">			processCommand(cmd);</span>
+<span class="nc bnc" id="L648" title="All 2 branches missed.">			if (printStat)</span>
+<span class="nc bnc" id="L649" title="All 2 branches missed.">				statprintln((commandWasQuery ? &quot;&quot; : &quot;@ &quot;) + cmd + &quot;\t&quot; + t.elapsed() + &quot;\t&quot; + statInfo);</span>
+
+			try {
+<span class="nc" id="L652">				Thread.sleep(100); // Give Eclipse console time to show stderr output</span>
+<span class="nc" id="L653">			} catch (InterruptedException e) {</span>
+<span class="nc" id="L654">				throw new RuntimeException(e);</span>
+<span class="nc" id="L655">			}</span>
+<span class="nc" id="L656">		}</span>
+<span class="nc" id="L657">		cleanup();</span>
+<span class="nc" id="L658">	}</span>
+
+	int parseInt(String str, int min) {
+		try {
+<span class="nc" id="L662">			int n = Integer.parseInt(str);</span>
+<span class="nc bnc" id="L663" title="All 4 branches missed.">			if (min &gt;= 0 &amp;&amp; n &lt; min)</span>
+<span class="nc" id="L664">				return min;</span>
+<span class="nc" id="L665">			return n;</span>
+<span class="nc" id="L666">		} catch (NumberFormatException e) {</span>
+<span class="nc" id="L667">			return min;</span>
+		}
+	}
+
+	public void processCommand(String fullCmd) {
+<span class="nc" id="L672">		fullCmd = fullCmd.trim();</span>
+<span class="nc bnc" id="L673" title="All 4 branches missed.">		if (fullCmd.length() &gt; 0 &amp;&amp; fullCmd.charAt(0) == '#') // comment (batch mode)</span>
+<span class="nc" id="L674">			return;</span>
+
+		// See if we want to loop a command
+<span class="nc bnc" id="L677" title="All 4 branches missed.">		if (!webSafeOperationOnly &amp;&amp; fullCmd.startsWith(&quot;repeat &quot;)) {</span>
+<span class="nc" id="L678">			fullCmd = fullCmd.substring(7);</span>
+<span class="nc" id="L679">			Pattern p = Pattern.compile(&quot;^\\d+\\s&quot;);</span>
+<span class="nc" id="L680">			Matcher m = p.matcher(fullCmd);</span>
+<span class="nc bnc" id="L681" title="All 2 branches missed.">			if (m.find()) {</span>
+<span class="nc" id="L682">				String strNum = m.group();</span>
+<span class="nc" id="L683">				fullCmd = fullCmd.substring(strNum.length());</span>
+<span class="nc" id="L684">				int repCount = parseInt(strNum.trim(), 1);</span>
+<span class="nc" id="L685">				outprint(&quot;Repeating &quot; + repCount + &quot; times: &quot; + fullCmd);</span>
+<span class="nc bnc" id="L686" title="All 2 branches missed.">				for (int i = 0; i &lt; repCount; i++) {</span>
+<span class="nc" id="L687">					processCommand(fullCmd);</span>
+				}
+<span class="nc" id="L689">			} else {</span>
+<span class="nc" id="L690">				errprintln(&quot;Repeat command should have a repetition count.&quot;);</span>
+			}
+<span class="nc" id="L692">			return;</span>
+		}
+
+		// In batch mode, we can use the chain operator (&amp;&amp;) to
+		// time several commands together. See if we're chaining
+		// commands here.
+<span class="nc" id="L698">		String cmd, restCommand = null;</span>
+<span class="nc" id="L699">		int commandSeparatorIndex = fullCmd.indexOf(&quot;&amp;&amp;&quot;);</span>
+<span class="nc bnc" id="L700" title="All 2 branches missed.">		if (commandSeparatorIndex &gt;= 0) {</span>
+<span class="nc" id="L701">			cmd = fullCmd.substring(0, commandSeparatorIndex).trim();</span>
+<span class="nc" id="L702">			restCommand = fullCmd.substring(commandSeparatorIndex + 2).trim();</span>
+		} else {
+<span class="nc" id="L704">			cmd = fullCmd;</span>
+		}
+
+<span class="nc" id="L707">		String lcased = cmd.toLowerCase();</span>
+<span class="nc bnc" id="L708" title="All 2 branches missed.">		if (lcased.length() &gt; 0) {</span>
+<span class="nc bnc" id="L709" title="All 4 branches missed.">			if (lcased.equals(&quot;clear&quot;) || lcased.equals(&quot;reset&quot;)) {</span>
+<span class="nc" id="L710">				hits = null;</span>
+<span class="nc" id="L711">				docs = null;</span>
+<span class="nc" id="L712">				groups = null;</span>
+<span class="nc" id="L713">				sortedHits = null;</span>
+<span class="nc" id="L714">				collocations = null;</span>
+<span class="nc" id="L715">				filterQuery = null;</span>
+<span class="nc" id="L716">				showSetting = ShowSetting.HITS;</span>
+<span class="nc" id="L717">				outprintln(&quot;Query and results cleared.&quot;);</span>
+<span class="nc bnc" id="L718" title="All 4 branches missed.">			} else if (lcased.equals(&quot;prev&quot;) || lcased.equals(&quot;p&quot;)) {</span>
+<span class="nc" id="L719">				prevPage();</span>
+<span class="nc bnc" id="L720" title="All 4 branches missed.">			} else if (lcased.equals(&quot;next&quot;) || lcased.equals(&quot;n&quot;)) {</span>
+<span class="nc" id="L721">				nextPage();</span>
+<span class="nc bnc" id="L722" title="All 2 branches missed.">			} else if (lcased.startsWith(&quot;page &quot;)) {</span>
+<span class="nc" id="L723">				showPage(parseInt(lcased.substring(5), 1) - 1);</span>
+<span class="nc bnc" id="L724" title="All 2 branches missed.">			} else if (lcased.startsWith(&quot;pagesize &quot;)) {</span>
+<span class="nc" id="L725">				resultsPerPage = parseInt(lcased.substring(9), 1);</span>
+<span class="nc" id="L726">				firstResult = 0;</span>
+<span class="nc" id="L727">				showResultsPage();</span>
+<span class="nc bnc" id="L728" title="All 2 branches missed.">			} else if (lcased.startsWith(&quot;context &quot;)) {</span>
+<span class="nc" id="L729">				contextSize = parseInt(lcased.substring(8), 0);</span>
+<span class="nc bnc" id="L730" title="All 4 branches missed.">				if (hits != null &amp;&amp; hits.settings().contextSize() != contextSize) {</span>
+<span class="nc" id="L731">					hits.settings().setContextSize(contextSize);</span>
+<span class="nc" id="L732">					collocations = null;</span>
+				}
+<span class="nc" id="L734">				showResultsPage();</span>
+<span class="nc bnc" id="L735" title="All 2 branches missed.">			} else if (lcased.startsWith(&quot;snippet &quot;)) {</span>
+<span class="nc" id="L736">				int hitId = parseInt(lcased.substring(8), 1) - 1;</span>
+<span class="nc" id="L737">				Hits currentHitSet = getCurrentSortedHitSet();</span>
+<span class="nc bnc" id="L738" title="All 2 branches missed.">				if (hitId &gt;= currentHitSet.size()) {</span>
+<span class="nc" id="L739">					errprintln(&quot;Hit number out of range.&quot;);</span>
+				} else {
+<span class="nc" id="L741">					Hit h = currentHitSet.get(hitId);</span>
+<span class="nc" id="L742">					Concordance conc = hits.getConcordance(h, snippetSize);</span>
+					String[] concParts;
+<span class="nc bnc" id="L744" title="All 2 branches missed.">					if (stripXML)</span>
+<span class="nc" id="L745">						concParts = conc.partsNoXml();</span>
+					else
+<span class="nc" id="L747">						concParts = conc.parts();</span>
+<span class="nc" id="L748">					outprintln(&quot;\n&quot; + StringUtil.wrapToString(concParts[0] + &quot;[&quot; + concParts[1] + &quot;]&quot; + concParts[2], 80));</span>
+				}
+<span class="nc bnc" id="L750" title="All 2 branches missed.">			} else if (lcased.startsWith(&quot;highlight &quot;)) {</span>
+<span class="nc" id="L751">				int hitId = parseInt(lcased.substring(8), 1) - 1;</span>
+<span class="nc" id="L752">				Hits currentHitSet = getCurrentSortedHitSet();</span>
+<span class="nc bnc" id="L753" title="All 4 branches missed.">				if (currentHitSet == null || hitId &gt;= currentHitSet.size()) {</span>
+<span class="nc" id="L754">					errprintln(&quot;Hit number out of range.&quot;);</span>
+				} else {
+<span class="nc" id="L756">					int docid = currentHitSet.get(hitId).doc;</span>
+<span class="nc" id="L757">					Hits hitsInDoc = hits.getHitsInDoc(docid);</span>
+<span class="nc" id="L758">					outprintln(StringUtil.wrapToString(searcher.highlightContent(docid, hitsInDoc), 80));</span>
+				}
+<span class="nc bnc" id="L760" title="All 2 branches missed.">			} else if (lcased.startsWith(&quot;snippetsize &quot;)) {</span>
+<span class="nc" id="L761">				snippetSize = parseInt(lcased.substring(12), 0);</span>
+<span class="nc" id="L762">				outprintln(&quot;Snippets will show &quot; + snippetSize + &quot; words of context.&quot;);</span>
+<span class="nc bnc" id="L763" title="All 2 branches missed.">			} else if (lcased.startsWith(&quot;doc &quot;)) {</span>
+<span class="nc" id="L764">				int docId = parseInt(lcased.substring(4), 0);</span>
+<span class="nc" id="L765">				showMetadata(docId);</span>
+<span class="nc bnc" id="L766" title="All 4 branches missed.">			} else if (lcased.startsWith(&quot;filter &quot;) || lcased.equals(&quot;filter&quot;)) {</span>
+<span class="nc bnc" id="L767" title="All 2 branches missed.">				if (cmd.length() &lt;= 7) {</span>
+<span class="nc" id="L768">					filterQuery = null; // clear filter</span>
+<span class="nc" id="L769">					outprintln(&quot;Filter cleared.&quot;);</span>
+				} else {
+<span class="nc" id="L771">					String filterExpr = cmd.substring(7);</span>
+					try {
+<span class="nc" id="L773">						filterQuery = LuceneUtil.parseLuceneQuery(filterExpr, searcher.getAnalyzer(), &quot;title&quot;);</span>
+<span class="nc" id="L774">						outprintln(&quot;Filter created: &quot; + filterQuery);</span>
+<span class="nc bnc" id="L775" title="All 2 branches missed.">						if (verbose)</span>
+<span class="nc" id="L776">							outprintln(filterQuery.getClass().getName());</span>
+<span class="nc" id="L777">					} catch (org.apache.lucene.queryparser.classic.ParseException e) {</span>
+<span class="nc" id="L778">						errprintln(&quot;Error parsing filter query: &quot; + e.getMessage());</span>
+<span class="nc" id="L779">					}</span>
+				}
+<span class="nc" id="L781">				docs = null;</span>
+<span class="nc bnc" id="L782" title="All 2 branches missed.">			} else if (lcased.startsWith(&quot;concfi &quot;)) {</span>
+<span class="nc" id="L783">				String v = lcased.substring(7);</span>
+<span class="nc" id="L784">				boolean b = false;</span>
+<span class="nc bnc" id="L785" title="All 6 branches missed.">				if (v.equals(&quot;on&quot;) || v.equals(&quot;yes&quot;) || v.equals(&quot;true&quot;))</span>
+<span class="nc" id="L786">					b = true;</span>
+<span class="nc bnc" id="L787" title="All 2 branches missed.">				searcher.hitsSettings().setConcordanceType(b ? ConcordanceType.FORWARD_INDEX : ConcordanceType.CONTENT_STORE);</span>
+<span class="nc bnc" id="L788" title="All 2 branches missed.">			} else if (lcased.startsWith(&quot;stripxml &quot;)) {</span>
+<span class="nc" id="L789">				String v = lcased.substring(9);</span>
+<span class="nc" id="L790">				boolean b = false;</span>
+<span class="nc bnc" id="L791" title="All 6 branches missed.">				if (v.equals(&quot;on&quot;) || v.equals(&quot;yes&quot;) || v.equals(&quot;true&quot;))</span>
+<span class="nc" id="L792">					b = true;</span>
+<span class="nc" id="L793">				stripXML = b;</span>
+<span class="nc bnc" id="L794" title="All 2 branches missed.">			} else if (lcased.startsWith(&quot;sensitive &quot;)) {</span>
+<span class="nc" id="L795">				String v = lcased.substring(10);</span>
+<span class="nc" id="L796">				boolean caseSensitive = false, diacSensitive = false;</span>
+<span class="nc bnc" id="L797" title="All 6 branches missed.">				if (v.equals(&quot;on&quot;) || v.equals(&quot;yes&quot;) || v.equals(&quot;true&quot;)) {</span>
+<span class="nc" id="L798">					caseSensitive = diacSensitive = true;</span>
+<span class="nc bnc" id="L799" title="All 6 branches missed.">				} else if (v.equals(&quot;off&quot;) || v.equals(&quot;no&quot;) || v.equals(&quot;false&quot;)) {</span>
+					// nothing to do
+<span class="nc bnc" id="L801" title="All 2 branches missed.">				} else if (v.equals(&quot;case&quot;)) {</span>
+<span class="nc" id="L802">					caseSensitive = true;</span>
+<span class="nc bnc" id="L803" title="All 4 branches missed.">				} else if (v.equals(&quot;diac&quot;) || v.equals(&quot;diacritics&quot;)) {</span>
+<span class="nc" id="L804">					diacSensitive = true;</span>
+				}
+<span class="nc" id="L806">				searcher.setDefaultSearchSensitive(caseSensitive, diacSensitive);</span>
+<span class="nc bnc" id="L807" title="All 4 branches missed.">				outprintln(&quot;Search defaults to &quot;</span>
+						+ (caseSensitive ? &quot;case-sensitive&quot; : &quot;case-insensitive&quot;) + &quot; and &quot;
+						+ (diacSensitive ? &quot;diacritics-sensitive&quot; : &quot;diacritics-insensitive&quot;));
+<span class="nc bnc" id="L810" title="All 2 branches missed.">			} else if (lcased.startsWith(&quot;doctitle &quot;)) {</span>
+<span class="nc" id="L811">				String v = lcased.substring(9);</span>
+<span class="nc bnc" id="L812" title="All 6 branches missed.">				showDocTitle = v.equals(&quot;on&quot;) || v.equals(&quot;yes&quot;) || v.equals(&quot;true&quot;);</span>
+<span class="nc bnc" id="L813" title="All 2 branches missed.">				System.out.println(&quot;Show document titles: &quot; + (showDocTitle ? &quot;ON&quot; : &quot;OFF&quot;));</span>
+<span class="nc bnc" id="L814" title="All 4 branches missed.">			} else if (lcased.equals(&quot;struct&quot;) || lcased.equals(&quot;structure&quot;)) {</span>
+<span class="nc" id="L815">				showIndexStructure();</span>
+<span class="nc bnc" id="L816" title="All 2 branches missed.">			} else if (lcased.startsWith(&quot;sort by &quot;)) {</span>
+<span class="nc" id="L817">				sortBy(cmd.substring(8));</span>
+<span class="nc bnc" id="L818" title="All 2 branches missed.">			} else if (lcased.startsWith(&quot;sort &quot;)) {</span>
+<span class="nc" id="L819">				sortBy(cmd.substring(5));</span>
+<span class="nc bnc" id="L820" title="All 2 branches missed.">			} else if (lcased.startsWith(&quot;group by &quot;)) {</span>
+<span class="nc" id="L821">				String[] parts = lcased.substring(9).split(&quot;\\s+&quot;, 2);</span>
+<span class="nc bnc" id="L822" title="All 2 branches missed.">				groupBy(parts[0], parts.length &gt; 1 ? parts[1] : null);</span>
+<span class="nc bnc" id="L823" title="All 2 branches missed.">			} else if (lcased.startsWith(&quot;group &quot;)) {</span>
+<span class="nc bnc" id="L824" title="All 2 branches missed.">				if (lcased.substring(6).matches(&quot;\\d+&quot;)) {</span>
+<span class="nc" id="L825">					firstResult = 0; // reset for paging through group</span>
+<span class="nc" id="L826">					changeShowSettings(lcased);</span>
+				}
+				else {
+<span class="nc" id="L829">					String[] parts = lcased.substring(6).split(&quot;\\s+&quot;, 2);</span>
+<span class="nc bnc" id="L830" title="All 2 branches missed.">					groupBy(parts[0], parts.length &gt; 1 ? parts[1] : null);</span>
+<span class="nc" id="L831">				}</span>
+<span class="nc bnc" id="L832" title="All 6 branches missed.">			} else if (lcased.equals(&quot;groups&quot;) || lcased.equals(&quot;hits&quot;) || lcased.equals(&quot;docs&quot;)</span>
+<span class="nc bnc" id="L833" title="All 4 branches missed.">					|| lcased.startsWith(&quot;colloc&quot;) || lcased.startsWith(&quot;group &quot;)) {</span>
+<span class="nc" id="L834">				changeShowSettings(cmd);</span>
+<span class="nc bnc" id="L835" title="All 4 branches missed.">			} else if (lcased.equals(&quot;switch&quot;) || lcased.equals(&quot;sw&quot;)) {</span>
+<span class="nc" id="L836">				currentParserIndex++;</span>
+<span class="nc bnc" id="L837" title="All 2 branches missed.">				if (currentParserIndex &gt;= parsers.size())</span>
+<span class="nc" id="L838">					currentParserIndex = 0;</span>
+<span class="nc" id="L839">				outprintln(&quot;Switching to &quot; + parsers.get(currentParserIndex).getName() + &quot;.\n&quot;);</span>
+<span class="nc" id="L840">				printQueryHelp();</span>
+<span class="nc bnc" id="L841" title="All 4 branches missed.">			} else if (lcased.equals(&quot;help&quot;) || lcased.equals(&quot;?&quot;)) {</span>
+<span class="nc" id="L842">				printHelp();</span>
+<span class="nc bnc" id="L843" title="All 4 branches missed.">			} else if (!webSafeOperationOnly &amp;&amp; lcased.startsWith(&quot;sleep&quot;)) {</span>
+				try {
+<span class="nc" id="L845">					Thread.sleep((int)(Float.parseFloat(lcased.substring(6)) * 1000));</span>
+<span class="nc" id="L846">				} catch (NumberFormatException e1) {</span>
+<span class="nc" id="L847">					errprintln(&quot;Sleep takes a float, the number of seconds to sleep&quot;);</span>
+<span class="nc" id="L848">				} catch (InterruptedException e) {</span>
+					// OK
+<span class="nc" id="L850">				}</span>
+<span class="nc bnc" id="L851" title="All 4 branches missed.">			} else if (!webSafeOperationOnly &amp;&amp; lcased.startsWith(&quot;wordlist&quot;)) {</span>
+<span class="nc bnc" id="L852" title="All 2 branches missed.">				if (cmd.length() == 8) {</span>
+					// Show loaded wordlists
+<span class="nc" id="L854">					outprintln(&quot;Available word lists:&quot;);</span>
+<span class="nc bnc" id="L855" title="All 2 branches missed.">					for (String listName: wordLists.keySet()) {</span>
+<span class="nc" id="L856">						outprintln(&quot; &quot; + listName);</span>
+<span class="nc" id="L857">					}</span>
+				} else {
+					// Load new wordlist or display existing wordlist
+<span class="nc" id="L860">					String[] parts = cmd.substring(9).trim().split(&quot;\\s+&quot;, 2);</span>
+<span class="nc" id="L861">					String name = &quot;word&quot;, fn = parts[0];</span>
+<span class="nc bnc" id="L862" title="All 2 branches missed.">					if (parts.length == 2) {</span>
+<span class="nc" id="L863">						name = parts[1];</span>
+					}
+<span class="nc" id="L865">					File f = new File(fn);</span>
+<span class="nc bnc" id="L866" title="All 2 branches missed.">					if (f.exists()) {</span>
+						// Second arg is a file
+<span class="nc" id="L868">						wordLists.put(name, FileUtil.readLines(f));</span>
+<span class="nc" id="L869">						outprintln(&quot;Loaded word list '&quot; + name + &quot;'&quot;);</span>
+					} else {
+<span class="nc bnc" id="L871" title="All 2 branches missed.">						if (wordLists.containsKey(fn)) {</span>
+							// Display existing wordlist
+<span class="nc bnc" id="L873" title="All 2 branches missed.">							for (String word: wordLists.get(fn)) {</span>
+<span class="nc" id="L874">								outprintln(&quot; &quot; + word);</span>
+<span class="nc" id="L875">							}</span>
+						} else {
+<span class="nc" id="L877">							errprintln(&quot;File &quot; + fn + &quot; not found.&quot;);</span>
+						}
+					}
+<span class="nc" id="L880">				}</span>
+<span class="nc bnc" id="L881" title="All 2 branches missed.">			} else if (lcased.equals(&quot;warmup&quot;)) {</span>
+<span class="nc" id="L882">				errprintln(&quot;Warming up the forward indices is deprecated (done automatically at startup)&quot;);</span>
+<span class="nc bnc" id="L883" title="All 2 branches missed.">			} else if (lcased.startsWith(&quot;showconc &quot;)) {</span>
+<span class="nc" id="L884">				String v = lcased.substring(9);</span>
+<span class="nc bnc" id="L885" title="All 6 branches missed.">				showConc = v.equals(&quot;on&quot;) || v.equals(&quot;yes&quot;) || v.equals(&quot;true&quot;);</span>
+<span class="nc bnc" id="L886" title="All 2 branches missed.">				System.out.println(&quot;Show concordances: &quot; + (showConc ? &quot;ON&quot; : &quot;OFF&quot;));</span>
+<span class="nc bnc" id="L887" title="All 2 branches missed.">			} else if (lcased.startsWith(&quot;verbose &quot;)) {</span>
+<span class="nc" id="L888">				String v = lcased.substring(8);</span>
+<span class="nc bnc" id="L889" title="All 6 branches missed.">				verbose = v.equals(&quot;on&quot;) || v.equals(&quot;yes&quot;) || v.equals(&quot;true&quot;);</span>
+<span class="nc bnc" id="L890" title="All 2 branches missed.">				outprintln(&quot;Verbose: &quot; + (verbose ? &quot;ON&quot; : &quot;OFF&quot;));</span>
+<span class="nc bnc" id="L891" title="All 2 branches missed.">			} else if (lcased.startsWith(&quot;total &quot;)) {</span>
+<span class="nc" id="L892">				String v = lcased.substring(6);</span>
+<span class="nc bnc" id="L893" title="All 6 branches missed.">				determineTotalNumberOfHits = v.equals(&quot;on&quot;) || v.equals(&quot;yes&quot;) || v.equals(&quot;true&quot;);</span>
+<span class="nc bnc" id="L894" title="All 2 branches missed.">				outprintln(&quot;Determine total number of hits: &quot; + (determineTotalNumberOfHits ? &quot;ON&quot; : &quot;OFF&quot;));</span>
+<span class="nc" id="L895">			} else {</span>
+				// Not a command; assume it's a query
+<span class="nc" id="L897">				parseAndExecuteQuery(cmd);</span>
+			}
+		}
+
+<span class="nc bnc" id="L901" title="All 2 branches missed.">		if (restCommand != null)</span>
+<span class="nc" id="L902">			processCommand(restCommand);</span>
+<span class="nc" id="L903">	}</span>
+
+	private void showMetadata(int docId) {
+<span class="nc bnc" id="L906" title="All 2 branches missed.">		if (docId &gt;= searcher.maxDoc()) {</span>
+<span class="nc" id="L907">			outprintln(&quot;Document &quot; + docId + &quot; doesn't exist.&quot;);</span>
+<span class="nc" id="L908">			return;</span>
+		}
+<span class="nc bnc" id="L910" title="All 2 branches missed.">		if (searcher.isDeleted(docId)) {</span>
+<span class="nc" id="L911">			outprintln(&quot;Document &quot; + docId + &quot; was deleted.&quot;);</span>
+<span class="nc" id="L912">			return;</span>
+		}
+<span class="nc" id="L914">		Document doc = searcher.document(docId);</span>
+<span class="nc" id="L915">		Map&lt;String, String&gt; metadata = new TreeMap&lt;&gt;(); // sort by key</span>
+<span class="nc bnc" id="L916" title="All 2 branches missed.">		for (IndexableField f: doc.getFields()) {</span>
+<span class="nc" id="L917">			metadata.put(f.name(), f.stringValue());</span>
+<span class="nc" id="L918">		}</span>
+<span class="nc bnc" id="L919" title="All 2 branches missed.">		for (Map.Entry&lt;String, String&gt; e: metadata.entrySet()) {</span>
+<span class="nc" id="L920">			outprintln(e.getKey() + &quot;: &quot; + e.getValue());</span>
+<span class="nc" id="L921">		}</span>
+<span class="nc" id="L922">	}</span>
+
+	private void showIndexStructure() {
+<span class="nc" id="L925">		IndexStructure s = searcher.getIndexStructure();</span>
+<span class="nc" id="L926">		outprintln(&quot;INDEX STRUCTURE FOR INDEX &quot; + searcher.getIndexName() + &quot;\n&quot;);</span>
+<span class="nc" id="L927">		s.print(out);</span>
+<span class="nc" id="L928">	}</span>
+
+	/** If JLine is available, this holds the ConsoleReader object */
+	Object jlineConsoleReader;
+
+	/** If JLine is available, this holds the readLine() method */
+	Method jlineReadLineMethod;
+
+	/** Did we check if JLine is available? */
+<span class="nc" id="L937">	boolean jlineChecked = false;</span>
+
+	private String readCommand(String prompt) throws IOException {
+<span class="nc bnc" id="L940" title="All 6 branches missed.">		if (!batchMode &amp;&amp; jlineConsoleReader == null &amp;&amp; !jlineChecked) {</span>
+<span class="nc" id="L941">			jlineChecked = true;</span>
+			try {
+<span class="nc" id="L943">				Class&lt;?&gt; c = Class.forName(&quot;jline.ConsoleReader&quot;);</span>
+<span class="nc" id="L944">				jlineConsoleReader = c.newInstance();</span>
+
+				// Disable bell
+<span class="nc" id="L947">				c.getMethod(&quot;setBellEnabled&quot;, boolean.class).invoke(jlineConsoleReader, false);</span>
+
+				// Fetch and store the readLine method
+<span class="nc" id="L950">				jlineReadLineMethod = c.getMethod(&quot;readLine&quot;, String.class);</span>
+
+<span class="nc" id="L952">				outprintln(&quot;Command line editing enabled.&quot;);</span>
+<span class="nc" id="L953">			} catch (ClassNotFoundException e) {</span>
+				// Can't init JLine; too bad, fall back to stdin
+<span class="nc" id="L955">				outprintln(&quot;Command line editing not available; to enable, place jline jar in classpath.&quot;);</span>
+<span class="nc" id="L956">			} catch (Exception e) {</span>
+<span class="nc" id="L957">				throw new RuntimeException(&quot;Could not init JLine console reader&quot;, e);</span>
+<span class="nc" id="L958">			}</span>
+		}
+
+<span class="nc bnc" id="L961" title="All 2 branches missed.">		if (jlineConsoleReader != null) {</span>
+			try {
+<span class="nc" id="L963">				return (String) jlineReadLineMethod.invoke(jlineConsoleReader, prompt);</span>
+<span class="nc" id="L964">			} catch (Exception e) {</span>
+<span class="nc" id="L965">				throw new RuntimeException(&quot;Could not invoke JLine ConsoleReader.readLine()&quot;, e);</span>
+			}
+		}
+
+<span class="nc" id="L969">		outprint(prompt);</span>
+<span class="nc" id="L970">		out.flush();</span>
+<span class="nc" id="L971">		return in.readLine();</span>
+	}
+
+	/**
+	 * Print command and query help.
+	 */
+	private void printHelp() {
+<span class="nc" id="L978">		String langAvail = &quot;CorpusQL, Lucene, ContextQL (EXPERIMENTAL)&quot;;</span>
+
+<span class="nc" id="L980">		outprintln(&quot;Control commands:&quot;);</span>
+<span class="nc" id="L981">		outprintln(&quot;  sw(itch)                           # Switch languages&quot;);</span>
+<span class="nc" id="L982">		outprintln(&quot;                                     # (&quot; + langAvail + &quot;)&quot;);</span>
+<span class="nc" id="L983">		outprintln(&quot;  p(rev) / n(ext) / page &lt;n&gt;         # Page through results&quot;);</span>
+<span class="nc" id="L984">		outprintln(&quot;  sort {match|left|right} [prop]     # Sort query results  (left = left context, etc.)&quot;);</span>
+<span class="nc" id="L985">		outprintln(&quot;  group {match|left|right} [prop]    # Group query results (prop = e.g. 'word', 'lemma', 'pos')&quot;);</span>
+<span class="nc" id="L986">		outprintln(&quot;  hits / groups / group &lt;n&gt; / colloc # Switch between results modes&quot;);</span>
+<span class="nc" id="L987">		outprintln(&quot;  context &lt;n&gt;                        # Set number of words to show around hits&quot;);</span>
+<span class="nc" id="L988">		outprintln(&quot;  pagesize &lt;n&gt;                       # Set number of hits to show per page&quot;);</span>
+<span class="nc" id="L989">		outprintln(&quot;  snippet &lt;x&gt;                        # Show longer snippet around hit x&quot;);</span>
+<span class="nc" id="L990">		outprintln(&quot;  doc &lt;id&gt;                           # Show metadata for doc id&quot;);</span>
+<span class="nc" id="L991">		outprintln(&quot;  snippetsize &lt;n&gt;                    # Words to show around hit in longer snippet&quot;);</span>
+<span class="nc" id="L992">		outprintln(&quot;  sensitive {on|off|case|diac}       # Set case-/diacritics-sensitivity&quot;);</span>
+<span class="nc" id="L993">		outprintln(&quot;  filter &lt;luceneQuery&gt;               # Set document filter, e.g. title:\&quot;Smith\&quot;&quot;);</span>
+<span class="nc" id="L994">		outprintln(&quot;  doctitle {on|off}                  # Show document titles between hits?&quot;);</span>
+<span class="nc" id="L995">		outprintln(&quot;  struct                             # Show index structure&quot;);</span>
+<span class="nc" id="L996">		outprintln(&quot;  help                               # This message&quot;);</span>
+
+<span class="nc bnc" id="L998" title="All 2 branches missed.">		if (!webSafeOperationOnly) {</span>
+<span class="nc" id="L999">			outprintln(&quot;  exit                               # Exit program&quot;);</span>
+
+<span class="nc" id="L1001">			outprintln(&quot;\nBatch testing commands (start in batch mode with -f &lt;commandfile&gt;):&quot;);</span>
+<span class="nc" id="L1002">			outprintln(&quot;  wordlist &lt;file&gt; &lt;listname&gt;         # Load a list of words&quot;);</span>
+<span class="nc" id="L1003">			outprintln(&quot;  @@&lt;listname&gt;                       # Substitute a random word from list (use in query)&quot;);</span>
+<span class="nc" id="L1004">			outprintln(&quot;  repeat &lt;n&gt; &lt;query&gt;                 # Repeat a query n times (with different random words)&quot;);</span>
+<span class="nc" id="L1005">			outprintln(&quot;  sleep &lt;f&gt;                          # Sleep a number of seconds&quot;);</span>
+		}
+<span class="nc" id="L1007">		outprintln(&quot;&quot;);</span>
+
+<span class="nc" id="L1009">		printQueryHelp();</span>
+<span class="nc" id="L1010">	}</span>
+
+	/**
+	 * Print some examples of the currently selected query language.
+	 */
+	private void printQueryHelp() {
+<span class="nc" id="L1016">		parsers.get(currentParserIndex).printHelp();</span>
+<span class="nc" id="L1017">		outprintln(&quot;&quot;);</span>
+<span class="nc" id="L1018">	}</span>
+
+	/**
+	 * Show the program head.
+	 */
+	private void printProgramHead() {
+<span class="nc" id="L1024">		outprintln(&quot;BlackLab Query Tool&quot;);</span>
+<span class="nc" id="L1025">		outprintln(&quot;===================&quot;);</span>
+<span class="nc" id="L1026">	}</span>
+
+	/**
+	 * Parse and execute a query in the current query format.
+	 *
+	 * @param query
+	 *            the query
+	 */
+	private void parseAndExecuteQuery(String query) {
+<span class="nc" id="L1035">		Timer t = new Timer();</span>
+		try {
+
+			// See if we want to choose any random words
+<span class="nc bnc" id="L1039" title="All 2 branches missed.">			if (query.contains(&quot;@@&quot;)) {</span>
+<span class="nc" id="L1040">				StringBuffer resultString = new StringBuffer();</span>
+<span class="nc" id="L1041">				Pattern regex = Pattern.compile(&quot;@@[A-Za-z0-9_\\-]+&quot;);</span>
+<span class="nc" id="L1042">				Matcher regexMatcher = regex.matcher(query);</span>
+<span class="nc bnc" id="L1043" title="All 2 branches missed.">				while (regexMatcher.find()) {</span>
+					// You can vary the replacement text for each match on-the-fly
+<span class="nc" id="L1045">					String wordListName = regexMatcher.group().substring(2);</span>
+<span class="nc" id="L1046">					List&lt;String&gt; list = wordLists.get(wordListName);</span>
+<span class="nc bnc" id="L1047" title="All 2 branches missed.">					if (list == null) {</span>
+<span class="nc" id="L1048">						errprintln(&quot;Word list '&quot; + wordListName + &quot;' not found!&quot;);</span>
+<span class="nc" id="L1049">						return;</span>
+					}
+<span class="nc" id="L1051">					int randomIndex = (int)(Math.random() * list.size());</span>
+<span class="nc" id="L1052">					regexMatcher.appendReplacement(resultString, list.get(randomIndex));</span>
+<span class="nc" id="L1053">				}</span>
+<span class="nc" id="L1054">				regexMatcher.appendTail(resultString);</span>
+<span class="nc" id="L1055">				query = resultString.toString();</span>
+			}
+
+<span class="nc" id="L1058">			Parser parser = parsers.get(currentParserIndex);</span>
+<span class="nc" id="L1059">			TextPattern pattern = parser.parse(query);</span>
+<span class="nc bnc" id="L1060" title="All 2 branches missed.">			if (pattern == null) {</span>
+<span class="nc" id="L1061">				errprintln(&quot;No query to execute.&quot;);</span>
+<span class="nc" id="L1062">				return;</span>
+			}
+			//pattern = pattern.rewrite();
+<span class="nc bnc" id="L1065" title="All 2 branches missed.">			if (verbose)</span>
+<span class="nc" id="L1066">				outprintln(&quot;TextPattern: &quot; + pattern.toString());</span>
+
+			// If the query included filter clauses, use those. Otherwise use the global filter, if any.
+<span class="nc" id="L1069">			Query filterForThisQuery = parser.getIncludedFilterQuery();</span>
+<span class="nc bnc" id="L1070" title="All 2 branches missed.">			if (filterForThisQuery == null)</span>
+<span class="nc" id="L1071">				filterForThisQuery = filterQuery;</span>
+<span class="nc bnc" id="L1072" title="All 2 branches missed.">			Query filter = filterForThisQuery == null ? null : filterForThisQuery;</span>
+
+			// Execute search
+<span class="nc" id="L1075">			BLSpanQuery spanQuery = searcher.createSpanQuery(pattern, contentsField, filter);</span>
+<span class="nc bnc" id="L1076" title="All 2 branches missed.">			if (verbose)</span>
+<span class="nc" id="L1077">				outprintln(&quot;SpanQuery: &quot; + spanQuery.toString(contentsField));</span>
+<span class="nc" id="L1078">			hits = searcher.find(spanQuery);</span>
+<span class="nc" id="L1079">			docs = null;</span>
+<span class="nc" id="L1080">			groups = null;</span>
+<span class="nc" id="L1081">			sortedHits = null;</span>
+<span class="nc" id="L1082">			collocations = null;</span>
+<span class="nc" id="L1083">			showWhichGroup = -1;</span>
+<span class="nc" id="L1084">			showSetting = ShowSetting.HITS;</span>
+<span class="nc" id="L1085">			firstResult = 0;</span>
+<span class="nc" id="L1086">			showResultsPage();</span>
+<span class="nc" id="L1087">			reportTime(t.elapsed());</span>
+<span class="nc bnc" id="L1088" title="All 2 branches missed.">			if (determineTotalNumberOfHits)</span>
+<span class="nc" id="L1089">				statInfo = &quot;&quot; + hits.size();</span>
+			else
+<span class="nc" id="L1091">				statInfo = &quot;?&quot;;</span>
+<span class="nc" id="L1092">			commandWasQuery = true;</span>
+<span class="nc" id="L1093">		} catch (ParseException e) {</span>
+			// Parse error
+<span class="nc" id="L1095">			errprintln(&quot;Invalid query: &quot; + e.getMessage());</span>
+<span class="nc" id="L1096">			errprintln(&quot;(Type 'help' for examples or see accompanying documents)&quot;);</span>
+<span class="nc" id="L1097">		} catch (UnsupportedOperationException e) {</span>
+			// Unimplemented part of query language used
+<span class="nc" id="L1099">            e.printStackTrace(); // DEBUG createWeight bug</span>
+<span class="nc" id="L1100">			errprintln(&quot;Cannot execute query; &quot; + e.getMessage());</span>
+<span class="nc" id="L1101">			errprintln(&quot;(Type 'help' for examples or see accompanying documents)&quot;);</span>
+<span class="nc" id="L1102">		}</span>
+<span class="nc" id="L1103">	}</span>
+
+	/**
+	 * Show the a specific page of results.
+	 * @param pageNumber which page to show
+	 */
+	private void showPage(int pageNumber) {
+<span class="nc bnc" id="L1110" title="All 2 branches missed.">		if (hits != null) {</span>
+
+<span class="nc bnc" id="L1112" title="All 2 branches missed.">			if (determineTotalNumberOfHits) {</span>
+				// Clamp page number of total number of hits
+				int totalResults;
+<span class="nc bnc" id="L1115" title="All 3 branches missed.">				switch (showSetting) {</span>
+				case COLLOC:
+<span class="nc" id="L1117">					totalResults = collocations.size();</span>
+<span class="nc" id="L1118">					break;</span>
+				case GROUPS:
+<span class="nc" id="L1120">					totalResults = groups.numberOfGroups();</span>
+<span class="nc" id="L1121">					break;</span>
+				default:
+<span class="nc" id="L1123">					totalResults = hits.size();</span>
+					break;
+				}
+
+<span class="nc" id="L1127">				int totalPages = (totalResults + resultsPerPage - 1) / resultsPerPage;</span>
+<span class="nc bnc" id="L1128" title="All 2 branches missed.">				if (pageNumber &lt; 0)</span>
+<span class="nc" id="L1129">					pageNumber = totalPages - 1;</span>
+<span class="nc bnc" id="L1130" title="All 2 branches missed.">				if (pageNumber &gt;= totalPages)</span>
+<span class="nc" id="L1131">					pageNumber = 0;</span>
+			}
+
+			// Next page
+<span class="nc" id="L1135">			firstResult = pageNumber * resultsPerPage;</span>
+<span class="nc" id="L1136">			showResultsPage();</span>
+		}
+<span class="nc" id="L1138">	}</span>
+
+	/**
+	 * Show the next page of results.
+	 */
+	private void nextPage() {
+<span class="nc" id="L1144">		showPage(firstResult / resultsPerPage + 1);</span>
+<span class="nc" id="L1145">	}</span>
+
+	/**
+	 * Show the previous page of results.
+	 */
+	private void prevPage() {
+<span class="nc" id="L1151">		showPage(firstResult / resultsPerPage - 1);</span>
+<span class="nc" id="L1152">	}</span>
+
+	/**
+	 * Sort either hits or groups by the specified property.
+	 *
+	 * @param sortBy
+	 *            property to sort by
+	 */
+	private void sortBy(String sortBy) {
+<span class="nc bnc" id="L1161" title="All 2 branches missed.">		if (hits == null)</span>
+<span class="nc" id="L1162">			return;</span>
+
+<span class="nc bnc" id="L1164" title="All 3 branches missed.">		switch (showSetting) {</span>
+		case COLLOC:
+<span class="nc" id="L1166">			errprintln(&quot;Sorting collocations not supported&quot;);</span>
+<span class="nc" id="L1167">			break;</span>
+		case GROUPS:
+<span class="nc" id="L1169">			sortGroups(sortBy.toLowerCase());</span>
+<span class="nc" id="L1170">			break;</span>
+		default:
+<span class="nc" id="L1172">			String[] parts = sortBy.split(&quot;\\s+&quot;, 2);</span>
+<span class="nc" id="L1173">			String sortByPart = parts[0];</span>
+<span class="nc bnc" id="L1174" title="All 2 branches missed.">			String propPart = parts.length &gt; 1 ? parts[1] : null;</span>
+<span class="nc" id="L1175">			sortHits(sortByPart, propPart);</span>
+			break;
+		}
+<span class="nc" id="L1178">	}</span>
+
+	/** Desired context size */
+	private int contextSize;
+
+	/** Are we responsible for closing the Searcher? */
+<span class="nc" id="L1184">	private boolean shouldCloseSearcher = true;</span>
+
+	/**
+	 * Sort hits by the specified property.
+	 *
+	 * @param sortBy
+	 *            hit property to sort by
+	 * @param property
+	 *            (optional) if sortBy is a context property (say, hit text), this gives the token
+	 *            property to use for the context. Example: if this is &quot;lemma&quot;, will look at the
+	 *            lemma(ta) of the hit text. If this is null, uses the &quot;main property&quot; (word form,
+	 *            usually).
+	 */
+	private void sortHits(String sortBy, String property) {
+<span class="nc" id="L1198">		Timer t = new Timer();</span>
+
+<span class="nc" id="L1200">		Hits hitsToSort = getCurrentHitSet();</span>
+
+<span class="nc" id="L1202">		HitProperty crit = null;</span>
+<span class="nc bnc" id="L1203" title="All 2 branches missed.">		if (sortBy.equalsIgnoreCase(&quot;doc&quot;))</span>
+<span class="nc" id="L1204">			crit = new HitPropertyDocumentId(hitsToSort);</span>
+		else {
+<span class="nc bnc" id="L1206" title="All 4 branches missed.">			if (sortBy.equalsIgnoreCase(&quot;match&quot;) || sortBy.equalsIgnoreCase(&quot;word&quot;))</span>
+<span class="nc" id="L1207">				crit = new HitPropertyHitText(hitsToSort, contentsField, property);</span>
+<span class="nc bnc" id="L1208" title="All 2 branches missed.">			else if (sortBy.equalsIgnoreCase(&quot;left&quot;))</span>
+<span class="nc" id="L1209">				crit = new HitPropertyLeftContext(hitsToSort, contentsField, property);</span>
+<span class="nc bnc" id="L1210" title="All 2 branches missed.">			else if (sortBy.equalsIgnoreCase(&quot;right&quot;))</span>
+<span class="nc" id="L1211">				crit = new HitPropertyRightContext(hitsToSort, contentsField, property);</span>
+<span class="nc bnc" id="L1212" title="All 2 branches missed.">			else if (sortBy.equalsIgnoreCase(&quot;lempos&quot;)) {</span>
+<span class="nc" id="L1213">				HitProperty p1 = new HitPropertyHitText(hitsToSort, contentsField, &quot;lemma&quot;);</span>
+<span class="nc" id="L1214">				HitProperty p2 = new HitPropertyHitText(hitsToSort, contentsField, &quot;pos&quot;);</span>
+<span class="nc" id="L1215">				crit = new HitPropertyMultiple(p1, p2);</span>
+<span class="nc bnc" id="L1216" title="All 2 branches missed.">			} else if (searcher.getIndexStructure().getMetadataFields().contains(sortBy)) {</span>
+<span class="nc" id="L1217">				crit = new HitPropertyDocumentStoredField(hitsToSort, sortBy);</span>
+			}
+
+		}
+<span class="nc bnc" id="L1221" title="All 2 branches missed.">		if (crit == null) {</span>
+<span class="nc" id="L1222">			errprintln(&quot;Invalid hit sort criterium: &quot; + sortBy</span>
+					+ &quot; (valid are: match, left, right, doc, &lt;metadatafield&gt;)&quot;);
+		} else {
+<span class="nc" id="L1225">			sortedHits = hitsToSort.sortedBy(crit);</span>
+<span class="nc" id="L1226">			firstResult = 0;</span>
+<span class="nc" id="L1227">			showResultsPage();</span>
+<span class="nc bnc" id="L1228" title="All 2 branches missed.">			if (property == null)</span>
+<span class="nc" id="L1229">				property = &quot;(default)&quot;;</span>
+<span class="nc" id="L1230">			reportTime(t.elapsed());</span>
+		}
+<span class="nc" id="L1232">	}</span>
+
+	/**
+	 * Sort groups by the specified property.
+	 *
+	 * @param sortBy
+	 *            property to sort by
+	 */
+	private void sortGroups(String sortBy) {
+<span class="nc" id="L1241">		GroupProperty crit = null;</span>
+<span class="nc bnc" id="L1242" title="All 4 branches missed.">		if (sortBy.equals(&quot;identity&quot;) || sortBy.equals(&quot;id&quot;))</span>
+<span class="nc" id="L1243">			crit = new GroupPropertyIdentity();</span>
+<span class="nc bnc" id="L1244" title="All 2 branches missed.">		else if (sortBy.startsWith(&quot;size&quot;))</span>
+<span class="nc" id="L1245">			crit = new GroupPropertySize();</span>
+<span class="nc bnc" id="L1246" title="All 2 branches missed.">		if (crit == null) {</span>
+<span class="nc" id="L1247">			errprintln(&quot;Invalid group sort criterium: &quot; + sortBy</span>
+					+ &quot; (valid are: id(entity), size)&quot;);
+		} else {
+<span class="nc" id="L1250">			groups.sortGroups(crit, false);</span>
+<span class="nc" id="L1251">			firstResult = 0;</span>
+<span class="nc" id="L1252">			showResultsPage();</span>
+		}
+<span class="nc" id="L1254">	}</span>
+
+	/**
+	 * Group hits by the specified property.
+	 *
+	 * @param groupBy
+	 *            hit property to group by
+	 * @param property
+	 *            (optional) if groupBy is a context property (say, hit text), this gives the token
+	 *            property to use for the context. Example: if this is &quot;lemma&quot;, will look at the
+	 *            lemma(ta) of the hit text. If this is null, uses the &quot;main property&quot; (word form,
+	 *            usually).
+	 */
+	private void groupBy(String groupBy, String property) {
+<span class="nc bnc" id="L1268" title="All 2 branches missed.">		if (hits == null)</span>
+<span class="nc" id="L1269">			return;</span>
+
+<span class="nc" id="L1271">		Timer t = new Timer();</span>
+
+<span class="nc bnc" id="L1273" title="All 10 branches missed.">		if (!groupBy.equals(&quot;hit&quot;) &amp;&amp; !groupBy.equals(&quot;word&quot;) &amp;&amp; !groupBy.equals(&quot;match&quot;) &amp;&amp; !groupBy.equals(&quot;left&quot;) &amp;&amp; !groupBy.equals(&quot;right&quot;)) {</span>
+			// Assume we want to group by matched text if we don't specify it explicitly.
+<span class="nc" id="L1275">			property = groupBy;</span>
+<span class="nc" id="L1276">			groupBy = &quot;match&quot;;</span>
+		}
+
+		// Group results
+<span class="nc" id="L1280">		HitProperty crit = null;</span>
+		try {
+<span class="nc bnc" id="L1282" title="All 6 branches missed.">			if (groupBy.equals(&quot;word&quot;) || groupBy.equals(&quot;match&quot;) || groupBy.equals(&quot;hit&quot;))</span>
+<span class="nc" id="L1283">				crit = new HitPropertyHitText(hits, contentsField, property);</span>
+<span class="nc bnc" id="L1284" title="All 2 branches missed.">			else if (groupBy.startsWith(&quot;left&quot;))</span>
+<span class="nc" id="L1285">				crit = new HitPropertyWordLeft(hits, contentsField, property);</span>
+<span class="nc bnc" id="L1286" title="All 2 branches missed.">			else if (groupBy.startsWith(&quot;right&quot;))</span>
+<span class="nc" id="L1287">				crit = new HitPropertyWordRight(hits, contentsField, property);</span>
+<span class="nc bnc" id="L1288" title="All 2 branches missed.">			else if (groupBy.equals(&quot;test&quot;)) {</span>
+<span class="nc" id="L1289">				HitProperty p1 = new HitPropertyHitText(hits, contentsField, &quot;lemma&quot;);</span>
+<span class="nc" id="L1290">				HitProperty p2 = new HitPropertyHitText(hits, contentsField, &quot;type&quot;);</span>
+<span class="nc" id="L1291">				crit = new HitPropertyMultiple(p1, p2);</span>
+			}
+<span class="nc" id="L1293">		} catch (Exception e) {</span>
+<span class="nc" id="L1294">			errprintln(&quot;Unknown property: &quot; + property);</span>
+<span class="nc" id="L1295">			return;</span>
+<span class="nc" id="L1296">		}</span>
+<span class="nc bnc" id="L1297" title="All 2 branches missed.">		if (crit == null) {</span>
+<span class="nc" id="L1298">			errprintln(&quot;Unknown criterium: &quot; + groupBy);</span>
+<span class="nc" id="L1299">			return;</span>
+		}
+<span class="nc" id="L1301">		groups = hits.groupedBy(crit);</span>
+<span class="nc" id="L1302">		showSetting = ShowSetting.GROUPS;</span>
+<span class="nc" id="L1303">		sortGroups(&quot;size&quot;);</span>
+<span class="nc bnc" id="L1304" title="All 2 branches missed.">		if (property == null)</span>
+<span class="nc" id="L1305">			property = &quot;(default)&quot;;</span>
+<span class="nc" id="L1306">		reportTime(t.elapsed());</span>
+<span class="nc" id="L1307">	}</span>
+
+	/**
+	 * Switch between showing all hits, groups, and the hits in one group.
+	 * @param showWhat what type of results to show
+	 */
+	private void changeShowSettings(String showWhat) {
+<span class="nc" id="L1314">        sortedHits = null;</span>
+<span class="nc bnc" id="L1315" title="All 2 branches missed.">		if (showWhat.equals(&quot;hits&quot;)) {</span>
+<span class="nc" id="L1316">			showSetting = ShowSetting.HITS;</span>
+<span class="nc" id="L1317">			showWhichGroup = -1;</span>
+<span class="nc bnc" id="L1318" title="All 2 branches missed.">		} else if (showWhat.equals(&quot;docs&quot;)) {</span>
+<span class="nc" id="L1319">			showSetting = ShowSetting.DOCS;</span>
+<span class="nc bnc" id="L1320" title="All 4 branches missed.">		} else if (showWhat.startsWith(&quot;colloc&quot;) &amp;&amp; hits != null) {</span>
+<span class="nc" id="L1321">			showSetting = ShowSetting.COLLOC;</span>
+<span class="nc bnc" id="L1322" title="All 2 branches missed.">			if (showWhat.length() &gt;= 7) {</span>
+<span class="nc" id="L1323">				String newCollocProp = showWhat.substring(7);</span>
+<span class="nc bnc" id="L1324" title="All 2 branches missed.">				if (!newCollocProp.equals(collocProperty)) {</span>
+<span class="nc" id="L1325">					collocProperty = newCollocProp;</span>
+<span class="nc" id="L1326">					collocations = null;</span>
+				}
+<span class="nc" id="L1328">			}</span>
+<span class="nc bnc" id="L1329" title="All 4 branches missed.">		} else if (showWhat.equals(&quot;groups&quot;) &amp;&amp; groups != null) {</span>
+<span class="nc" id="L1330">			showSetting = ShowSetting.GROUPS;</span>
+<span class="nc bnc" id="L1331" title="All 4 branches missed.">		} else if (showWhat.startsWith(&quot;group &quot;) &amp;&amp; groups != null) {</span>
+<span class="nc" id="L1332">			showWhichGroup = parseInt(showWhat.substring(6), 1) - 1;</span>
+<span class="nc bnc" id="L1333" title="All 4 branches missed.">			if (showWhichGroup &lt; 0 || showWhichGroup &gt;= groups.numberOfGroups()) {</span>
+<span class="nc" id="L1334">				errprintln(&quot;Group doesn't exist&quot;);</span>
+<span class="nc" id="L1335">				showWhichGroup = -1;</span>
+			} else
+<span class="nc" id="L1337">				showSetting = ShowSetting.HITS; // Show hits in group, not all the groups</span>
+		}
+<span class="nc" id="L1339">		showResultsPage();</span>
+<span class="nc" id="L1340">	}</span>
+
+	/**
+	 * Report how long an operation took
+	 * @param time time to report
+	 */
+	private void reportTime(long time) {
+<span class="nc" id="L1347">		outprintln(describeInterval(time) + &quot; elapsed&quot;);</span>
+<span class="nc" id="L1348">	}</span>
+
+	private String describeInterval(long time1) {
+<span class="nc bnc" id="L1351" title="All 2 branches missed.">		if (timeDisplayHumanFriendly)</span>
+<span class="nc" id="L1352">			return TimeUtil.describeInterval(time1);</span>
+<span class="nc" id="L1353">		return time1 + &quot; ms&quot;;</span>
+	}
+
+	/**
+	 * Close the Searcher object.
+	 */
+	private void cleanup() {
+<span class="nc bnc" id="L1360" title="All 2 branches missed.">		if (shouldCloseSearcher)</span>
+<span class="nc" id="L1361">			searcher.close();</span>
+<span class="nc" id="L1362">	}</span>
+
+	/**
+	 * Show the current results page (either hits or groups).
+	 */
+	private void showResultsPage() {
+<span class="nc bnc" id="L1368" title="All 4 branches missed.">		switch (showSetting) {</span>
+		case COLLOC:
+<span class="nc" id="L1370">			showCollocations();</span>
+<span class="nc" id="L1371">			break;</span>
+		case GROUPS:
+<span class="nc" id="L1373">			showGroupsPage();</span>
+<span class="nc" id="L1374">			break;</span>
+		case DOCS:
+<span class="nc" id="L1376">			showDocsPage();</span>
+<span class="nc" id="L1377">			break;</span>
+		default:
+<span class="nc" id="L1379">			showHitsPage();</span>
+			break;
+
+		}
+<span class="nc" id="L1383">	}</span>
+
+	/**
+	 * Show the current page of collocations.
+	 */
+	private void showCollocations() {
+<span class="nc bnc" id="L1389" title="All 2 branches missed.">		if (collocations == null) {</span>
+			// Case-sensitive collocations..?
+<span class="nc" id="L1391">			String fieldName = hits.settings().concordanceField();</span>
+<span class="nc bnc" id="L1392" title="All 2 branches missed.">			if (collocProperty == null) {</span>
+<span class="nc" id="L1393">				ComplexFieldDesc cf = searcher.getIndexStructure().getComplexFieldDesc(fieldName);</span>
+<span class="nc" id="L1394">				collocProperty = cf.getMainProperty().getName();</span>
+			}
+
+<span class="nc" id="L1397">			collocations = hits.getCollocations(collocProperty,</span>
+<span class="nc" id="L1398">					searcher.getDefaultExecutionContext(fieldName));</span>
+<span class="nc" id="L1399">			collocations.sort();</span>
+		}
+
+<span class="nc" id="L1402">		int i = 0;</span>
+<span class="nc bnc" id="L1403" title="All 2 branches missed.">		for (TermFrequency coll : collocations) {</span>
+<span class="nc bnc" id="L1404" title="All 4 branches missed.">			if (i &gt;= firstResult &amp;&amp; i &lt; firstResult + resultsPerPage) {</span>
+<span class="nc" id="L1405">				int j = i - firstResult + 1;</span>
+<span class="nc" id="L1406">				outprintln(String.format(&quot;%4d %7d %s&quot;, j, coll.frequency, coll.term));</span>
+			}
+<span class="nc" id="L1408">			i++;</span>
+<span class="nc" id="L1409">		}</span>
+
+		// Summarize
+<span class="nc" id="L1412">		String msg = collocations.size() + &quot; collocations&quot;;</span>
+<span class="nc bnc" id="L1413" title="All 2 branches missed.">		if (collocations.size() &gt; resultsPerPage)</span>
+<span class="nc" id="L1414">			msg = (firstResult + 1) + &quot;-&quot; + i + &quot; of &quot; + collocations.size() + &quot; collocations&quot;;</span>
+<span class="nc" id="L1415">		outprintln(msg);</span>
+<span class="nc" id="L1416">	}</span>
+
+	/**
+	 * Show the current page of group results.
+	 */
+	private void showGroupsPage() {
+<span class="nc" id="L1422">		List&lt;HitGroup&gt; listGroups = groups.getGroups();</span>
+		int i;
+<span class="nc bnc" id="L1424" title="All 4 branches missed.">		for (i = firstResult; i &lt; groups.numberOfGroups() &amp;&amp; i &lt; firstResult + resultsPerPage; i++) {</span>
+<span class="nc" id="L1425">			HitGroup g = listGroups.get(i);</span>
+<span class="nc" id="L1426">			outprintln(String.format(&quot;%4d. %5d %s&quot;, i + 1, g.size(), g.getIdentity().toString()));</span>
+		}
+
+		// Summarize
+<span class="nc" id="L1430">		String msg = groups.numberOfGroups() + &quot; groups&quot;;</span>
+<span class="nc" id="L1431">		outprintln(msg);</span>
+<span class="nc" id="L1432">	}</span>
+
+	private void showDocsPage() {
+<span class="nc bnc" id="L1435" title="All 2 branches missed.">		if (docs == null) {</span>
+<span class="nc" id="L1436">			Hits currentHitSet = getCurrentHitSet();</span>
+<span class="nc bnc" id="L1437" title="All 2 branches missed.">			if (currentHitSet != null)</span>
+<span class="nc" id="L1438">				docs = currentHitSet.perDocResults();</span>
+<span class="nc bnc" id="L1439" title="All 2 branches missed.">			else if (filterQuery != null) {</span>
+<span class="nc" id="L1440">				docs = searcher.queryDocuments(filterQuery);</span>
+			} else {
+<span class="nc" id="L1442">				System.out.println(&quot;No documents to show (set filterquery or search for hits first)&quot;);</span>
+<span class="nc" id="L1443">				return;</span>
+			}
+		}
+
+		// Limit results to the current page
+<span class="nc" id="L1448">		DocResultsWindow window = docs.window(firstResult, resultsPerPage);</span>
+
+		// Compile hits display info and calculate necessary width of left context column
+<span class="nc" id="L1451">		String titleField = searcher.getIndexStructure().titleField();</span>
+<span class="nc" id="L1452">		int hitNr = window.first() + 1;</span>
+<span class="nc bnc" id="L1453" title="All 2 branches missed.">		for (DocResult result: window) {</span>
+<span class="nc" id="L1454">			int id = result.getDocId();</span>
+<span class="nc" id="L1455">			Document d = searcher.document(id);</span>
+<span class="nc" id="L1456">			String title = d.get(titleField);</span>
+<span class="nc bnc" id="L1457" title="All 2 branches missed.">			if (title == null)</span>
+<span class="nc" id="L1458">				title = &quot;(doc #&quot; + id + &quot;, no &quot; + titleField + &quot; given)&quot;;</span>
+			else
+<span class="nc" id="L1460">				title = title + &quot; (doc #&quot; + id + &quot;)&quot;;</span>
+<span class="nc" id="L1461">			outprintf(&quot;%4d. %s\n&quot;, hitNr, title);</span>
+<span class="nc" id="L1462">			hitNr++;</span>
+<span class="nc" id="L1463">		}</span>
+
+		// Summarize
+		String msg;
+<span class="nc bnc" id="L1467" title="All 2 branches missed.">		if (determineTotalNumberOfHits) {</span>
+<span class="nc" id="L1468">			msg = docs.totalSize() + &quot; docs&quot;;</span>
+		} else {
+<span class="nc" id="L1470">			msg = docs.size() + &quot; docs&quot;;</span>
+		}
+<span class="nc" id="L1472">		outprintln(msg);</span>
+<span class="nc" id="L1473">	}</span>
+
+	/**
+	 * Show the current page of hits.
+	 */
+	private void showHitsPage() {
+
+<span class="nc" id="L1480">	    Hits hitsToShow = getCurrentSortedHitSet();</span>
+<span class="nc bnc" id="L1481" title="All 2 branches missed.">		if (!showConc) {</span>
+<span class="nc bnc" id="L1482" title="All 2 branches missed.">			if (determineTotalNumberOfHits) {</span>
+				// Just show total number of hits, no concordances
+<span class="nc" id="L1484">				outprintln(hitsToShow.size() + &quot; hits&quot;);</span>
+			} else {
+<span class="nc" id="L1486">				Iterator&lt;Hit&gt; it = hitsToShow.iterator();</span>
+				int i;
+<span class="nc bnc" id="L1488" title="All 4 branches missed.">				for (i = 0; it.hasNext() &amp;&amp; i &lt; resultsPerPage; i++) {</span>
+<span class="nc" id="L1489">					it.next();</span>
+				}
+<span class="nc bnc" id="L1491" title="All 2 branches missed.">				outprintln( (i == resultsPerPage ? &quot;At least &quot; : &quot;&quot;) + i + &quot; hits (total not determined)&quot;);</span>
+			}
+<span class="nc" id="L1493">			return;</span>
+		}
+
+		/**
+		 * A hit we're about to show.
+		 *
+		 * We need a separate structure because we filter out XML tags and need to know the longest
+		 * left context before displaying.
+		 */
+		class HitToShow {
+			public int doc;
+
+			public String left, hitText, right;
+
+			public Map&lt;String, Span&gt; capturedGroups;
+
+<span class="nc" id="L1509">			public HitToShow(int doc, String left, String hitText, String right, Map&lt;String, Span&gt; capturedGroups) {</span>
+<span class="nc" id="L1510">				super();</span>
+<span class="nc" id="L1511">				this.doc = doc;</span>
+<span class="nc" id="L1512">				this.left = left;</span>
+<span class="nc" id="L1513">				this.hitText = hitText;</span>
+<span class="nc" id="L1514">				this.right = right;</span>
+<span class="nc" id="L1515">				this.capturedGroups = capturedGroups;</span>
+<span class="nc" id="L1516">			}</span>
+		}
+
+<span class="nc bnc" id="L1519" title="All 2 branches missed.">		if (hitsToShow == null)</span>
+<span class="nc" id="L1520">			return; // nothing to show</span>
+
+		// Limit results to the current page
+<span class="nc" id="L1523">		HitsWindow window = hitsToShow.window(firstResult, resultsPerPage);</span>
+
+		// Compile hits display info and calculate necessary width of left context column
+<span class="nc" id="L1526">		List&lt;HitToShow&gt; toShow = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L1527">		window.settings().setContextSize(contextSize); // number of words around hit</span>
+<span class="nc" id="L1528">		int leftContextMaxSize = 10; // number of characters to reserve on screen for left context</span>
+<span class="nc bnc" id="L1529" title="All 2 branches missed.">		for (Hit hit : window) {</span>
+<span class="nc" id="L1530">			Concordance conc = window.getConcordance(hit);</span>
+
+			// Filter out the XML tags
+			String left, hitText, right;
+<span class="nc bnc" id="L1534" title="All 2 branches missed.">			left = stripXML ? XmlUtil.xmlToPlainText(conc.left()) : conc.left();</span>
+<span class="nc bnc" id="L1535" title="All 2 branches missed.">			hitText = stripXML ? XmlUtil.xmlToPlainText(conc.match()) : conc.match();</span>
+<span class="nc bnc" id="L1536" title="All 2 branches missed.">			right = stripXML ? XmlUtil.xmlToPlainText(conc.right()) : conc.right();</span>
+
+<span class="nc" id="L1538">			toShow.add(new HitToShow(hit.doc, left, hitText, right, window.getCapturedGroupMap(hit)));</span>
+<span class="nc bnc" id="L1539" title="All 2 branches missed.">			if (leftContextMaxSize &lt; left.length())</span>
+<span class="nc" id="L1540">				leftContextMaxSize = left.length();</span>
+<span class="nc" id="L1541">		}</span>
+
+		// Display hits
+<span class="nc" id="L1544">		String format = &quot;%4d. [%04d] %&quot; + leftContextMaxSize + &quot;s[%s]%s\n&quot;;</span>
+<span class="nc bnc" id="L1545" title="All 2 branches missed.">		if (showDocTitle)</span>
+<span class="nc" id="L1546">			format = &quot;%4d. %&quot; + leftContextMaxSize + &quot;s[%s]%s\n&quot;;</span>
+<span class="nc" id="L1547">		int currentDoc = -1;</span>
+<span class="nc" id="L1548">		String titleField = searcher.getIndexStructure().titleField();</span>
+<span class="nc" id="L1549">		int hitNr = window.first() + 1;</span>
+<span class="nc bnc" id="L1550" title="All 2 branches missed.">		for (HitToShow hit : toShow) {</span>
+<span class="nc bnc" id="L1551" title="All 4 branches missed.">			if (showDocTitle &amp;&amp; hit.doc != currentDoc) {</span>
+<span class="nc bnc" id="L1552" title="All 2 branches missed.">				if (currentDoc != -1)</span>
+<span class="nc" id="L1553">					outprintln(&quot;&quot;);</span>
+<span class="nc" id="L1554">				currentDoc = hit.doc;</span>
+<span class="nc" id="L1555">				Document d = searcher.document(currentDoc);</span>
+<span class="nc" id="L1556">				String title = d.get(titleField);</span>
+<span class="nc bnc" id="L1557" title="All 2 branches missed.">				if (title == null)</span>
+<span class="nc" id="L1558">					title = &quot;(doc #&quot; + currentDoc + &quot;, no &quot; + titleField + &quot; given)&quot;;</span>
+				else
+<span class="nc" id="L1560">					title = title + &quot; (doc #&quot; + currentDoc + &quot;)&quot;;</span>
+<span class="nc" id="L1561">				outprintln(&quot;--- &quot; + title + &quot; ---&quot;);</span>
+			}
+<span class="nc bnc" id="L1563" title="All 2 branches missed.">			if (showDocTitle)</span>
+<span class="nc" id="L1564">				outprintf(format, hitNr, hit.left, hit.hitText, hit.right);</span>
+			else
+<span class="nc" id="L1566">				outprintf(format, hitNr, hit.doc, hit.left, hit.hitText, hit.right);</span>
+<span class="nc" id="L1567">			hitNr++;</span>
+<span class="nc bnc" id="L1568" title="All 2 branches missed.">			if (hit.capturedGroups != null)</span>
+<span class="nc" id="L1569">				outprintln(&quot;CAP: &quot; + hit.capturedGroups.toString());</span>
+<span class="nc" id="L1570">		}</span>
+
+		// Summarize
+		String msg;
+<span class="nc bnc" id="L1574" title="All 2 branches missed.">		if (!determineTotalNumberOfHits) {</span>
+<span class="nc" id="L1575">			msg = hitsToShow.totalSize() + &quot; hits counted so far (total not determined)&quot;;</span>
+		}
+		else {
+<span class="nc" id="L1578">			int numberRetrieved = hitsToShow.size();</span>
+<span class="nc" id="L1579">			String hitsInDocs = numberRetrieved + &quot; hits in &quot; + hitsToShow.numberOfDocs() + &quot; documents&quot;;</span>
+<span class="nc bnc" id="L1580" title="All 2 branches missed.">			if (hitsToShow.maxHitsRetrieved()) {</span>
+<span class="nc bnc" id="L1581" title="All 2 branches missed.">				if (hitsToShow.maxHitsCounted()) {</span>
+<span class="nc" id="L1582">					msg = hitsInDocs + &quot; retrieved, more than &quot; + hitsToShow.totalSize() + &quot; (&quot; + hitsToShow.totalNumberOfDocs() + &quot; docs) total&quot;;</span>
+				} else {
+<span class="nc" id="L1584">					msg = hitsInDocs + &quot; retrieved, &quot; + hitsToShow.totalSize() + &quot; (&quot; + hitsToShow.totalNumberOfDocs() + &quot; docs) total&quot;;</span>
+				}
+			} else {
+<span class="nc" id="L1587">				msg = hitsInDocs;</span>
+			}
+		}
+<span class="nc" id="L1590">		outprintln(msg);</span>
+<span class="nc" id="L1591">	}</span>
+
+    /**
+     * Returns the hit set we're currently looking at.
+     *
+     * This is either all hits or the hits in one group.
+     *
+     * If a sort has been applied, returns the sorted hits.
+     *
+     * @return the hit set
+     */
+    private Hits getCurrentSortedHitSet() {
+<span class="nc bnc" id="L1603" title="All 2 branches missed.">        if (sortedHits != null)</span>
+<span class="nc" id="L1604">            return sortedHits;</span>
+<span class="nc" id="L1605">        return getCurrentHitSet();</span>
+    }
+
+	/**
+	 * Returns the hit set we're currently looking at.
+	 *
+	 * This is either all hits or the hits in one group.
+	 *
+	 * @return the hit set
+	 */
+	private Hits getCurrentHitSet() {
+<span class="nc" id="L1616">		Hits hitsToShow = hits;</span>
+<span class="nc bnc" id="L1617" title="All 2 branches missed.">		if (showWhichGroup &gt;= 0) {</span>
+<span class="nc" id="L1618">			HitGroup g = groups.getGroups().get(showWhichGroup);</span>
+<span class="nc" id="L1619">			hitsToShow = g.getHits();</span>
+		}
+<span class="nc" id="L1621">		return hitsToShow;</span>
+	}
+
+	public void outprintln(String str) {
+<span class="nc bnc" id="L1625" title="All 2 branches missed.">		if (!batchMode)</span>
+<span class="nc" id="L1626">			out.println(str);</span>
+<span class="nc" id="L1627">	}</span>
+
+	public void outprint(String str) {
+<span class="nc bnc" id="L1630" title="All 2 branches missed.">		if (!batchMode)</span>
+<span class="nc" id="L1631">			out.print(str);</span>
+<span class="nc" id="L1632">	}</span>
+
+	public void outprintf(String str, Object... args) {
+<span class="nc bnc" id="L1635" title="All 2 branches missed.">		if (!batchMode)</span>
+<span class="nc" id="L1636">			out.printf(str, args);</span>
+<span class="nc" id="L1637">	}</span>
+
+	public void errprintln(String str) {
+<span class="nc bnc" id="L1640" title="All 2 branches missed.">		if (err == null)</span>
+<span class="nc" id="L1641">			out.println(str);</span>
+		else
+<span class="nc" id="L1643">			err.println(str);</span>
+<span class="nc" id="L1644">	}</span>
+
+	public void statprintln(String str) {
+<span class="nc bnc" id="L1647" title="All 2 branches missed.">		if (batchMode)</span>
+<span class="nc" id="L1648">			out.println(str);</span>
+<span class="nc" id="L1649">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

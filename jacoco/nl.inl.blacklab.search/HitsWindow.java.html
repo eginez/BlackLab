@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HitsWindow.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search</a> &gt; <span class="el_source">HitsWindow.java</span></div><h1>HitsWindow.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+
+/**
+ * Represents a subset of a Hits object, for example a page of hits.
+ */
+public class HitsWindow extends HitsImpl implements ResultsWindow {
+	/**
+	 * Number of hits in the window
+	 */
+	private int windowSize;
+
+	/**
+	 * First hit in the window
+	 */
+	private int first;
+
+	/**
+	 * The source hits into which this is a window
+	 */
+	private Hits source;
+
+	/**
+	 * Construct a HitsWindow object.
+	 *
+	 * NOTE: this method will be made package-private in a future release.
+	 * Use Hits.window() to construct a HitsWindow instead.
+	 *
+	 * @param source
+	 *            the larger Hits object we would like a window into
+	 * @param first
+	 *            the first hit in our window
+	 * @param windowSize
+	 *            the size of our window
+	 */
+	HitsWindow(Hits source, int first, int windowSize) {
+<span class="nc" id="L55">		super(source.getSearcher(), (List&lt;Hit&gt;)null);</span>
+<span class="nc" id="L56">		this.source = source;</span>
+<span class="nc" id="L57">		this.first = first;</span>
+<span class="nc" id="L58">		this.windowSize = windowSize;</span>
+<span class="nc" id="L59">		this.contextFieldsPropName = source.getContextFieldPropName();</span>
+
+		// Error if first out of range
+<span class="nc bnc" id="L62" title="All 2 branches missed.">		boolean emptyResultSet = !source.sizeAtLeast(1);</span>
+<span class="nc bnc" id="L63" title="All 8 branches missed.">		if (first &lt; 0 || (emptyResultSet &amp;&amp; first &gt; 0) ||</span>
+<span class="nc bnc" id="L64" title="All 2 branches missed.">			(!emptyResultSet &amp;&amp; !source.sizeAtLeast(first + 1))) {</span>
+<span class="nc" id="L65">			throw new IllegalArgumentException(&quot;First hit out of range&quot;);</span>
+		}
+
+		// Auto-clamp number
+<span class="nc" id="L69">		int number = windowSize;</span>
+<span class="nc bnc" id="L70" title="All 2 branches missed.">		if (!source.sizeAtLeast(first + number))</span>
+<span class="nc" id="L71">			number = source.size() - first;</span>
+
+		// Copy the hits we're interested in.
+<span class="nc" id="L74">		hits = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L75" title="All 2 branches missed.">		if (source.hasCapturedGroups())</span>
+<span class="nc" id="L76">			capturedGroups = new HashMap&lt;&gt;();</span>
+<span class="nc bnc" id="L77" title="All 2 branches missed.">		for (int i = first; i &lt; first + number; i++) {</span>
+<span class="nc" id="L78">			Hit hit = source.get(i);</span>
+<span class="nc" id="L79">			hits.add(hit);</span>
+<span class="nc bnc" id="L80" title="All 2 branches missed.">			if (capturedGroups != null)</span>
+<span class="nc" id="L81">				capturedGroups.put(hit, source.getCapturedGroups(hit));</span>
+			// OPT: copy context as well..?
+		}
+
+<span class="nc" id="L85">		copySettingsFrom(source); // type of concordances to make, etc.</span>
+<span class="nc" id="L86">	}</span>
+
+	/**
+	 * Are there more hits in the original Hits object beyond our window?
+	 *
+	 * @return true if there are, false if not.
+	 */
+	@Override
+	public boolean hasNext() {
+<span class="nc" id="L95">		return source.sizeAtLeast(first + windowSize + 1);</span>
+	}
+
+	/**
+	 * Are there more hits in the original Hits object &quot;to the left&quot; of our window?
+	 *
+	 * @return true if there are, false if not.
+	 */
+	@Override
+	public boolean hasPrevious() {
+<span class="nc bnc" id="L105" title="All 2 branches missed.">		return first &gt; 0;</span>
+	}
+
+	/**
+	 * Where would the next window start?
+	 *
+	 * @return index of the first hit beyond our window
+	 */
+	@Override
+	public int nextFrom() {
+<span class="nc" id="L115">		return first + hits.size();</span>
+	}
+
+	/**
+	 * Where would the previous window start?
+	 *
+	 * @return index of the start hit for the previous page
+	 */
+	@Override
+	public int prevFrom() {
+<span class="nc" id="L125">		return first - windowSize;</span>
+	}
+
+	/**
+	 * What's the first in the window?
+	 *
+	 * @return index of the first hit
+	 */
+	@Override
+	public int first() {
+<span class="nc" id="L135">		return first;</span>
+	}
+
+	/**
+	 * What's the last in the window?
+	 *
+	 * @return index of the last hit
+	 */
+	@Override
+	public int last() {
+<span class="nc" id="L145">		return first + hits.size() - 1;</span>
+	}
+
+	/**
+	 * How many hits are in this window?
+	 *
+	 * Note that this may be different from the specified &quot;window size&quot;,
+	 * as the window may not be full.
+	 *
+	 * @return number of hits
+	 */
+	@Override
+	public int size() {
+<span class="nc" id="L158">		return hits.size();</span>
+	}
+
+	/**
+	 * How many hits are available in the original source Hits object?
+	 *
+	 * @return total number of hits
+	 */
+	@Override
+	public int sourceSize() {
+<span class="nc" id="L168">		return source.size();</span>
+	}
+
+	/**
+	 * How many total hits are in the original source Hits object?
+	 *
+	 * NOTE: this includes hits that were counted but not retrieved.
+	 *
+	 * @return total number of hits
+	 */
+	@Override
+	public int sourceTotalSize() {
+<span class="nc" id="L180">		return source.totalSize();</span>
+	}
+
+	/**
+	 * Return the Hits object we were made from
+	 * @return the original Hits object
+	 */
+	public Hits getOriginalHits() {
+<span class="nc" id="L188">		return source;</span>
+	}
+
+	@Override
+	public int requestedWindowSize() {
+<span class="nc" id="L193">		return windowSize;</span>
+	}
+
+	@Override
+	public String toString() {
+<span class="nc" id="L198">	    return &quot;HitsWindow#&quot; + hitsObjId + &quot; (first=&quot; + first + &quot;, number=&quot; + windowSize + &quot;, source=&quot; + source + &quot;)&quot;;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

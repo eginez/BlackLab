@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TextPatternConstrained.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search</a> &gt; <span class="el_source">TextPatternConstrained.java</span></div><h1>TextPatternConstrained.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.search;
+
+import nl.inl.blacklab.search.fimatch.ForwardIndexAccessor;
+import nl.inl.blacklab.search.lucene.BLSpanQuery;
+import nl.inl.blacklab.search.lucene.SpanQueryConstrained;
+import nl.inl.blacklab.search.matchfilter.MatchFilter;
+
+public class TextPatternConstrained extends TextPatternCombiner {
+
+	MatchFilter constraint;
+
+	public TextPatternConstrained(TextPattern clause, MatchFilter constraint) {
+<span class="fc" id="L13">		super(clause);</span>
+<span class="fc" id="L14">		this.constraint = constraint;</span>
+<span class="fc" id="L15">	}</span>
+
+	@Override
+	public BLSpanQuery translate(QueryExecutionContext context) {
+<span class="fc" id="L19">		BLSpanQuery translate = clauses.get(0).translate(context);</span>
+<span class="fc" id="L20">		ForwardIndexAccessor fiAccessor = ForwardIndexAccessor.fromSearcher(context.getSearcher(), translate.getField());</span>
+<span class="fc" id="L21">		return new SpanQueryConstrained(translate, constraint, fiAccessor);</span>
+	}
+
+	@Deprecated
+	@Override
+	public String toString(QueryExecutionContext context) {
+<span class="nc" id="L27">		String producer = clauses.get(0).toString(context);</span>
+<span class="nc" id="L28">		String filter = constraint.toString();</span>
+<span class="nc" id="L29">		return &quot;CONSTRAINT(&quot; + producer + &quot;, &quot; + filter + &quot;)&quot;;</span>
+	}
+
+	@Override
+	public String toString() {
+<span class="nc" id="L34">		String producer = clauses.get(0).toString();</span>
+<span class="nc" id="L35">		String filter = constraint.toString();</span>
+<span class="nc" id="L36">		return &quot;CONSTRAINT(&quot; + producer + &quot;, &quot; + filter + &quot;)&quot;;</span>
+	}
+
+	@Override
+	public int hashCode() {
+<span class="nc" id="L41">		final int prime = 31;</span>
+<span class="nc" id="L42">		int result = super.hashCode();</span>
+<span class="nc bnc" id="L43" title="All 2 branches missed.">		result = prime * result + ((constraint == null) ? 0 : constraint.hashCode());</span>
+<span class="nc" id="L44">		return result;</span>
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+<span class="nc bnc" id="L49" title="All 2 branches missed.">		if (this == obj)</span>
+<span class="nc" id="L50">			return true;</span>
+<span class="nc bnc" id="L51" title="All 2 branches missed.">		if (!super.equals(obj))</span>
+<span class="nc" id="L52">			return false;</span>
+<span class="nc bnc" id="L53" title="All 2 branches missed.">		if (getClass() != obj.getClass())</span>
+<span class="nc" id="L54">			return false;</span>
+<span class="nc" id="L55">		TextPatternConstrained other = (TextPatternConstrained) obj;</span>
+<span class="nc bnc" id="L56" title="All 2 branches missed.">		if (constraint == null) {</span>
+<span class="nc bnc" id="L57" title="All 2 branches missed.">			if (other.constraint != null)</span>
+<span class="nc" id="L58">				return false;</span>
+<span class="nc bnc" id="L59" title="All 2 branches missed.">		} else if (!constraint.equals(other.constraint))</span>
+<span class="nc" id="L60">			return false;</span>
+<span class="nc" id="L61">		return true;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

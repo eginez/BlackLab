@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MainThreadExecutorService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.util</a> &gt; <span class="el_source">MainThreadExecutorService.java</span></div><h1>MainThreadExecutorService.java</h1><pre class="source lang-java linenums">package nl.inl.util;
+
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.AbstractExecutorService;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * Mock executorService that actually just runs all submitted tasks on the main thread.
+ * Note: unlike regular ExecutorService, this class is NOT thread-safe.
+ */
+public class MainThreadExecutorService extends AbstractExecutorService {
+
+    @FunctionalInterface
+    public static interface RejectedExecutionHandler {
+        public void rejectedExecution(Runnable r, MainThreadExecutorService e);
+    }
+
+    private RejectedExecutionHandler handler;
+
+	private boolean shutdown;
+
+	MainThreadExecutorService() {
+<span class="nc" id="L25">	    this((r, e) -&gt; {</span>
+<span class="nc" id="L26">	        throw new RejectedExecutionException(&quot;Task &quot; + r.toString() +&quot; rejected from &quot; + e.toString());</span>
+	    });
+<span class="nc" id="L28">	}</span>
+
+<span class="fc" id="L30">	MainThreadExecutorService(RejectedExecutionHandler h) {</span>
+<span class="pc bpc" id="L31" title="1 of 2 branches missed.">	    if (h == null)</span>
+<span class="nc" id="L32">	        throw new NullPointerException();</span>
+<span class="fc" id="L33">	    this.handler = h;</span>
+<span class="fc" id="L34">	}</span>
+
+	@Override
+	public boolean awaitTermination(long timeout, TimeUnit unit) throws InterruptedException {
+<span class="fc" id="L38">		shutdown = true;</span>
+<span class="fc" id="L39">		return true;</span>
+	}
+
+	@Override
+	public boolean isShutdown() {
+<span class="nc" id="L44">		return shutdown;</span>
+	}
+
+	@Override
+	public boolean isTerminated() {
+<span class="nc" id="L49">		return shutdown;</span>
+	}
+
+	@Override
+	public void shutdown() {
+<span class="fc" id="L54">		shutdown = true;</span>
+<span class="fc" id="L55">	}</span>
+
+	@Override
+	public List&lt;Runnable&gt; shutdownNow() {
+<span class="fc" id="L59">		return Collections.emptyList();</span>
+	}
+
+	@Override
+	public void execute(Runnable command) {
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">		if (shutdown)</span>
+<span class="nc" id="L65">		    handler.rejectedExecution(command, this);</span>
+<span class="fc" id="L66">	    command.run();</span>
+<span class="fc" id="L67">	}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

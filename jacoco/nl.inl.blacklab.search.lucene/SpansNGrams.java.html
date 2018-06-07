@@ -1,0 +1,265 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SpansNGrams.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">SpansNGrams.java</span></div><h1>SpansNGrams.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.lucene;
+
+import java.io.IOException;
+
+import org.apache.lucene.index.LeafReader;
+import org.apache.lucene.index.MultiFields;
+import org.apache.lucene.search.spans.SpanCollector;
+import org.apache.lucene.util.Bits;
+
+import nl.inl.blacklab.search.Span;
+
+/**
+ * Return all n-grams of certain lengths.
+ */
+class SpansNGrams extends BLSpans {
+	/** Current document */
+<span class="fc" id="L32">	private int currentDoc = -1;</span>
+
+	/** Current document length */
+<span class="fc" id="L35">	private long currentDocLength = -1;</span>
+
+	/** Current hit start position */
+<span class="fc" id="L38">	private int currentStart = -1;</span>
+
+	/** Current hit end position */
+<span class="fc" id="L41">	private int currentEnd = -1;</span>
+
+	/** For testing, we don't have an IndexReader available, so we use test values */
+<span class="fc" id="L44">	private boolean useTestValues = false;</span>
+
+	/** Used to get the field length in tokens for a document */
+	DocFieldLengthGetter lengthGetter;
+
+	/** How much to subtract from length (for ignoring closing token) */
+	private int subtractFromLength;
+
+	/** Highest document id plus one */
+	private int maxDoc;
+
+	/** Documents that haven't been deleted */
+	private Bits liveDocs;
+
+<span class="fc" id="L58">	private boolean alreadyAtFirstMatch = false;</span>
+
+	private int min;
+
+	private int max;
+
+	/** For testing, we don't have an IndexReader available, so we use test values.
+	 *
+	 *  The test values are: there are 3 documents (0, 1 and 2) and each is 5 tokens long.
+	 *
+	 * @param test whether or not we want to use test values
+	 * @param maxDoc number of docs in the (mock) test set
+	 */
+	void setTest(boolean test, int maxDoc) {
+<span class="fc" id="L72">		useTestValues = test;</span>
+<span class="pc bpc" id="L73" title="1 of 2 branches missed.">		if (useTestValues)</span>
+<span class="fc" id="L74">			this.maxDoc = maxDoc;</span>
+<span class="fc" id="L75">		lengthGetter.setTest(test);</span>
+<span class="fc" id="L76">	}</span>
+
+	/**
+	 * Constructs a SpansNGrams
+	 * @param ignoreLastToken if true, we assume the last token is always a special closing token and ignore it
+	 * @param reader the index reader, for getting field lengths
+	 * @param fieldName the field name, for getting field lengths
+	 * @param min minimum n-gram length
+	 * @param max maximum n-gram length
+	 */
+<span class="fc" id="L86">	public SpansNGrams(boolean ignoreLastToken, LeafReader reader, String fieldName, int min, int max) {</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">		maxDoc = reader == null ? -1 : reader.maxDoc();</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">		liveDocs = reader == null ? null : MultiFields.getLiveDocs(reader);</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">		subtractFromLength = ignoreLastToken ? 1 : 0;</span>
+<span class="fc" id="L90">		this.lengthGetter = new DocFieldLengthGetter(reader, fieldName);</span>
+<span class="fc" id="L91">		this.min = min;</span>
+<span class="fc" id="L92">		this.max = max;</span>
+<span class="fc" id="L93">	}</span>
+
+	/**
+	 * @return the Lucene document id of the current hit
+	 */
+	@Override
+	public int docID() {
+<span class="fc" id="L100">		return currentDoc;</span>
+	}
+
+	/**
+	 * @return end position of current hit
+	 */
+	@Override
+	public int endPosition() {
+<span class="fc bfc" id="L108" title="All 2 branches covered.">		if (alreadyAtFirstMatch)</span>
+<span class="fc" id="L109">			return -1; // .nextStartPosition() not called yet by client</span>
+<span class="fc" id="L110">		return currentEnd;</span>
+	}
+
+	@Override
+	public int nextDoc() throws IOException {
+<span class="fc" id="L115">		alreadyAtFirstMatch = false;</span>
+		do {
+<span class="pc bpc" id="L117" title="1 of 2 branches missed.">			if (currentDoc &gt;= maxDoc) {</span>
+<span class="nc" id="L118">				currentDoc = NO_MORE_DOCS;</span>
+<span class="nc" id="L119">				currentStart = currentEnd = NO_MORE_POSITIONS;</span>
+<span class="nc" id="L120">				return NO_MORE_DOCS;</span>
+			}
+			boolean currentDocIsDeletedDoc;
+			do {
+<span class="fc" id="L124">				currentDoc++;</span>
+<span class="pc bpc" id="L125" title="3 of 4 branches missed.">				currentDocIsDeletedDoc = liveDocs != null &amp;&amp; !liveDocs.get(currentDoc);</span>
+<span class="pc bpc" id="L126" title="1 of 4 branches missed.">	 		} while (currentDoc &lt; maxDoc &amp;&amp; currentDocIsDeletedDoc);</span>
+<span class="pc bpc" id="L127" title="1 of 2 branches missed.">			if (currentDoc &gt; maxDoc)</span>
+<span class="nc" id="L128">				throw new RuntimeException(&quot;currentDoc &gt; maxDoc!!&quot;);</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">			if (currentDoc == maxDoc) {</span>
+<span class="fc" id="L130">				currentDoc = NO_MORE_DOCS;</span>
+<span class="fc" id="L131">				currentStart = currentEnd = NO_MORE_POSITIONS;</span>
+<span class="fc" id="L132">				return NO_MORE_DOCS; // no more docs; we're done</span>
+			}
+<span class="fc" id="L134">			currentDocLength = lengthGetter.getFieldLength(currentDoc) - subtractFromLength;</span>
+<span class="fc" id="L135">			currentStart = currentEnd = -1;</span>
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">		} while (nextStartPosition() == NO_MORE_POSITIONS);</span>
+<span class="fc" id="L137">		alreadyAtFirstMatch = true;</span>
+
+<span class="fc" id="L139">		return currentDoc;</span>
+	}
+
+	/**
+	 * Go to next span.
+	 *
+	 * @return true if we're at the next span, false if we're done
+	 * @throws IOException
+	 */
+	@Override
+	public int nextStartPosition() throws IOException {
+<span class="fc bfc" id="L150" title="All 2 branches covered.">		if (alreadyAtFirstMatch) {</span>
+<span class="fc" id="L151">			alreadyAtFirstMatch = false;</span>
+<span class="fc" id="L152">			return currentStart;</span>
+		}
+
+<span class="pc bpc" id="L155" title="2 of 4 branches missed.">		if (currentDoc == NO_MORE_DOCS || currentStart == NO_MORE_POSITIONS) {</span>
+<span class="nc" id="L156">			return NO_MORE_POSITIONS;</span>
+		}
+
+<span class="pc bpc" id="L159" title="1 of 2 branches missed.">		if (currentDoc &lt; 0)</span>
+<span class="nc" id="L160">			return -1; // haven't started</span>
+
+		// Next N-gram
+<span class="fc bfc" id="L163" title="All 6 branches covered.">		if (currentStart &lt; 0 || currentEnd - currentStart &gt;= max || currentEnd &gt;= currentDocLength) {</span>
+<span class="fc" id="L164">			currentStart++;</span>
+<span class="fc" id="L165">			currentEnd = currentStart + min;</span>
+<span class="fc bfc" id="L166" title="All 2 branches covered.">			if (currentEnd &gt; currentDocLength) {</span>
+<span class="fc" id="L167">				currentStart = currentEnd = NO_MORE_POSITIONS;</span>
+<span class="fc" id="L168">				return NO_MORE_POSITIONS;</span>
+			}
+		} else {
+<span class="fc" id="L171">			currentEnd++;</span>
+		}
+<span class="fc" id="L173">		return currentStart;</span>
+	}
+
+	@Override
+	public int advanceStartPosition(int target) throws IOException {
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">		if (alreadyAtFirstMatch) {</span>
+<span class="nc" id="L179">			alreadyAtFirstMatch = false;</span>
+<span class="nc bnc" id="L180" title="All 2 branches missed.">			if (currentStart &gt;= target)</span>
+<span class="nc" id="L181">				return currentStart;</span>
+		}
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">		if (target &gt;= currentDocLength) {</span>
+<span class="nc" id="L184">			currentStart = currentEnd = NO_MORE_POSITIONS;</span>
+<span class="nc" id="L185">			return NO_MORE_POSITIONS;</span>
+		}
+		// Advance us to just before the requested start point, then call nextStartPosition().
+<span class="fc" id="L188">		currentStart = target - 1;</span>
+<span class="fc" id="L189">		currentEnd = currentStart + max;</span>
+<span class="fc" id="L190">		return nextStartPosition();</span>
+	}
+
+	/**
+	 * Skip to the specified document (or the first document after it containing hits).
+	 *
+	 * @param doc
+	 *            the doc number to skip to (or past)
+	 * @return true if we're still pointing to a valid hit, false if we're done
+	 * @throws IOException
+	 */
+	@Override
+	public int advance(int doc) throws IOException {
+<span class="nc" id="L203">		alreadyAtFirstMatch = false;</span>
+<span class="nc bnc" id="L204" title="All 2 branches missed.">		if (currentDoc == NO_MORE_DOCS)</span>
+<span class="nc" id="L205">			return NO_MORE_DOCS;</span>
+<span class="nc bnc" id="L206" title="All 2 branches missed.">		if (doc &gt;= maxDoc) {</span>
+<span class="nc" id="L207">			currentDoc = NO_MORE_DOCS;</span>
+<span class="nc" id="L208">			currentStart = currentEnd = NO_MORE_POSITIONS;</span>
+<span class="nc" id="L209">			return NO_MORE_DOCS;</span>
+		}
+
+<span class="nc bnc" id="L212" title="All 2 branches missed.">		if (currentDoc &gt;= doc) {</span>
+			// We can't skip to it because we're already there or beyond.
+			// But, as per spec, advance always at least advances to the next document.
+<span class="nc" id="L215">			return nextDoc();</span>
+		}
+
+		// Advance to first livedoc containing matches at or after requested docID
+<span class="nc" id="L219">		currentDoc = doc - 1;</span>
+<span class="nc" id="L220">		nextDoc();</span>
+<span class="nc" id="L221">		return currentDoc;</span>
+	}
+
+	/**
+	 * @return start of current span
+	 */
+	@Override
+	public int startPosition() {
+<span class="fc bfc" id="L229" title="All 2 branches covered.">		if (alreadyAtFirstMatch)</span>
+<span class="fc" id="L230">			return -1; // .nextStartPosition() not called yet by client</span>
+<span class="fc" id="L231">		return currentStart;</span>
+	}
+
+	@Override
+	public String toString() {
+<span class="nc" id="L236">		return &quot;AnyToken()&quot;;</span>
+	}
+
+	@Override
+	protected void passHitQueryContextToClauses(HitQueryContext context) {
+		// no clause, nothing to do
+<span class="fc" id="L242">	}</span>
+
+	@Override
+	public void getCapturedGroups(Span[] capturedGroups) {
+		// no clause, no groups
+<span class="nc" id="L247">	}</span>
+
+	@Override
+	public int width() {
+<span class="nc" id="L251">		return 0;</span>
+	}
+
+	@Override
+	public void collect(SpanCollector collector) throws IOException {
+		// nothing to collect
+<span class="nc" id="L257">	}</span>
+
+	@Override
+	public float positionsCost() {
+<span class="nc" id="L261">		return 0;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

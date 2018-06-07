@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TermFrequencyList.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search</a> &gt; <span class="el_source">TermFrequencyList.java</span></div><h1>TermFrequencyList.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.search;
+
+import java.util.AbstractList;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
+
+/**
+ * A collection of tokens and their (absolute) frequencies.
+ *
+ * This class calculates the total frequency of the entries added,
+ * but you can also set the total frequency explicitly (after all
+ * entries have been added) if you want to calculate relative frequencies
+ * based on a different total.
+ */
+public class TermFrequencyList extends AbstractList&lt;TermFrequency&gt; {
+	List&lt;TermFrequency&gt; list;
+
+<span class="nc" id="L20">	long totalFrequency = 0;</span>
+
+	@Override
+	public int size() {
+<span class="nc" id="L24">		return list.size();</span>
+	}
+
+	@Override
+	public Iterator&lt;TermFrequency&gt; iterator() {
+<span class="nc" id="L29">		return list.iterator();</span>
+	}
+
+	@Override
+	public TermFrequency get(int index) {
+<span class="nc" id="L34">		return list.get(index);</span>
+	}
+
+	@Override
+	public boolean add(TermFrequency e) {
+<span class="nc" id="L39">		totalFrequency += e.frequency;</span>
+<span class="nc" id="L40">		return list.add(e);</span>
+	}
+
+	public void sort() {
+<span class="nc" id="L44">		Collections.sort(list);</span>
+<span class="nc" id="L45">	}</span>
+
+	/**
+	 * Get the frequency of a specific token
+	 *
+	 * @param token the token to get the frequency for
+	 * @return the frequency
+	 */
+	public long getFrequency(String token) {
+		// TODO: maybe speed this up by keeping a map of tokens and frequencies?
+<span class="nc bnc" id="L55" title="All 2 branches missed.">		for (TermFrequency tf: list) {</span>
+<span class="nc bnc" id="L56" title="All 2 branches missed.">			if (tf.term.equals(token))</span>
+<span class="nc" id="L57">				return tf.frequency;</span>
+<span class="nc" id="L58">		}</span>
+<span class="nc" id="L59">		return 0;</span>
+	}
+
+	public TermFrequencyList() {
+<span class="nc" id="L63">		super();</span>
+<span class="nc" id="L64">		list = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L65">	}</span>
+
+	public TermFrequencyList(int capacity) {
+<span class="nc" id="L68">		super();</span>
+<span class="nc" id="L69">		list = new ArrayList&lt;&gt;(capacity);</span>
+<span class="nc" id="L70">	}</span>
+
+	public long getTotalFrequency() {
+<span class="nc" id="L73">		return totalFrequency;</span>
+	}
+
+	public void setTotalFrequency(long totalFrequency) {
+<span class="nc" id="L77">		this.totalFrequency = totalFrequency;</span>
+<span class="nc" id="L78">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

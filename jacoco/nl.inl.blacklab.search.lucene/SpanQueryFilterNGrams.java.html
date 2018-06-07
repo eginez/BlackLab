@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SpanQueryFilterNGrams.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">SpanQueryFilterNGrams.java</span></div><h1>SpanQueryFilterNGrams.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.lucene;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.index.TermContext;
+import org.apache.lucene.search.IndexSearcher;
+
+/**
+ * Return n-grams contained in the from the source spans hits.
+ */
+public class SpanQueryFilterNGrams extends BLSpanQueryAbstract {
+
+	/** How to expand the hits */
+	SpanQueryPositionFilter.Operation op;
+
+	/** Minimum number of tokens to expand */
+	int min;
+
+	/** Maximum number of tokens to expand (MAX_UNLIMITED = infinite) */
+	int max;
+
+	/** if true, we assume the last token is always a special closing token and ignore it */
+<span class="fc" id="L44">	boolean ignoreLastToken = false;</span>
+
+	public SpanQueryFilterNGrams(BLSpanQuery clause, SpanQueryPositionFilter.Operation op, int min, int max) {
+<span class="fc" id="L47">		super(clause);</span>
+<span class="fc" id="L48">		this.op = op;</span>
+<span class="fc" id="L49">		this.min = min;</span>
+<span class="pc bpc" id="L50" title="1 of 2 branches missed.">		this.max = max == -1 ? MAX_UNLIMITED : max;</span>
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">		if (min &gt; this.max)</span>
+<span class="nc" id="L52">			throw new IllegalArgumentException(&quot;min &gt; max&quot;);</span>
+<span class="pc bpc" id="L53" title="2 of 4 branches missed.">		if (min &lt; 0 || this.max &lt; 0)</span>
+<span class="nc" id="L54">			throw new IllegalArgumentException(&quot;min, max cannot be negative&quot;);</span>
+<span class="fc" id="L55">	}</span>
+
+	@Override
+	public boolean equals(Object o) {
+<span class="nc bnc" id="L59" title="All 2 branches missed.">		if (this == o)</span>
+<span class="nc" id="L60">			return true;</span>
+<span class="nc bnc" id="L61" title="All 2 branches missed.">		if (!super.equals(o))</span>
+<span class="nc" id="L62">			return false;</span>
+
+<span class="nc" id="L64">		final SpanQueryFilterNGrams that = (SpanQueryFilterNGrams) o;</span>
+<span class="nc bnc" id="L65" title="All 6 branches missed.">		return op == that.op &amp;&amp; min == that.min &amp;&amp; max == that.max;</span>
+	}
+
+	@Override
+	public BLSpanQuery rewrite(IndexReader reader) throws IOException {
+<span class="nc" id="L70">		List&lt;BLSpanQuery&gt; rewritten = rewriteClauses(reader);</span>
+<span class="nc bnc" id="L71" title="All 2 branches missed.">		if (rewritten == null)</span>
+<span class="nc" id="L72">			return this;</span>
+<span class="nc" id="L73">		SpanQueryFilterNGrams result = new SpanQueryFilterNGrams(rewritten.get(0), op, min, max);</span>
+<span class="nc bnc" id="L74" title="All 2 branches missed.">		if (ignoreLastToken)</span>
+<span class="nc" id="L75">			result.setIgnoreLastToken(true);</span>
+<span class="nc" id="L76">		return result;</span>
+	}
+
+	@Override
+	public boolean matchesEmptySequence() {
+<span class="nc bnc" id="L81" title="All 4 branches missed.">		return clauses.get(0).matchesEmptySequence() &amp;&amp; min == 0;</span>
+	}
+
+	@Override
+	public BLSpanQuery noEmpty() {
+<span class="nc bnc" id="L86" title="All 2 branches missed.">		if (!matchesEmptySequence())</span>
+<span class="nc" id="L87">			return this;</span>
+<span class="nc bnc" id="L88" title="All 2 branches missed.">		int newMin = min == 0 ? 1 : min;</span>
+<span class="nc" id="L89">		return new SpanQueryFilterNGrams(clauses.get(0).noEmpty(), op, newMin, max);</span>
+	}
+
+	@Override
+	public BLSpanWeight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
+<span class="nc" id="L94">		BLSpanWeight weight = clauses.get(0).createWeight(searcher, needsScores);</span>
+<span class="nc bnc" id="L95" title="All 2 branches missed.">		return new SpanWeightFilterNGrams(weight, searcher, needsScores ? getTermContexts(weight) : null);</span>
+	}
+
+	class SpanWeightFilterNGrams extends BLSpanWeight {
+
+		final BLSpanWeight weight;
+
+<span class="nc" id="L102">		public SpanWeightFilterNGrams(BLSpanWeight weight, IndexSearcher searcher, Map&lt;Term, TermContext&gt; terms) throws IOException {</span>
+<span class="nc" id="L103">			super(SpanQueryFilterNGrams.this, searcher, terms);</span>
+<span class="nc" id="L104">			this.weight = weight;</span>
+<span class="nc" id="L105">		}</span>
+
+		@Override
+		public void extractTerms(Set&lt;Term&gt; terms) {
+<span class="nc" id="L109">			weight.extractTerms(terms);</span>
+<span class="nc" id="L110">		}</span>
+
+		@Override
+		public void extractTermContexts(Map&lt;Term, TermContext&gt; contexts) {
+<span class="nc" id="L114">			weight.extractTermContexts(contexts);</span>
+<span class="nc" id="L115">		}</span>
+
+		@Override
+		public BLSpans getSpans(final LeafReaderContext context, Postings requiredPostings) throws IOException {
+<span class="nc" id="L119">			BLSpans spansSource = weight.getSpans(context, requiredPostings);</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">			if (spansSource == null)</span>
+<span class="nc" id="L121">				return null;</span>
+<span class="nc" id="L122">			BLSpans spans = new SpansFilterNGramsRaw(ignoreLastToken, context.reader(), clauses.get(0).getField(), spansSource, op, min, max);</span>
+<span class="nc" id="L123">			return spans;</span>
+		}
+
+	}
+
+	@Override
+	public int hashCode() {
+<span class="nc" id="L130">		int h = clauses.hashCode();</span>
+<span class="nc" id="L131">		h ^= (h &lt;&lt; 10) | (h &gt;&gt;&gt; 23);</span>
+<span class="nc" id="L132">		h ^= min &lt;&lt; 10;</span>
+<span class="nc" id="L133">		h ^= max &lt;&lt; 5;</span>
+<span class="nc" id="L134">		h ^= op.hashCode();</span>
+<span class="nc" id="L135">		return h;</span>
+	}
+
+	@Override
+	public String toString(String field) {
+<span class="fc" id="L140">		return &quot;FILTERNGRAMS(&quot; + clauses.get(0) + &quot;, &quot; + op + &quot;, &quot; + min + &quot;, &quot; + inf(max)</span>
+				+ &quot;)&quot;;
+	}
+
+	/** Set whether to ignore the last token.
+	 *
+	 * @param ignoreLastToken if true, we assume the last token is always a special closing token and ignore it
+	 */
+	public void setIgnoreLastToken(boolean ignoreLastToken) {
+<span class="nc" id="L149">		this.ignoreLastToken = ignoreLastToken;</span>
+<span class="nc" id="L150">	}</span>
+
+	@Override
+	public boolean hitsAllSameLength() {
+<span class="nc bnc" id="L154" title="All 2 branches missed.">		return min == max;</span>
+	}
+
+	@Override
+	public int hitsLengthMin() {
+<span class="nc" id="L159">		return min;</span>
+	}
+
+	@Override
+	public int hitsLengthMax() {
+<span class="nc" id="L164">		return max;</span>
+	}
+
+	@Override
+	public boolean hitsEndPointSorted() {
+<span class="nc" id="L169">		return hitsAllSameLength();</span>
+	}
+
+	@Override
+	public boolean hitsStartPointSorted() {
+<span class="nc bnc" id="L174" title="All 4 branches missed.">		return clauses.get(0).hitsStartPointSorted() &amp;&amp; clauses.get(0).hitsLengthMax() &gt;= min;</span>
+	}
+
+	@Override
+	public boolean hitsHaveUniqueStart() {
+<span class="nc bnc" id="L179" title="All 2 branches missed.">		return min == max;</span>
+	}
+
+	@Override
+	public boolean hitsHaveUniqueEnd() {
+<span class="nc bnc" id="L184" title="All 2 branches missed.">		return min == max;</span>
+	}
+
+	@Override
+	public boolean hitsAreUnique() {
+<span class="nc bnc" id="L189" title="All 4 branches missed.">		return clauses.get(0).hitsAreUnique() &amp;&amp; clauses.get(0).hitsLengthMax() &gt;= min;</span>
+	}
+
+	@Override
+	public long reverseMatchingCost(IndexReader reader) {
+<span class="nc bnc" id="L194" title="All 2 branches missed.">		int numberOfExpansionSteps = max == MAX_UNLIMITED ? 50 : max - min + 1;</span>
+<span class="nc" id="L195">		return clauses.get(0).reverseMatchingCost(reader) * numberOfExpansionSteps;</span>
+	}
+
+	@Override
+	public int forwardMatchingCost() {
+<span class="nc bnc" id="L200" title="All 2 branches missed.">		int numberOfExpansionSteps = max == MAX_UNLIMITED ? 50 : max - min + 1;</span>
+<span class="nc" id="L201">		return clauses.get(0).forwardMatchingCost() * numberOfExpansionSteps;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

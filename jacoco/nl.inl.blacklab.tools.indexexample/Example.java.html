@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Example.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.tools.indexexample</a> &gt; <span class="el_source">Example.java</span></div><h1>Example.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.tools.indexexample;
+
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+
+import nl.inl.blacklab.index.DocumentFormats;
+import nl.inl.blacklab.index.Indexer;
+import nl.inl.blacklab.queryParser.corpusql.CorpusQueryLanguageParser;
+import nl.inl.blacklab.queryParser.corpusql.ParseException;
+import nl.inl.blacklab.search.Concordance;
+import nl.inl.blacklab.search.Hit;
+import nl.inl.blacklab.search.Hits;
+import nl.inl.blacklab.search.Searcher;
+import nl.inl.blacklab.search.TextPattern;
+import nl.inl.blacklab.search.grouping.HitPropertyHitText;
+import nl.inl.util.FileUtil;
+import nl.inl.util.FileUtil.FileTask;
+
+/**
+ * Simple test program to demonstrate index &amp; search functionality.
+ */
+<span class="nc" id="L39">public class Example {</span>
+
+	/**
+	 * The BlackLab searcher object.
+	 */
+	static Searcher searcher;
+
+	/**
+	 * Some test XML data to index.
+	 */
+<span class="nc" id="L49">	static String[] testData = {</span>
+			&quot;&lt;doc&gt;&quot; + &quot;&lt;w l='the'   p='art' &gt;The&lt;/w&gt; &quot; + &quot;&lt;w l='quick' p='adj'&gt;quick&lt;/w&gt; &quot;
+					+ &quot;&lt;w l='brown' p='adj'&gt;brown&lt;/w&gt; &quot; + &quot;&lt;w l='fox'   p='nou'&gt;fox&lt;/w&gt; &quot;
+					+ &quot;&lt;w l='jump'  p='vrb' &gt;jumps&lt;/w&gt; &quot; + &quot;&lt;w l='over'  p='pre' &gt;over&lt;/w&gt; &quot;
+					+ &quot;&lt;w l='the'   p='art' &gt;the&lt;/w&gt; &quot; + &quot;&lt;w l='lazy'  p='adj'&gt;lazy&lt;/w&gt; &quot;
+					+ &quot;&lt;w l='dog'   p='nou'&gt;dog&lt;/w&gt;&quot; + &quot;.&lt;/doc&gt;&quot;,
+
+			&quot;&lt;doc&gt; &quot; + &quot;&lt;w l='may' p='vrb'&gt;May&lt;/w&gt; &quot; + &quot;&lt;w l='the' p='art'&gt;the&lt;/w&gt; &quot;
+					+ &quot;&lt;w l='force' p='nou'&gt;force&lt;/w&gt; &quot; + &quot;&lt;w l='be' p='vrb'&gt;be&lt;/w&gt; &quot;
+					+ &quot;&lt;w l='with' p='pre'&gt;with&lt;/w&gt; &quot; + &quot;&lt;w l='you' p='pro'&gt;you&lt;/w&gt;&quot; + &quot;.&lt;/doc&gt;&quot;, };
+
+	/**
+	 * The main program
+	 * @param args command line arguments
+	 * @throws IOException
+	 */
+	public static void main(String[] args) throws IOException {
+
+		// Get a temporary directory for our test index
+<span class="nc" id="L68">		File indexDir = new File(System.getProperty(&quot;java.io.tmpdir&quot;), &quot;BlackLabExample&quot;);</span>
+<span class="nc bnc" id="L69" title="All 2 branches missed.">		if (indexDir.exists()) {</span>
+			// Delete the old example dir
+			// (NOTE: we cannot do this on exit because memory mappings may
+			//  prevent deletion on Windows)
+<span class="nc" id="L73">			FileUtil.processTree(indexDir, new FileTask() {</span>
+				@Override
+				public void process(File f) {
+<span class="nc" id="L76">					f.delete();</span>
+<span class="nc" id="L77">				}</span>
+			});
+		}
+
+		// Register our custom DocIndexer, then create a BlackLab indexer using it
+<span class="nc" id="L82">		DocumentFormats.registerFormat(&quot;exampleformat&quot;, DocIndexerExample.class);</span>
+<span class="nc" id="L83">		Indexer indexer = null;</span>
+		try {
+<span class="nc" id="L85">			indexer = new Indexer(indexDir, true, &quot;exampleformat&quot;, (File)null);</span>
+			// Index each of our test &quot;documents&quot;.
+<span class="nc bnc" id="L87" title="All 2 branches missed.">			for (int i = 0; i &lt; testData.length; i++) {</span>
+<span class="nc" id="L88">				indexer.index(&quot;test&quot; + (i + 1), new ByteArrayInputStream(testData[i].getBytes(StandardCharsets.UTF_8)));</span>
+			}
+
+<span class="nc" id="L91">		} catch (Exception e) {</span>
+
+			// An error occurred during indexing.
+<span class="nc" id="L94">			System.err.println(&quot;An error occurred, aborting indexing. Error details follow.&quot;);</span>
+<span class="nc" id="L95">			e.printStackTrace();</span>
+
+		} finally {
+
+			// Finalize and close the index.
+<span class="nc" id="L100">			indexer.close();</span>
+
+<span class="nc" id="L102">		}</span>
+
+		// Create the BlackLab searcher object
+<span class="nc" id="L105">		searcher = Searcher.open(indexDir);</span>
+		try {
+
+			// Find the word &quot;the&quot;
+<span class="nc" id="L109">			System.out.println(&quot;-----&quot;);</span>
+<span class="nc" id="L110">			findPattern(parseCorpusQL(&quot; 'the' &quot;));</span>
+
+			// Find prepositions
+<span class="nc" id="L113">			System.out.println(&quot;-----&quot;);</span>
+<span class="nc" id="L114">			findPattern(parseCorpusQL(&quot; [pos='pre'] &quot;));</span>
+
+			// Find sequence of words
+<span class="nc" id="L117">			System.out.println(&quot;-----&quot;);</span>
+<span class="nc" id="L118">			findPattern(parseCorpusQL(&quot; 'the' []{0,2} 'fo.*' &quot;));</span>
+
+<span class="nc" id="L120">		} catch (ParseException e) {</span>
+
+			// Query parse error
+<span class="nc" id="L123">			System.err.println(e.getMessage());</span>
+
+		} finally {
+
+			// Close the searcher object
+<span class="nc" id="L128">			searcher.close();</span>
+
+<span class="nc" id="L130">		}</span>
+<span class="nc" id="L131">	}</span>
+
+	/**
+	 * Parse a Corpus Query Language query
+	 *
+	 * @param query
+	 *            the query to parse
+	 * @return the resulting BlackLab text pattern
+	 * @throws ParseException
+	 */
+	private static TextPattern parseCorpusQL(String query) throws ParseException  {
+
+		// A bit of cheating here - CorpusQL only allows double-quoting, but
+		// that makes our example code look ugly (we have to add backslashes).
+		// We may extend CorpusQL to allow single-quoting in the future.
+<span class="nc" id="L146">		query = query.replaceAll(&quot;'&quot;, &quot;\&quot;&quot;);</span>
+
+		// Parse query using the CorpusQL parser
+<span class="nc" id="L149">		return CorpusQueryLanguageParser.parse(query);</span>
+	}
+
+	/**
+	 * Find a text pattern in the contents field and display the matches.
+	 *
+	 * @param tp
+	 *            the text pattern to search for
+	 */
+	static void findPattern(TextPattern tp) {
+		// Execute the search
+<span class="nc" id="L160">		Hits hits = searcher.find(tp);</span>
+
+<span class="nc" id="L162">		Hits sortedHits = hits.sortedBy(new HitPropertyHitText(hits, &quot;contents&quot;));</span>
+
+		// Display the concordances
+<span class="nc" id="L165">		displayConcordances(sortedHits);</span>
+<span class="nc" id="L166">	}</span>
+
+	/**
+	 * Display a list of hits.
+	 *
+	 * @param hits
+	 *            the hits to display
+	 */
+	static void displayConcordances(Hits hits) {
+		// Loop over the hits and display.
+<span class="nc bnc" id="L176" title="All 2 branches missed.">		for (Hit hit : hits) {</span>
+<span class="nc" id="L177">			Concordance conc = hits.getConcordance(hit);</span>
+			// Strip out XML tags for display.
+<span class="nc" id="L179">			String[] concParts = conc.partsNoXml();</span>
+<span class="nc" id="L180">			String left = concParts[0];</span>
+<span class="nc" id="L181">			String match = concParts[1];</span>
+<span class="nc" id="L182">			String right = concParts[2];</span>
+
+<span class="nc" id="L184">			System.out.printf(&quot;[%05d:%06d] %45s[%s]%s\n&quot;, hit.doc, hit.start, left, match, right);</span>
+<span class="nc" id="L185">		}</span>
+<span class="nc" id="L186">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

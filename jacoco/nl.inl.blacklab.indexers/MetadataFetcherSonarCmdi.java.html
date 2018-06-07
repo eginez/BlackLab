@@ -1,0 +1,253 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MetadataFetcherSonarCmdi.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.indexers</a> &gt; <span class="el_source">MetadataFetcherSonarCmdi.java</span></div><h1>MetadataFetcherSonarCmdi.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.indexers;
+
+import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
+
+import javax.xml.parsers.SAXParser;
+import javax.xml.parsers.SAXParserFactory;
+
+import org.apache.commons.io.input.TeeInputStream;
+import org.apache.lucene.document.Document;
+import org.apache.lucene.document.Field.Store;
+import org.apache.lucene.document.IntField;
+import org.xml.sax.Attributes;
+import org.xml.sax.InputSource;
+import org.xml.sax.helpers.DefaultHandler;
+
+import nl.inl.blacklab.externalstorage.ContentStore;
+import nl.inl.blacklab.index.DocIndexer;
+import nl.inl.blacklab.index.Indexer;
+import nl.inl.blacklab.index.MetadataFetcher;
+
+/**
+ * Example of a metadata fetcher, a class used to fetch metadata
+ * from an external source in case it's not included in the documents.
+ *
+ * This class fetches the metadata from a ZIP file with a certain
+ * structure (specific to the OpenSonar project), but it should be easy
+ * to adapt to your own needs.
+ *
+ * Note that for accessing large ZIP files, you need Java 7 which supports
+ * the ZIP64 format, otherwise you'll get the &quot;invalid CEN header (bad signature)&quot;
+ * error)
+ */
+public class MetadataFetcherSonarCmdi extends MetadataFetcher {
+
+	private static final int INITIAL_CMDI_BYTEBUFFER_SIZE = 1000;
+
+<span class="nc" id="L48">	static private ZipFile metadataZipFile = null;</span>
+
+<span class="nc" id="L50">	static private File metadataDir = null;</span>
+
+	private String metadataPathInZip;
+
+	@SuppressWarnings(&quot;deprecation&quot;)
+    public MetadataFetcherSonarCmdi(DocIndexer docIndexer) {
+<span class="nc" id="L56">		super(docIndexer);</span>
+
+<span class="nc bnc" id="L58" title="All 2 branches missed.">		if (metadataZipFile == null) {</span>
+<span class="nc" id="L59">			String zipFilePath = docIndexer.getParameter(&quot;metadataZipFile&quot;);</span>
+<span class="nc bnc" id="L60" title="All 2 branches missed.">			if (zipFilePath == null) {</span>
+<span class="nc" id="L61">				zipFilePath = docIndexer.getParameter(&quot;metadataDir&quot;);</span>
+<span class="nc bnc" id="L62" title="All 2 branches missed.">				if (zipFilePath == null)</span>
+<span class="nc" id="L63">					throw new RuntimeException(&quot;For OpenSonar metadata, specify metadataZipFile or metadataDir in indexer.properties!&quot;);</span>
+<span class="nc" id="L64">				metadataDir = new File(zipFilePath);</span>
+			} else {
+				try {
+<span class="nc" id="L67">					metadataZipFile = new ZipFile(new File(zipFilePath));</span>
+<span class="nc" id="L68">				} catch (Exception e) {</span>
+<span class="nc" id="L69">					throw new RuntimeException(e);</span>
+<span class="nc" id="L70">				}</span>
+			}
+		}
+
+<span class="nc" id="L74">		metadataPathInZip = docIndexer.getParameter(&quot;metadataPath&quot;, &quot;&quot;);</span>
+<span class="nc bnc" id="L75" title="All 2 branches missed.">		if (metadataPathInZip.length() == 0)</span>
+<span class="nc" id="L76">			metadataPathInZip = docIndexer.getParameter(&quot;metadataPathInZip&quot;, &quot;&quot;);</span>
+<span class="nc bnc" id="L77" title="All 4 branches missed.">		if (metadataPathInZip.length() &gt; 0 &amp;&amp; !metadataPathInZip.endsWith(&quot;/&quot;))</span>
+<span class="nc" id="L78">			metadataPathInZip += &quot;/&quot;;</span>
+<span class="nc" id="L79">	}</span>
+
+	@Override
+	public void close() {
+		// TODO: make sure zip file is properly closed when done
+		//   (change structure so metadata fetcher isn't instantiated for each document separately)
+		//metadataZipFile.close();
+<span class="nc" id="L86">	}</span>
+
+	@Override
+	public void addMetadata() {
+
+		String fromInputFile;
+<span class="nc" id="L92">		Document luceneDoc = docIndexer.getCurrentLuceneDoc();</span>
+<span class="nc" id="L93">		fromInputFile = luceneDoc.get(&quot;fromInputFile&quot;);</span>
+
+<span class="nc" id="L95">		docIndexer.addMetadataField(&quot;Corpus_title&quot;, &quot;SoNaR&quot;);</span>
+
+<span class="nc" id="L97">		fromInputFile = fromInputFile.replaceAll(&quot;\\\\&quot;, &quot;/&quot;);</span>
+<span class="nc" id="L98">		int lastSlash = fromInputFile.lastIndexOf(&quot;/&quot;);</span>
+<span class="nc" id="L99">		int penultimateSlash = fromInputFile.lastIndexOf(&quot;/&quot;, lastSlash - 1);</span>
+<span class="nc" id="L100">		String metadataFile = fromInputFile.substring(penultimateSlash + 1);</span>
+<span class="nc" id="L101">		metadataFile = metadataFile.replaceAll(&quot;\\.folia\\.&quot;, &quot;.cmdi.&quot;);</span>
+
+		try {
+			InputStream is;
+<span class="nc bnc" id="L105" title="All 2 branches missed.">			if (metadataZipFile != null) {</span>
+<span class="nc" id="L106">				ZipEntry e = metadataZipFile.getEntry(metadataPathInZip + metadataFile);</span>
+<span class="nc bnc" id="L107" title="All 2 branches missed.">				if (e == null) {</span>
+					//throw new RuntimeException(&quot;Entry in zip not found: &quot; + metadataPathInZip + metadataFile);
+<span class="nc" id="L109">					System.err.println(&quot;*** ERROR, metadata entry not found: &quot; + metadataPathInZip + metadataFile);</span>
+<span class="nc" id="L110">					return;</span>
+				}
+<span class="nc" id="L112">				is = metadataZipFile.getInputStream(e);</span>
+<span class="nc" id="L113">			} else {</span>
+<span class="nc" id="L114">				File f = new File(new File(metadataDir, metadataPathInZip), metadataFile);</span>
+<span class="nc" id="L115">				is = new FileInputStream(f);</span>
+			}
+
+<span class="nc" id="L118">			ByteArrayOutputStream cmdiBuffer = new ByteArrayOutputStream(INITIAL_CMDI_BYTEBUFFER_SIZE);</span>
+<span class="nc" id="L119">			is = new TeeInputStream(is, cmdiBuffer);</span>
+<span class="nc" id="L120">			try (BufferedReader reader = new BufferedReader(new InputStreamReader(is, Indexer.DEFAULT_INPUT_ENCODING))) {</span>
+<span class="nc" id="L121">				SAXParserFactory factory = SAXParserFactory.newInstance();</span>
+<span class="nc" id="L122">				factory.setNamespaceAware(true);</span>
+				SAXParser parser;
+<span class="nc" id="L124">				parser = factory.newSAXParser();</span>
+<span class="nc" id="L125">				parser.parse(new InputSource(reader), new MetadataParser());</span>
+<span class="nc bnc" id="L126" title="All 8 branches missed.">			}</span>
+
+			// Combine AuthorName and Pseudonym fields into
+			// fields AuthorNameOrPseudonym / AuthorNameOrPseudonymSearch
+<span class="nc" id="L130">			String authorName = luceneDoc.get(&quot;AuthorName&quot;);</span>
+<span class="nc bnc" id="L131" title="All 2 branches missed.">			if (authorName == null)</span>
+<span class="nc" id="L132">				authorName = &quot;&quot;;</span>
+<span class="nc" id="L133">			String pseudonym = luceneDoc.get(&quot;Pseudonym&quot;);</span>
+<span class="nc bnc" id="L134" title="All 2 branches missed.">			if (pseudonym == null)</span>
+<span class="nc" id="L135">				pseudonym = &quot;&quot;;</span>
+<span class="nc" id="L136">			String authorNameAndPseudonym = authorName + &quot; &quot; + pseudonym;</span>
+<span class="nc bnc" id="L137" title="All 2 branches missed.">			if (authorName.isEmpty()) {</span>
+<span class="nc" id="L138">				authorName = pseudonym;</span>
+			}
+<span class="nc" id="L140">			docIndexer.addMetadataField(&quot;AuthorNameOrPseudonym&quot;, authorName);</span>
+<span class="nc" id="L141">			docIndexer.addMetadataField(&quot;AuthorNameOrPseudonymSearch&quot;, authorNameAndPseudonym);</span>
+
+			// Store metadata XML in content store and corresponding id in Lucene document
+<span class="nc" id="L144">			ContentStore cs = docIndexer.getIndexer().getContentStore(&quot;metadata&quot;);</span>
+<span class="nc" id="L145">			int id = cs.store(cmdiBuffer.toString(Indexer.DEFAULT_INPUT_ENCODING.name()));</span>
+<span class="nc" id="L146">			luceneDoc.add(new IntField(&quot;metadataCid&quot;, id, Store.YES));</span>
+
+<span class="nc bnc" id="L148" title="All 2 branches missed.">			if (metadataZipFile == null)</span>
+<span class="nc" id="L149">				is.close();</span>
+<span class="nc" id="L150">		} catch (Exception e) {</span>
+<span class="nc" id="L151">			throw new RuntimeException(e);</span>
+<span class="nc" id="L152">		}</span>
+<span class="nc" id="L153">	}</span>
+
+	/**
+	 * Handles the metadata XML and adds it to the Lucene document
+	 */
+	class MetadataParser extends DefaultHandler {
+
+<span class="nc" id="L160">		private StringBuilder textContent = new StringBuilder();</span>
+
+<span class="nc" id="L162">		private boolean hasChild = false;</span>
+
+<span class="nc" id="L164">		Map&lt;String, String&gt; indexFieldAs = new HashMap&lt;&gt;();</span>
+
+<span class="nc" id="L166">		List&lt;String&gt; elementStack = new ArrayList&lt;&gt;();</span>
+
+		/**
+		 * Push the current element name onto the element stack
+		 * @param localName the current element name
+		 */
+		private void stackPush(String localName) {
+<span class="nc" id="L173">			elementStack.add(localName);</span>
+<span class="nc" id="L174">		}</span>
+
+		/**
+		 * Pop the current element name off of the element stack
+		 */
+		private void stackPop() {
+<span class="nc" id="L180">			elementStack.remove(elementStack.size() - 1);</span>
+<span class="nc" id="L181">		}</span>
+
+		/**
+		 * Get the name of the current element's parent element
+		 * from the element stack.
+		 * @return the parent element name
+		 */
+		private String getParentElName() {
+<span class="nc bnc" id="L189" title="All 2 branches missed.">			if (elementStack.size() &lt; 2)</span>
+<span class="nc" id="L190">				return &quot;&quot;;</span>
+<span class="nc" id="L191">			return elementStack.get(elementStack.size() - 2);</span>
+		}
+
+<span class="nc" id="L194">		public MetadataParser() {</span>
+<span class="nc" id="L195">			indexFieldAs.put(&quot;iso-639-3-code&quot;, &quot;Language-iso-code&quot;);</span>
+<span class="nc" id="L196">			indexFieldAs.put(&quot;Name&quot;, &quot;AuthorName&quot;);</span>
+<span class="nc" id="L197">		}</span>
+
+		@Override
+		public void startElement(String uri, String localName, String qName, Attributes attributes) {
+<span class="nc" id="L201">			stackPush(localName);</span>
+<span class="nc" id="L202">			hasChild = false; // we haven't seen a child for this element yet</span>
+<span class="nc" id="L203">			textContent.setLength(0); // clear buffer</span>
+<span class="nc" id="L204">		}</span>
+
+		@Override
+		public void endElement(String uri, String localName, String qName) {
+
+<span class="nc bnc" id="L209" title="All 2 branches missed.">			if (!hasChild) {</span>
+				// See if we captured any text content
+<span class="nc" id="L211">				String content = textContent.toString().trim();</span>
+<span class="nc bnc" id="L212" title="All 2 branches missed.">				if (content.length() &gt; 0) {</span>
+					// Yes, leaf element with text content.
+					// Index the value of this element as a metadata field.
+
+					// Check the parent element name to see if we need to
+					// add a prefix to distinguish elements with the same name.
+					// (e.g. Source/Country and ResidencePlace/Country)
+<span class="nc" id="L219">					String parentElName = getParentElName();</span>
+<span class="nc bnc" id="L220" title="All 4 branches missed.">					if (localName.equals(&quot;Country&quot;) &amp;&amp; !parentElName.equals(&quot;Source&quot;)) {</span>
+						// Add prefix to distinguish Country under Source from other Country els
+						// (so Country under ResidencePlace becomes ResidencePlace_Country, etc.)
+<span class="nc" id="L223">						localName = parentElName + &quot;_Country&quot;;</span>
+					}
+
+					// See if we want to index this element under a different name.
+<span class="nc" id="L227">					String indexAs = indexFieldAs.get(localName);</span>
+<span class="nc bnc" id="L228" title="All 4 branches missed.">					if (indexAs == null || indexAs.length() == 0)</span>
+<span class="nc" id="L229">						indexAs = localName;</span>
+
+					// Leaf node with content; store as metadata field.
+<span class="nc bnc" id="L232" title="All 2 branches missed.">					if (docIndexer != null) {</span>
+<span class="nc" id="L233">					    docIndexer.addMetadataField(indexAs, content);</span>
+					} else {
+						// TEST; print metadata value
+<span class="nc" id="L236">						System.out.println(indexAs + &quot;: &quot; + content);</span>
+					}
+				}
+			}
+
+<span class="nc" id="L241">			hasChild = true; // our parent has at least one child</span>
+<span class="nc" id="L242">			stackPop();</span>
+<span class="nc" id="L243">		}</span>
+
+		@Override
+		public void characters(char[] ch, int start, int length) {
+<span class="nc bnc" id="L247" title="All 2 branches missed.">			if (!hasChild)</span>
+<span class="nc" id="L248">				textContent.append(ch, start, length);</span>
+<span class="nc" id="L249">		}</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

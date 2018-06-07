@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DocResult.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.perdocument</a> &gt; <span class="el_source">DocResult.java</span></div><h1>DocResult.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.perdocument;
+
+import java.util.List;
+
+import org.apache.lucene.document.Document;
+
+import nl.inl.blacklab.search.Hits;
+import nl.inl.blacklab.search.Searcher;
+
+/**
+ * A document result, containing a Lucene document from the index and a collection of Hit objects.
+ */
+public class DocResult {
+	private int docId;
+
+	private Hits hits;
+
+	private float score;
+
+<span class="nc" id="L35">	public DocResult(Searcher searcher, String concField, int docId, float score) {</span>
+<span class="nc" id="L36">		this.docId = docId;</span>
+<span class="nc" id="L37">		this.score = score;</span>
+<span class="nc" id="L38">		hits = Hits.emptyList(searcher);</span>
+<span class="nc" id="L39">		hits.settings().setConcordanceField(concField);</span>
+<span class="nc" id="L40">	}</span>
+
+	/**
+	 * Construct a DocResult.
+	 *
+	 * @param searcher the index we searched
+	 * @param concField concordance field (e.g. &quot;contents&quot;)
+	 * @param doc the Lucene document id
+	 * @param docHits hits in the document
+	 */
+<span class="fc" id="L50">	public DocResult(Searcher searcher, String concField, int doc, Hits docHits) {</span>
+<span class="fc" id="L51">		this.docId = doc;</span>
+<span class="fc" id="L52">		this.score = 0.0f;</span>
+<span class="fc" id="L53">		hits = docHits;</span>
+<span class="fc" id="L54">	}</span>
+
+	public Document getDocument() {
+<span class="nc" id="L57">		return hits.getSearcher().document(docId);</span>
+	}
+
+	/**
+	 * Get the number of hits in this document.
+	 * @return the number of hits in the document
+	 */
+	public int getNumberOfHits() {
+<span class="fc" id="L65">		return hits.size();</span>
+	}
+
+	/**
+	 * Get some or all hits in this document.
+	 * @param max the maximum number of hits we want, or 0 if we want all hits.
+	 *   Only use 0 if you really want all the hits. For example, if making concordances,
+	 *   it is more efficient to retrieve only some of the hits, so BlackLab won't
+	 *   fetch context for all the hits, even the ones you don't want concordances for.
+	 * @return the hits
+	 */
+	public Hits getHits(int max) {
+<span class="nc bnc" id="L77" title="All 2 branches missed.">		if (max &lt;= 0)</span>
+<span class="nc" id="L78">			return hits;</span>
+<span class="nc" id="L79">		return hits.window(0, max);</span>
+	}
+
+	public int getDocId() {
+<span class="fc" id="L83">		return docId;</span>
+	}
+
+	public float getScore() {
+<span class="nc" id="L87">		return score;</span>
+	}
+
+	public void setContextField(List&lt;String&gt; contextField) {
+<span class="fc" id="L91">		hits.setContextField(contextField);</span>
+<span class="fc" id="L92">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

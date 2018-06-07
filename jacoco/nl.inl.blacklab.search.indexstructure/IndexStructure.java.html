@@ -1,0 +1,1442 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IndexStructure.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.indexstructure</a> &gt; <span class="el_source">IndexStructure.java</span></div><h1>IndexStructure.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.search.indexstructure;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.nio.charset.Charset;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+import java.util.TreeMap;
+
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.apache.lucene.index.FieldInfo;
+import org.apache.lucene.index.FieldInfos;
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.MultiFields;
+import org.apache.lucene.index.Terms;
+import org.apache.lucene.util.Bits;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
+import nl.inl.blacklab.index.DocIndexerFactory.Format;
+import nl.inl.blacklab.index.DocumentFormats;
+import nl.inl.blacklab.index.Indexer;
+import nl.inl.blacklab.index.complex.ComplexFieldUtil;
+import nl.inl.blacklab.index.config.ConfigAnnotatedField;
+import nl.inl.blacklab.index.config.ConfigAnnotation;
+import nl.inl.blacklab.index.config.ConfigCorpus;
+import nl.inl.blacklab.index.config.ConfigCorpus.TextDirection;
+import nl.inl.blacklab.index.config.ConfigInputFormat;
+import nl.inl.blacklab.index.config.ConfigLinkedDocument;
+import nl.inl.blacklab.index.config.ConfigMetadataBlock;
+import nl.inl.blacklab.index.config.ConfigMetadataField;
+import nl.inl.blacklab.index.config.ConfigMetadataFieldGroup;
+import nl.inl.blacklab.index.config.ConfigStandoffAnnotations;
+import nl.inl.blacklab.search.Searcher;
+import nl.inl.blacklab.search.indexstructure.MetadataFieldDesc.UnknownCondition;
+import nl.inl.util.FileUtil;
+import nl.inl.util.Json;
+import nl.inl.util.StringUtil;
+
+/**
+ * Determines the structure of a BlackLab index.
+ */
+public class IndexStructure {
+<span class="fc" id="L63">	private static final Charset INDEX_STRUCT_FILE_ENCODING = Indexer.DEFAULT_INPUT_ENCODING;</span>
+
+<span class="fc" id="L65">	protected static final Logger logger = LogManager.getLogger(IndexStructure.class);</span>
+
+	private static final String METADATA_FILE_NAME = &quot;indexmetadata&quot;;
+
+	/**
+	 * The latest index format. Written to the index metadata file.
+	 *
+	 * 3:   first version to include index metadata file
+	 * 3.1: tag length in payload
+	 */
+	static final String LATEST_INDEX_FORMAT = &quot;3.1&quot;;
+
+	/** What keys may occur at top level? */
+<span class="fc" id="L78">    static final Set&lt;String&gt; KEYS_TOP_LEVEL = new HashSet&lt;&gt;(Arrays.asList(</span>
+            &quot;displayName&quot;, &quot;description&quot;, &quot;contentViewable&quot;, &quot;textDirection&quot;,
+            &quot;documentFormat&quot;, &quot;tokenCount&quot;, &quot;versionInfo&quot;, &quot;fieldInfo&quot;));
+
+    /** What keys may occur under versionInfo? */
+<span class="fc" id="L83">    static final Set&lt;String&gt; KEYS_VERSION_INFO = new HashSet&lt;&gt;(Arrays.asList(</span>
+            &quot;indexFormat&quot;, &quot;blackLabBuildTime&quot;, &quot;blackLabVersion&quot;, &quot;timeCreated&quot;,
+            &quot;timeModified&quot;, &quot;alwaysAddClosingToken&quot;, &quot;tagLengthInPayload&quot;));
+
+    /** What keys may occur under fieldInfo? */
+<span class="fc" id="L88">    static final Set&lt;String&gt; KEYS_FIELD_INFO = new HashSet&lt;&gt;(Arrays.asList(</span>
+            &quot;namingScheme&quot;, &quot;unknownCondition&quot;, &quot;unknownValue&quot;,
+            &quot;metadataFields&quot;, &quot;complexFields&quot;, &quot;metadataFieldGroups&quot;,
+            &quot;defaultAnalyzer&quot;, &quot;titleField&quot;, &quot;authorField&quot;, &quot;dateField&quot;, &quot;pidField&quot;));
+
+    /** What keys may occur under metadataFieldGroups group? */
+<span class="fc" id="L94">    static final Set&lt;String&gt; KEYS_METADATA_GROUP = new HashSet&lt;&gt;(Arrays.asList(</span>
+            &quot;name&quot;, &quot;fields&quot;, &quot;addRemainingFields&quot;));
+
+    /** What keys may occur under metadata field config? */
+<span class="fc" id="L98">    static final Set&lt;String&gt; KEYS_META_FIELD_CONFIG = new HashSet&lt;&gt;(Arrays.asList(</span>
+            &quot;type&quot;, &quot;displayName&quot;, &quot;uiType&quot;,
+            &quot;description&quot;, &quot;group&quot;, &quot;analyzer&quot;,
+            &quot;unknownValue&quot;, &quot;unknownCondition&quot;, &quot;values&quot;,
+            &quot;displayValues&quot;, &quot;displayOrder&quot;, &quot;valueListComplete&quot;));
+
+    /** What keys may occur under complex field config? */
+<span class="fc" id="L105">    static final Set&lt;String&gt; KEYS_COMPLEX_FIELD_CONFIG = new HashSet&lt;&gt;(Arrays.asList(</span>
+            &quot;displayName&quot;, &quot;description&quot;, &quot;mainProperty&quot;,
+            &quot;noForwardIndexProps&quot;, &quot;displayOrder&quot;, &quot;annotations&quot;));
+
+<span class="fc" id="L109">	public static final DateFormat DATETIME_FORMAT = new SimpleDateFormat(&quot;yyyy-MM-dd HH:mm:ss&quot;);</span>
+
+	/** A named group of ordered metadata fields */
+	public static class MetadataGroup {
+
+	    String name;
+
+	    List&lt;String&gt; fields;
+
+<span class="nc" id="L118">	    boolean addRemainingFields = false;</span>
+
+	    public void setName(String name) {
+<span class="nc" id="L121">            this.name = name;</span>
+<span class="nc" id="L122">        }</span>
+
+        public void setFields(List&lt;String&gt; fields) {
+<span class="nc" id="L125">            this.fields = fields;</span>
+<span class="nc" id="L126">        }</span>
+
+<span class="nc" id="L128">        public MetadataGroup(String name, List&lt;String&gt; fields) {</span>
+<span class="nc" id="L129">	        this.name = name;</span>
+<span class="nc" id="L130">	        this.fields = new ArrayList&lt;&gt;(fields);</span>
+<span class="nc" id="L131">	    }</span>
+
+        public String getName() {
+<span class="nc" id="L134">            return name;</span>
+        }
+
+        public List&lt;String&gt; getFields() {
+<span class="nc" id="L138">            return fields;</span>
+        }
+
+        public boolean addRemainingFields() {
+<span class="nc" id="L142">            return addRemainingFields;</span>
+        }
+
+        public void setAddRemainingFields(boolean addRemainingFields) {
+<span class="nc" id="L146">            this.addRemainingFields = addRemainingFields;</span>
+<span class="nc" id="L147">        }</span>
+
+	}
+
+    /** Logical groups of metadata fields, for presenting them in the user interface. */
+<span class="fc" id="L152">	protected Map&lt;String, MetadataGroup&gt; metadataGroups = new LinkedHashMap&lt;&gt;();</span>
+
+	/** All non-complex fields in our index (metadata fields) and their types. */
+	protected Map&lt;String, MetadataFieldDesc&gt; metadataFieldInfos;
+
+	/** When a metadata field value is considered &quot;unknown&quot; (never|missing|empty|missing_or_empty) [never] */
+	protected String defaultUnknownCondition;
+
+	/** What value to index when a metadata field value is unknown [unknown] */
+	protected String defaultUnknownValue;
+
+	/** The complex fields in our index */
+	protected Map&lt;String, ComplexFieldDesc&gt; complexFields;
+
+	/** The main contents field in our index. This is either the complex field with the name &quot;contents&quot;,
+	 *  or if that doesn't exist, the first complex field found. */
+	protected ComplexFieldDesc mainContentsField;
+
+	/** Where to save indexmetadata.json */
+	protected File indexDir;
+
+	/** Index display name */
+	protected String displayName;
+
+	/** Index description */
+	protected String description;
+
+	/** When BlackLab.jar was built */
+	protected String blackLabBuildTime;
+
+	/** BlackLab version used to (initially) create index */
+	protected String blackLabVersion;
+
+	/** Format the index uses */
+	protected String indexFormat;
+
+	/** Time at which index was created */
+	protected String timeCreated;
+
+	/** Time at which index was created */
+	protected String timeModified;
+
+	/** Metadata field containing document title */
+	protected String titleField;
+
+	/** Metadata field containing document author */
+	protected String authorField;
+
+	/** Metadata field containing document date */
+	protected String dateField;
+
+	/** Metadata field containing document pid */
+	protected String pidField;
+
+	/** Default analyzer to use for metadata fields */
+	protected String defaultAnalyzerName;
+
+	/** Do we always have words+1 tokens (before we sometimes did, if an XML tag
+	 *  occurred after the last word; now we always make sure we have it, so we
+	 *  can always skip the last token when matching) */
+<span class="fc" id="L212">	protected boolean alwaysHasClosingToken = false;</span>
+
+	/** Do we store tag length in the payload (v3.1) or do we store tag ends
+	 *  in a separate property (v3)? */
+<span class="fc" id="L216">	protected boolean tagLengthInPayload = true;</span>
+
+	/** May all users freely retrieve the full content of documents, or is that restricted? */
+<span class="fc" id="L219">	protected boolean contentViewable = false;</span>
+
+    /** Text direction for this corpus */
+<span class="fc" id="L222">	protected TextDirection textDirection = TextDirection.LEFT_TO_RIGHT;</span>
+
+	/** Indication of the document format(s) in this index.
+	 *
+	 * This is in the form of a format identifier as understood
+	 * by the DocumentFormats class (either an abbreviation or a
+	 * (qualified) class name).
+	 */
+	protected String documentFormat;
+
+<span class="fc" id="L232">	protected long tokenCount = 0;</span>
+
+	/**
+	 * When we save this file, should we write it as json or yaml?
+	 */
+<span class="fc" id="L237">	protected boolean saveAsJson = true;</span>
+
+	/**
+	 * Construct an IndexStructure object, querying the index for the available
+	 * fields and their types.
+	 * @param reader the index of which we want to know the structure
+	 * @param indexDir where the index (and the metadata file) is stored
+	 * @param createNewIndex whether we're creating a new index
+	 */
+	public IndexStructure(IndexReader reader, File indexDir, boolean createNewIndex) {
+<span class="nc" id="L247">		this(reader, indexDir, createNewIndex, (File)null);</span>
+<span class="nc" id="L248">	}</span>
+
+    /**
+     * Construct an IndexStructure object, querying the index for the available
+     * fields and their types.
+     *
+     * @param reader the index of which we want to know the structure
+     * @param indexDir where the index (and the metadata file) is stored
+     * @param createNewIndex whether we're creating a new index
+     * @param config input format config to use as template for index structure / metadata
+     *   (if creating new index)
+     */
+<span class="fc" id="L260">    public IndexStructure(IndexReader reader, File indexDir, boolean createNewIndex, ConfigInputFormat config) {</span>
+<span class="fc" id="L261">        this.indexDir = indexDir;</span>
+
+<span class="fc" id="L263">        metadataFieldInfos = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L264">        complexFields = new TreeMap&lt;&gt;();</span>
+
+        // Find existing metadata file, if any.
+<span class="fc" id="L267">        File metadataFile = FileUtil.findFile(Arrays.asList(indexDir), METADATA_FILE_NAME, Arrays.asList(&quot;json&quot;, &quot;yaml&quot;, &quot;yml&quot;));</span>
+<span class="pc bpc" id="L268" title="3 of 4 branches missed.">        if (metadataFile != null &amp;&amp; createNewIndex) {</span>
+            // Don't leave the old metadata file if we're creating a new index
+<span class="nc" id="L270">            metadataFile.delete();</span>
+        }
+
+        // If none found, or creating new index: write a .yaml file.
+<span class="pc bpc" id="L274" title="3 of 4 branches missed.">        if (createNewIndex || metadataFile == null) {</span>
+<span class="fc" id="L275">            metadataFile = new File(indexDir, METADATA_FILE_NAME + &quot;.yaml&quot;);</span>
+        }
+<span class="fc" id="L277">        saveAsJson = false;</span>
+<span class="pc bpc" id="L278" title="2 of 4 branches missed.">        if (createNewIndex &amp;&amp; config != null) {</span>
+
+            // Create an index metadata file from this config.
+<span class="nc" id="L281">            ConfigCorpus corpusConfig = config.getCorpusConfig();</span>
+<span class="nc" id="L282">            ObjectMapper mapper = Json.getJsonObjectMapper();</span>
+<span class="nc" id="L283">            ObjectNode jsonRoot = mapper.createObjectNode();</span>
+<span class="nc" id="L284">            String displayName = corpusConfig.getDisplayName();</span>
+<span class="nc bnc" id="L285" title="All 2 branches missed.">            if (displayName.isEmpty())</span>
+<span class="nc" id="L286">                displayName = determineIndexName();</span>
+<span class="nc" id="L287">            jsonRoot.put(&quot;displayName&quot;, displayName);</span>
+<span class="nc" id="L288">            jsonRoot.put(&quot;description&quot;, corpusConfig.getDescription());</span>
+<span class="nc" id="L289">            jsonRoot.put(&quot;contentViewable&quot;, corpusConfig.isContentViewable());</span>
+<span class="nc" id="L290">            jsonRoot.put(&quot;textDirection&quot;, corpusConfig.getTextDirection().getCode());</span>
+<span class="nc" id="L291">            jsonRoot.put(&quot;documentFormat&quot;, config.getName());</span>
+<span class="nc" id="L292">            addVersionInfo(jsonRoot);</span>
+<span class="nc" id="L293">            ObjectNode fieldInfo = jsonRoot.putObject(&quot;fieldInfo&quot;);</span>
+<span class="nc" id="L294">            fieldInfo.put(&quot;defaultAnalyzer&quot;, config.getMetadataDefaultAnalyzer());</span>
+<span class="nc bnc" id="L295" title="All 2 branches missed.">            for (Entry&lt;String, String&gt; e: corpusConfig.getSpecialFields().entrySet()) {</span>
+<span class="nc" id="L296">                fieldInfo.put(e.getKey(), e.getValue());</span>
+<span class="nc" id="L297">            }</span>
+<span class="nc" id="L298">            ArrayNode metaGroups = fieldInfo.putArray(&quot;metadataFieldGroups&quot;);</span>
+<span class="nc" id="L299">            ObjectNode metadata = fieldInfo.putObject(&quot;metadataFields&quot;);</span>
+<span class="nc" id="L300">            ObjectNode complex = fieldInfo.putObject(&quot;complexFields&quot;);</span>
+
+<span class="nc" id="L302">            addFieldInfoFromConfig(metadata, complex, metaGroups, config);</span>
+<span class="nc" id="L303">            extractFromJson(jsonRoot, null, true, false);</span>
+<span class="nc" id="L304">            writeMetadata();</span>
+<span class="nc" id="L305">        } else {</span>
+            // Read existing metadata or create empty new one
+<span class="fc" id="L307">            readOrCreateMetadata(reader, createNewIndex, metadataFile, false);</span>
+        }
+<span class="fc" id="L309">    }</span>
+
+	/**
+	 * Construct an IndexStructure object, querying the index for the available
+	 * fields and their types.
+	 * @param reader the index of which we want to know the structure
+	 * @param indexDir where the index (and the metadata file) is stored
+	 * @param createNewIndex whether we're creating a new index
+	 * @param indexTemplateFile JSON file to use as template for index structure / metadata
+	 *   (if creating new index)
+	 */
+<span class="fc" id="L320">	public IndexStructure(IndexReader reader, File indexDir, boolean createNewIndex, File indexTemplateFile) {</span>
+<span class="fc" id="L321">		this.indexDir = indexDir;</span>
+
+<span class="fc" id="L323">		metadataFieldInfos = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L324">		complexFields = new TreeMap&lt;&gt;();</span>
+
+		// Find existing metadata file, if any.
+<span class="fc" id="L327">        File metadataFile = FileUtil.findFile(Arrays.asList(indexDir), METADATA_FILE_NAME, Arrays.asList(&quot;json&quot;, &quot;yaml&quot;, &quot;yml&quot;));</span>
+<span class="pc bpc" id="L328" title="2 of 4 branches missed.">        if (metadataFile != null &amp;&amp; createNewIndex) {</span>
+            // Don't leave the old metadata file if we're creating a new index
+<span class="nc" id="L330">            metadataFile.delete();</span>
+        }
+
+        // If none found, or creating new index: metadata file should be same format as template.
+<span class="pc bpc" id="L334" title="2 of 4 branches missed.">        if (createNewIndex || metadataFile == null) {</span>
+            // No metadata file yet, or creating a new index;
+            // use same metadata format as the template
+<span class="nc" id="L337">            boolean templateIsJson = false;</span>
+<span class="nc bnc" id="L338" title="All 4 branches missed.">            if (indexTemplateFile != null &amp;&amp; indexTemplateFile.getName().endsWith(&quot;.json&quot;))</span>
+<span class="nc" id="L339">                templateIsJson = true;</span>
+<span class="nc bnc" id="L340" title="All 2 branches missed.">            String templateExt = templateIsJson ? &quot;json&quot; : &quot;yaml&quot;;</span>
+<span class="nc bnc" id="L341" title="All 4 branches missed.">            if (createNewIndex &amp;&amp; metadataFile != null) {</span>
+                // We're creating a new index, but also found a previous metadata file.
+                // Is it a different format than the template? If so, we would end up
+                // with two metadata files, which is confusing and might lead to errors.
+<span class="nc" id="L345">                boolean existingIsJson = metadataFile.getName().endsWith(&quot;.json&quot;);</span>
+<span class="nc bnc" id="L346" title="All 2 branches missed.">                if (existingIsJson != templateIsJson) {</span>
+                    // Delete the existing, different-format file to avoid confusion.
+<span class="nc" id="L348">                    metadataFile.delete();</span>
+                }
+            }
+<span class="nc" id="L351">            metadataFile = new File(indexDir, METADATA_FILE_NAME + &quot;.&quot; + templateExt);</span>
+        }
+<span class="fc" id="L353">        saveAsJson = metadataFile.getName().endsWith(&quot;.json&quot;);</span>
+<span class="fc" id="L354">        boolean usedTemplate = false;</span>
+<span class="pc bpc" id="L355" title="3 of 4 branches missed.">        if (createNewIndex &amp;&amp; indexTemplateFile != null) {</span>
+        	// Copy the template file to the index dir and read the metadata again.
+        	try {
+<span class="nc" id="L358">        		String fileContents = FileUtils.readFileToString(indexTemplateFile, INDEX_STRUCT_FILE_ENCODING);</span>
+<span class="nc" id="L359">        		FileUtils.write(metadataFile, fileContents, INDEX_STRUCT_FILE_ENCODING);</span>
+<span class="nc" id="L360">        	} catch (IOException e) {</span>
+<span class="nc" id="L361">        		throw new RuntimeException(e);</span>
+<span class="nc" id="L362">        	}</span>
+<span class="nc" id="L363">        	usedTemplate = true;</span>
+        }
+
+<span class="fc" id="L366">        readOrCreateMetadata(reader, createNewIndex, metadataFile, usedTemplate);</span>
+<span class="fc" id="L367">	}</span>
+
+    protected void readOrCreateMetadata(IndexReader reader, boolean createNewIndex, File metadataFile, boolean usedTemplate) {
+        // Read and interpret index metadata file
+<span class="pc bpc" id="L371" title="2 of 6 branches missed.">		if ((createNewIndex &amp;&amp; !usedTemplate) || !metadataFile.exists()) {</span>
+			// No metadata file yet; start with a blank one
+<span class="fc" id="L373">			ObjectMapper mapper = Json.getJsonObjectMapper();</span>
+<span class="fc" id="L374">            ObjectNode jsonRoot = mapper.createObjectNode();</span>
+<span class="fc" id="L375">            jsonRoot.put(&quot;displayName&quot;, determineIndexName());</span>
+<span class="fc" id="L376">            jsonRoot.put(&quot;description&quot;, &quot;&quot;);</span>
+<span class="fc" id="L377">            addVersionInfo(jsonRoot);</span>
+<span class="fc" id="L378">            ObjectNode fieldInfo = jsonRoot.putObject(&quot;fieldInfo&quot;);</span>
+<span class="fc" id="L379">            fieldInfo.putObject(&quot;metadataFields&quot;);</span>
+<span class="fc" id="L380">            fieldInfo.putObject(&quot;complexFields&quot;);</span>
+<span class="fc" id="L381">            extractFromJson(jsonRoot, reader, false, false);</span>
+<span class="fc" id="L382">		} else {</span>
+			// Read the metadata file
+			try {
+<span class="fc" id="L385">				boolean isJson = metadataFile.getName().endsWith(&quot;.json&quot;);</span>
+<span class="pc bpc" id="L386" title="1 of 2 branches missed.">                ObjectMapper mapper = isJson ? Json.getJsonObjectMapper() : Json.getYamlObjectMapper();</span>
+<span class="fc" id="L387">                ObjectNode jsonRoot = (ObjectNode)mapper.readTree(metadataFile);</span>
+<span class="fc" id="L388">                extractFromJson(jsonRoot, reader, usedTemplate, false);</span>
+<span class="nc" id="L389">			} catch (Exception e) {</span>
+<span class="nc" id="L390">				throw new RuntimeException(e);</span>
+<span class="fc" id="L391">			}</span>
+		}
+
+		// Detect main contents field and main properties of complex fields
+<span class="fc bfc" id="L395" title="All 2 branches covered.">        if (!createNewIndex) { // new index doesn't have this information yet</span>
+            // Detect the main properties for all complex fields
+            // (looks for fields with char offset information stored)
+<span class="fc" id="L398">            mainContentsField = null;</span>
+<span class="fc bfc" id="L399" title="All 2 branches covered.">            for (ComplexFieldDesc d: complexFields.values()) {</span>
+<span class="pc bpc" id="L400" title="3 of 4 branches missed.">                if (mainContentsField == null || d.getName().equals(&quot;contents&quot;))</span>
+<span class="fc" id="L401">                    mainContentsField = d;</span>
+<span class="pc bpc" id="L402" title="1 of 2 branches missed.">                if (tokenCount &gt; 0) // no use trying this on an empty index</span>
+<span class="fc" id="L403">                    d.detectMainProperty(reader);</span>
+<span class="fc" id="L404">            }</span>
+        }
+<span class="fc" id="L406">    }</span>
+
+    protected String determineIndexName() {
+<span class="fc" id="L409">        String name = indexDir.getName();</span>
+<span class="pc bpc" id="L410" title="1 of 2 branches missed.">        if (name.equals(&quot;index&quot;))</span>
+<span class="nc" id="L411">        	name = indexDir.getAbsoluteFile().getParentFile().getName();</span>
+<span class="fc" id="L412">        return name;</span>
+    }
+
+	public Map&lt;String, MetadataGroup&gt; getMetaFieldGroups() {
+<span class="nc" id="L416">	    return Collections.unmodifiableMap(metadataGroups);</span>
+	}
+
+    /**
+	 * Indicate that the index was modified, so that fact
+	 * will be recorded in the metadata file.
+	 */
+	public void setModified() {
+<span class="nc" id="L424">		timeModified = IndexStructure.getTimestamp();</span>
+<span class="nc" id="L425">	}</span>
+
+	public void writeMetadata() {
+<span class="pc bpc" id="L428" title="1 of 2 branches missed.">        String ext = saveAsJson ? &quot;.json&quot; : &quot;.yaml&quot;;</span>
+<span class="fc" id="L429">        File metadataFile = new File(indexDir, METADATA_FILE_NAME + ext);</span>
+        try {
+<span class="fc" id="L431">            boolean isJson = metadataFile.getName().endsWith(&quot;.json&quot;);</span>
+<span class="pc bpc" id="L432" title="1 of 2 branches missed.">            ObjectMapper mapper = isJson ? Json.getJsonObjectMapper() : Json.getYamlObjectMapper();</span>
+<span class="fc" id="L433">            mapper.writeValue(metadataFile, encodeToJson());</span>
+<span class="nc" id="L434">        } catch (IOException e) {</span>
+<span class="nc" id="L435">            throw new RuntimeException(e);</span>
+<span class="fc" id="L436">        }</span>
+<span class="fc" id="L437">    }</span>
+
+    /** Encode the index structure to an (in-memory) JSON structure.
+     * @return json structure
+     */
+    private ObjectNode encodeToJson() {
+<span class="fc" id="L443">        ObjectMapper mapper = Json.getJsonObjectMapper();</span>
+<span class="fc" id="L444">        ObjectNode jsonRoot = mapper.createObjectNode();</span>
+<span class="fc" id="L445">        jsonRoot.put(&quot;displayName&quot;, displayName);</span>
+<span class="fc" id="L446">        jsonRoot.put(&quot;description&quot;, description);</span>
+<span class="fc" id="L447">        jsonRoot.put(&quot;contentViewable&quot;, contentViewable);</span>
+<span class="fc" id="L448">        jsonRoot.put(&quot;textDirection&quot;, textDirection.getCode());</span>
+<span class="fc" id="L449">        jsonRoot.put(&quot;documentFormat&quot;, documentFormat);</span>
+<span class="fc" id="L450">        jsonRoot.put(&quot;tokenCount&quot;, tokenCount);</span>
+<span class="fc" id="L451">        ObjectNode versionInfo = jsonRoot.putObject(&quot;versionInfo&quot;);</span>
+<span class="fc" id="L452">        versionInfo.put(&quot;blackLabBuildTime&quot;, blackLabBuildTime);</span>
+<span class="fc" id="L453">        versionInfo.put(&quot;blackLabVersion&quot;, blackLabVersion);</span>
+<span class="fc" id="L454">        versionInfo.put(&quot;indexFormat&quot;, indexFormat);</span>
+<span class="fc" id="L455">        versionInfo.put(&quot;timeCreated&quot;, timeCreated);</span>
+<span class="fc" id="L456">        versionInfo.put(&quot;timeModified&quot;, timeModified);</span>
+<span class="fc" id="L457">        versionInfo.put(&quot;alwaysAddClosingToken&quot;, true); // Indicates that we always index words+1 tokens (last token is for XML tags after the last word)</span>
+<span class="fc" id="L458">        versionInfo.put(&quot;tagLengthInPayload&quot;, true); // Indicates that start tag property payload contains tag lengths, and there is no end tag property</span>
+
+<span class="fc" id="L460">        ObjectNode fieldInfo = jsonRoot.putObject(&quot;fieldInfo&quot;);</span>
+<span class="pc bpc" id="L461" title="1 of 2 branches missed.">        fieldInfo.put(&quot;namingScheme&quot;, ComplexFieldUtil.avoidSpecialCharsInFieldNames() ? &quot;NO_SPECIAL_CHARS&quot;: &quot;DEFAULT&quot;);</span>
+<span class="fc" id="L462">        fieldInfo.put(&quot;defaultAnalyzer&quot;, defaultAnalyzerName);</span>
+<span class="pc bpc" id="L463" title="1 of 2 branches missed.">        if (titleField != null)</span>
+<span class="fc" id="L464">            fieldInfo.put(&quot;titleField&quot;, titleField);</span>
+<span class="pc bpc" id="L465" title="1 of 2 branches missed.">        if (authorField != null)</span>
+<span class="nc" id="L466">            fieldInfo.put(&quot;authorField&quot;, authorField);</span>
+<span class="pc bpc" id="L467" title="1 of 2 branches missed.">        if (dateField != null)</span>
+<span class="nc" id="L468">            fieldInfo.put(&quot;dateField&quot;, dateField);</span>
+<span class="pc bpc" id="L469" title="1 of 2 branches missed.">        if (pidField != null)</span>
+<span class="nc" id="L470">            fieldInfo.put(&quot;pidField&quot;, pidField);</span>
+<span class="fc" id="L471">        ArrayNode metadataFieldGroups = fieldInfo.putArray(&quot;metadataFieldGroups&quot;);</span>
+<span class="fc" id="L472">        ObjectNode metadataFields = fieldInfo.putObject(&quot;metadataFields&quot;);</span>
+<span class="fc" id="L473">        ObjectNode jsonComplexFields = fieldInfo.putObject(&quot;complexFields&quot;);</span>
+
+        // Add metadata field group info
+<span class="pc bpc" id="L476" title="1 of 2 branches missed.">        for (MetadataGroup g: metadataGroups.values()) {</span>
+<span class="nc" id="L477">            ObjectNode group = metadataFieldGroups.addObject();</span>
+<span class="nc" id="L478">            group.put(&quot;name&quot;, g.getName());</span>
+<span class="nc bnc" id="L479" title="All 2 branches missed.">            if (g.addRemainingFields())</span>
+<span class="nc" id="L480">                group.put(&quot;addRemainingFields&quot;, true);</span>
+<span class="nc" id="L481">            ArrayNode arr = group.putArray(&quot;fields&quot;);</span>
+<span class="nc" id="L482">            Json.arrayOfStrings(arr, g.getFields());</span>
+<span class="nc" id="L483">        }</span>
+
+        // Add metadata field info
+<span class="pc bpc" id="L486" title="1 of 2 branches missed.">        for (MetadataFieldDesc f: metadataFieldInfos.values()) {</span>
+<span class="nc" id="L487">            UnknownCondition unknownCondition = f.getUnknownCondition();</span>
+<span class="nc" id="L488">            ObjectNode fi = metadataFields.putObject(f.getName());</span>
+<span class="nc" id="L489">            fi.put(&quot;displayName&quot;, f.getDisplayName());</span>
+<span class="nc" id="L490">            fi.put(&quot;uiType&quot;, f.getUiType());</span>
+<span class="nc" id="L491">            fi.put(&quot;description&quot;, f.getDescription());</span>
+<span class="nc" id="L492">            fi.put(&quot;type&quot;, f.getType().stringValue());</span>
+<span class="nc" id="L493">            fi.put(&quot;analyzer&quot;, f.getAnalyzerName());</span>
+<span class="nc" id="L494">            fi.put(&quot;unknownValue&quot;, f.getUnknownValue());</span>
+<span class="nc bnc" id="L495" title="All 2 branches missed.">            fi.put(&quot;unknownCondition&quot;, unknownCondition == null ? defaultUnknownCondition : unknownCondition.toString());</span>
+<span class="nc" id="L496">            fi.put(&quot;valueListComplete&quot;, f.isValueListComplete());</span>
+<span class="nc" id="L497">            Map&lt;String, Integer&gt; values = f.getValueDistribution();</span>
+<span class="nc bnc" id="L498" title="All 2 branches missed.">            if (values != null) {</span>
+<span class="nc" id="L499">                ObjectNode jsonValues = fi.putObject(&quot;values&quot;);</span>
+<span class="nc bnc" id="L500" title="All 2 branches missed.">                for (Map.Entry&lt;String, Integer&gt; e: values.entrySet()) {</span>
+<span class="nc" id="L501">                    jsonValues.put(e.getKey(), e.getValue());</span>
+<span class="nc" id="L502">                }</span>
+            }
+<span class="nc" id="L504">            Map&lt;String, String&gt; displayValues = f.getDisplayValues();</span>
+<span class="nc bnc" id="L505" title="All 2 branches missed.">            if (displayValues != null) {</span>
+<span class="nc" id="L506">                ObjectNode jsonDisplayValues = fi.putObject(&quot;displayValues&quot;);</span>
+<span class="nc bnc" id="L507" title="All 2 branches missed.">                for (Map.Entry&lt;String, String&gt; e: displayValues.entrySet()) {</span>
+<span class="nc" id="L508">                    jsonDisplayValues.put(e.getKey(), e.getValue());</span>
+<span class="nc" id="L509">                }</span>
+            }
+<span class="nc" id="L511">            List&lt;String&gt; displayOrder = f.getDisplayOrder();</span>
+<span class="nc bnc" id="L512" title="All 2 branches missed.">            if (displayOrder != null) {</span>
+<span class="nc" id="L513">                ArrayNode jsonDisplayValues = fi.putArray(&quot;displayOrder&quot;);</span>
+<span class="nc bnc" id="L514" title="All 2 branches missed.">                for (String value: displayOrder) {</span>
+<span class="nc" id="L515">                    jsonDisplayValues.add(value);</span>
+<span class="nc" id="L516">                }</span>
+            }
+<span class="nc" id="L518">        }</span>
+
+        // Add complex field info
+<span class="fc bfc" id="L521" title="All 2 branches covered.">        for (ComplexFieldDesc f: complexFields.values()) {</span>
+<span class="fc" id="L522">            ObjectNode fieldInfo2 = jsonComplexFields.putObject(f.getName());</span>
+<span class="fc" id="L523">            fieldInfo2.put(&quot;displayName&quot;, f.getDisplayName());</span>
+<span class="fc" id="L524">            fieldInfo2.put(&quot;description&quot;, f.getDescription());</span>
+<span class="fc" id="L525">            fieldInfo2.put(&quot;mainProperty&quot;, f.getMainProperty().getName());</span>
+<span class="fc" id="L526">            ArrayNode arr = fieldInfo2.putArray(&quot;displayOrder&quot;);</span>
+<span class="fc" id="L527">            Json.arrayOfStrings(arr, f.getDisplayOrder());</span>
+<span class="fc" id="L528">            ArrayNode annots = fieldInfo2.putArray(&quot;annotations&quot;);</span>
+<span class="fc bfc" id="L529" title="All 2 branches covered.">            for (String propName: f.getProperties()) {</span>
+<span class="fc" id="L530">                PropertyDesc propDesc = f.getPropertyDesc(propName);</span>
+<span class="fc" id="L531">                ObjectNode annot = annots.addObject();</span>
+<span class="fc" id="L532">                annot.put(&quot;name&quot;, propDesc.getName());</span>
+<span class="fc" id="L533">                annot.put(&quot;displayName&quot;, propDesc.getDisplayName());</span>
+<span class="fc" id="L534">                annot.put(&quot;description&quot;, propDesc.getDescription());</span>
+<span class="fc" id="L535">                annot.put(&quot;uiType&quot;, propDesc.getUiType());</span>
+<span class="fc" id="L536">            }</span>
+<span class="fc" id="L537">        }</span>
+
+<span class="fc" id="L539">        return jsonRoot;</span>
+
+    }
+
+	/**
+	 * The main contents field in our index. This is either the complex field with the name &quot;contents&quot;,
+	 * or if that doesn't exist, the first complex field found.
+	 * @return the main contents field
+	 */
+	public ComplexFieldDesc getMainContentsField() {
+<span class="fc" id="L549">		return mainContentsField;</span>
+	}
+
+	/** Detect type by finding the first document that includes this
+	 * field and inspecting the Fieldable. This assumes that the field type
+	 * is the same for all documents.
+	 *
+	 * @param fieldName the field name to determine the type for
+	 * @return type of the field (text or numeric)
+	 */
+	@SuppressWarnings(&quot;static-method&quot;) // might not be static in the future
+	private FieldType getFieldType(String fieldName) {
+
+		/* NOTE: detecting the field type does not work well.
+		 * Querying values and deciding based on those is not the right way
+		 * (you can index ints as text too, after all). Lucene does not
+		 * store the information in the index (and querying the field type does
+		 * not return an IntField, DoubleField or such. In effect, it expects
+		 * the client to know.
+		 *
+		 * We have a simple, bad approach based on field name below.
+		 * The &quot;right way&quot; to do it is to keep a schema of field types during
+		 * indexing.
+		 */
+
+<span class="fc" id="L574">		FieldType type = FieldType.TOKENIZED;</span>
+<span class="pc bpc" id="L575" title="2 of 4 branches missed.">		if (fieldName.endsWith(&quot;Numeric&quot;) || fieldName.endsWith(&quot;Num&quot;))</span>
+<span class="nc" id="L576">			type = FieldType.NUMERIC;</span>
+<span class="fc" id="L577">		return type;</span>
+	}
+
+	/**
+	 * Check if a Lucene field has offsets stored.
+	 *
+	 * @param reader
+	 *            our index
+	 * @param luceneFieldName
+	 *            field to check
+	 * @return true iff field has offsets
+	 */
+	static boolean hasOffsets(IndexReader reader, String luceneFieldName) {
+		// Iterate over documents in the index until we find a property
+		// for this complex field that has stored character offsets. This is
+		// our main property.
+
+		// Note that we can't simply retrieve the field from a document and
+		// check the FieldType to see if it has offsets or not, as that information
+		// is incorrect at search time (always set to false, even if it has offsets).
+
+<span class="fc" id="L598">		Bits liveDocs = MultiFields.getLiveDocs(reader);</span>
+<span class="pc bpc" id="L599" title="1 of 2 branches missed.">		for (int n = 0; n &lt; reader.maxDoc(); n++) {</span>
+<span class="pc bpc" id="L600" title="3 of 4 branches missed.">			if (liveDocs == null || liveDocs.get(n)) {</span>
+				try {
+<span class="fc" id="L602">					Terms terms = reader.getTermVector(n, luceneFieldName);</span>
+<span class="pc bpc" id="L603" title="1 of 2 branches missed.">					if (terms == null) {</span>
+						// No term vector; probably not stored in this document.
+<span class="nc" id="L605">						continue;</span>
+					}
+<span class="fc bfc" id="L607" title="All 2 branches covered.">					if (terms.hasOffsets()) {</span>
+						// This field has offsets stored. Must be the main alternative.
+<span class="fc" id="L609">						return true;</span>
+					}
+					// This alternative has no offsets stored. Don't look at any more
+					// documents, go to the next alternative.
+<span class="fc" id="L613">					break;</span>
+<span class="nc" id="L614">				} catch (IOException e) {</span>
+<span class="nc" id="L615">					throw new RuntimeException(e);</span>
+				}
+			}
+		}
+<span class="fc" id="L619">		return false;</span>
+	}
+
+	private ComplexFieldDesc getOrCreateComplexField(String name) {
+<span class="fc" id="L623">		ComplexFieldDesc cfd = null;</span>
+<span class="fc bfc" id="L624" title="All 2 branches covered.">		if (complexFields.containsKey(name))</span>
+<span class="fc" id="L625">			cfd = getComplexFieldDesc(name);</span>
+<span class="fc bfc" id="L626" title="All 2 branches covered.">		if (cfd == null) {</span>
+<span class="fc" id="L627">			cfd = new ComplexFieldDesc(name);</span>
+<span class="fc" id="L628">			complexFields.put(name, cfd);</span>
+		}
+<span class="fc" id="L630">		return cfd;</span>
+	}
+
+	/** Get the names of all the complex fields in our index
+	 * @return the complex field names */
+	public Collection&lt;String&gt; getComplexFields() {
+<span class="fc" id="L636">		return complexFields.keySet();</span>
+	}
+	
+	/**
+	 * Does the specified complex field exist?
+	 * @param fieldName complex field name
+	 * @return true iff it exists
+	 */
+	public boolean hasComplexField(String fieldName) {
+<span class="nc" id="L645">	    return complexFields.containsKey(fieldName);</span>
+	}
+
+	/** Get the description of one complex field
+	 * @param fieldName name of the field
+	 * @return the field description */
+	public ComplexFieldDesc getComplexFieldDesc(String fieldName) {
+<span class="pc bpc" id="L652" title="1 of 2 branches missed.">		if (!complexFields.containsKey(fieldName))</span>
+<span class="nc" id="L653">			throw new IllegalArgumentException(&quot;Complex field '&quot; + fieldName + &quot;' not found!&quot;);</span>
+<span class="fc" id="L654">		return complexFields.get(fieldName);</span>
+	}
+
+	/** Get the names of all the metadata fields in our index
+	 * @return the names */
+	public Collection&lt;String&gt; getMetadataFields() {
+	    // Synchronized because we sometimes register new metadata fields during indexing
+<span class="fc" id="L661">	    synchronized (metadataFieldInfos) {</span>
+    	    // Return a copy because we might create a new metadata field while
+    	    // iterating over this one (because of indexFieldAs)
+<span class="fc" id="L664">    		return new ArrayList&lt;&gt;(metadataFieldInfos.keySet());</span>
+<span class="nc" id="L665">	    }</span>
+	}
+
+	public boolean hasMetadataField(String fieldName) {
+<span class="nc" id="L669">		return metadataFieldInfos.containsKey(fieldName);</span>
+	}
+
+	public MetadataFieldDesc getMetadataFieldDesc(String fieldName) {
+<span class="fc" id="L673">	    MetadataFieldDesc d = null;</span>
+        // Synchronized because we sometimes register new metadata fields during indexing
+<span class="fc" id="L675">	    synchronized (metadataFieldInfos) {</span>
+<span class="fc" id="L676">	        d = metadataFieldInfos.get(fieldName);</span>
+<span class="pc" id="L677">	    }</span>
+<span class="pc bpc" id="L678" title="1 of 2 branches missed.">        if (d == null)</span>
+<span class="nc" id="L679">            throw new IllegalArgumentException(&quot;Metadata field '&quot; + fieldName + &quot;' not found!&quot;);</span>
+<span class="fc" id="L680">        return d;</span>
+	}
+
+	/**
+	 * Returns the metadata field containing the document title, if any.
+	 *
+	 * This field can be configured in the indexmetadata.json file.
+	 * If it wasn't specified there, an intelligent guess is used.
+	 *
+	 * @return name of the title field, or null if none found
+	 */
+	public String titleField() {
+<span class="nc" id="L692">		return titleField;</span>
+	}
+
+	/**
+	 * Returns the metadata field containing the document author, if any.
+	 *
+	 * This field can be configured in the indexmetadata.json file.
+	 * If it wasn't specified there, an intelligent guess is used.
+	 *
+	 * @return name of the author field, or null if none found
+	 */
+	public String authorField() {
+<span class="nc" id="L704">		return authorField;</span>
+	}
+
+	/**
+	 * Returns the metadata field containing the document date, if any.
+	 *
+	 * This field can be configured in the indexmetadata.json file.
+	 * If it wasn't specified there, an intelligent guess is used.
+	 *
+	 * @return name of the date field, or null if none found
+	 */
+	public String dateField() {
+<span class="nc" id="L716">		return dateField;</span>
+	}
+
+	/**
+	 * Returns the metadata field containing the document pid, if any.
+	 *
+	 * This field can be configured in the indexmetadata.json file.
+	 * If it wasn't specified there, an intelligent guess is used.
+	 *
+	 * @return name of the pid field, or null if none found
+	 */
+	public String pidField() {
+<span class="nc" id="L728">		return pidField;</span>
+	}
+
+	/**
+	 * Name of the default analyzer to use for metadata fields.
+	 * @return the analyzer name (or DEFAULT for the BlackLab default)
+	 */
+	public String getDefaultAnalyzerName() {
+<span class="fc" id="L736">		return defaultAnalyzerName;</span>
+	}
+
+	/**
+	 * Find the first (alphabetically) field whose name contains the search string.
+	 *
+	 * @param search the string to search for
+	 * @return the field name, or null if no fields matched
+	 */
+	public String findTextField(String search) {
+<span class="fc" id="L746">		return findTextField(search, true);</span>
+	}
+
+	/**
+	 * Find the first (alphabetically) field matching the search string.
+	 *
+	 * @param search the string to search for
+	 * @param partialMatchOkay if false, only field names identical to the search
+	 *  string match; if true, all field names containing the search string match.
+	 * @return the field name, or null if no fields matched
+	 */
+	public String findTextField(String search, boolean partialMatchOkay) {
+		// Find documents with title in the name
+<span class="fc" id="L759">		List&lt;String&gt; fieldsFound = new ArrayList&lt;&gt;();</span>
+<span class="pc bpc" id="L760" title="1 of 2 branches missed.">		for (Map.Entry&lt;String, MetadataFieldDesc&gt; e: metadataFieldInfos.entrySet()) {</span>
+<span class="nc bnc" id="L761" title="All 4 branches missed.">			if (e.getValue().getType() == FieldType.TOKENIZED &amp;&amp; e.getKey().toLowerCase().contains(search)) {</span>
+<span class="nc bnc" id="L762" title="All 4 branches missed.">				if (partialMatchOkay || e.getKey().toLowerCase().equals(search))</span>
+<span class="nc" id="L763">					fieldsFound.add(e.getKey());</span>
+			}
+<span class="nc" id="L765">		}</span>
+<span class="pc bpc" id="L766" title="1 of 2 branches missed.">		if (fieldsFound.isEmpty())</span>
+<span class="fc" id="L767">			return null;</span>
+
+		// Sort (so we get titleLevel1 not titleLevel2 for example)
+<span class="nc" id="L770">		Collections.sort(fieldsFound);</span>
+<span class="nc" id="L771">		return fieldsFound.get(0);</span>
+	}
+
+	/**
+	 * Print the index structure.
+	 * @param out where to print it
+	 */
+	public void print(PrintWriter out) {
+<span class="nc" id="L779">		out.println(&quot;COMPLEX FIELDS&quot;);</span>
+<span class="nc bnc" id="L780" title="All 2 branches missed.">		for (ComplexFieldDesc cf: complexFields.values()) {</span>
+<span class="nc" id="L781">			out.println(&quot;- &quot; + cf.getName());</span>
+<span class="nc" id="L782">			cf.print(out);</span>
+<span class="nc" id="L783">		}</span>
+
+<span class="nc" id="L785">		out.println(&quot;\nMETADATA FIELDS&quot;);</span>
+<span class="nc bnc" id="L786" title="All 2 branches missed.">		for (Map.Entry&lt;String, MetadataFieldDesc&gt; e: metadataFieldInfos.entrySet()) {</span>
+<span class="nc bnc" id="L787" title="All 2 branches missed.">			if (e.getKey().endsWith(&quot;Numeric&quot;))</span>
+<span class="nc" id="L788">				continue; // special case, will probably be removed later</span>
+<span class="nc" id="L789">			FieldType type = e.getValue().getType();</span>
+<span class="nc" id="L790">			String special = &quot;&quot;;</span>
+<span class="nc bnc" id="L791" title="All 2 branches missed.">			if (e.getKey().equals(titleField))</span>
+<span class="nc" id="L792">				special = &quot;TITLEFIELD&quot;;</span>
+<span class="nc bnc" id="L793" title="All 2 branches missed.">			else if (e.getKey().equals(authorField))</span>
+<span class="nc" id="L794">				special = &quot;AUTHORFIELD&quot;;</span>
+<span class="nc bnc" id="L795" title="All 2 branches missed.">			else if (e.getKey().equals(dateField))</span>
+<span class="nc" id="L796">				special = &quot;DATEFIELD&quot;;</span>
+<span class="nc bnc" id="L797" title="All 2 branches missed.">			else if (e.getKey().equals(pidField))</span>
+<span class="nc" id="L798">				special = &quot;PIDFIELD&quot;;</span>
+<span class="nc bnc" id="L799" title="All 2 branches missed.">			if (special.length() &gt; 0)</span>
+<span class="nc" id="L800">				special = &quot; (&quot; + special + &quot;)&quot;;</span>
+<span class="nc bnc" id="L801" title="All 2 branches missed.">			out.println(&quot;- &quot; + e.getKey() + (type == FieldType.TOKENIZED ? &quot;&quot; : &quot; (&quot; + type + &quot;)&quot;)</span>
+					+ special);
+<span class="nc" id="L803">		}</span>
+<span class="nc" id="L804">	}</span>
+
+	/**
+	 * Get the display name for the index.
+	 *
+	 * If no display name was specified, returns the name of the index directory.
+	 *
+	 * @return the display name
+	 */
+	public String getDisplayName() {
+<span class="nc" id="L814">		String dispName = &quot;index&quot;;</span>
+<span class="nc bnc" id="L815" title="All 4 branches missed.">		if (displayName != null &amp;&amp; displayName.length() != 0)</span>
+<span class="nc" id="L816">			dispName = displayName;</span>
+<span class="nc bnc" id="L817" title="All 2 branches missed.">		if (dispName.equalsIgnoreCase(&quot;index&quot;))</span>
+<span class="nc" id="L818">			dispName = StringUtils.capitalize(indexDir.getName());</span>
+<span class="nc bnc" id="L819" title="All 2 branches missed.">		if (dispName.equalsIgnoreCase(&quot;index&quot;))</span>
+<span class="nc" id="L820">			dispName = StringUtils.capitalize(indexDir.getAbsoluteFile().getParentFile().getName());</span>
+<span class="nc" id="L821">		return dispName;</span>
+	}
+
+	/**
+	 * Get a description of the index, if specified
+	 * @return the description
+	 */
+	public String getDescription() {
+<span class="nc" id="L829">		return description;</span>
+	}
+
+	/**
+	 * Is the content freely viewable by all users, or is it restricted?
+	 * @return true if the full content may be retrieved by anyone
+	 */
+	public boolean contentViewable() {
+<span class="nc" id="L837">		return contentViewable;</span>
+	}
+
+    /**
+     * What's the text direction of this corpus?
+     * @return text direction
+     */
+	public TextDirection getTextDirection() {
+<span class="nc" id="L845">	    return textDirection;</span>
+	}
+
+	/**
+	 * What format(s) is/are the documents in?
+	 *
+	 * This is in the form of a format identifier as understood
+	 * by the DocumentFormats class (either an abbreviation or a
+	 * (qualified) class name).
+	 *
+	 * @return the document format(s)
+	 */
+	public String getDocumentFormat() {
+<span class="fc" id="L858">		return documentFormat;</span>
+	}
+
+	/**
+	 * What version of the index format is this?
+	 * @return the index format version
+	 */
+	public String getIndexFormat() {
+<span class="nc" id="L866">		return indexFormat;</span>
+	}
+
+	/**
+	 * When was this index created?
+	 * @return date/time stamp
+	 */
+	public String getTimeCreated() {
+<span class="nc" id="L874">		return timeCreated;</span>
+	}
+
+	/**
+	 * When was this index last modified?
+	 * @return date/time stamp
+	 */
+	public String getTimeModified() {
+<span class="nc" id="L882">		return timeCreated;</span>
+	}
+
+	/**
+	 * When was the BlackLab.jar used for indexing built?
+	 * @return date/time stamp
+	 */
+	public String getIndexBlackLabBuildTime() {
+<span class="nc" id="L890">		return blackLabBuildTime;</span>
+	}
+
+	/**
+	 * When was the BlackLab.jar used for indexing built?
+	 * @return date/time stamp
+	 */
+	public String getIndexBlackLabVersion() {
+<span class="nc" id="L898">		return blackLabVersion;</span>
+	}
+
+	/**
+	 * While indexing, check if a complex field is already registered in the
+	 * metadata, and if not, add it now.
+	 *
+	 * @param fieldName field name
+	 * @param mainPropName main property name
+	 */
+	public void registerComplexField(String fieldName, String mainPropName) {
+<span class="fc bfc" id="L909" title="All 2 branches covered.">		if (complexFields.containsKey(fieldName))</span>
+<span class="fc" id="L910">			return;</span>
+		// Not registered yet; do so now. Note that we only add the main property,
+		// not the other properties, but that's okay; they're not needed at index
+		// time and will be detected at search time.
+<span class="fc" id="L914">		ComplexFieldDesc cf = getOrCreateComplexField(fieldName);</span>
+<span class="fc" id="L915">		cf.getOrCreateProperty(mainPropName); // create main property</span>
+<span class="fc" id="L916">		cf.setMainPropertyName(mainPropName); // set main property</span>
+<span class="fc" id="L917">	}</span>
+
+	public void registerMetadataField(String fieldName) {
+<span class="nc bnc" id="L920" title="All 2 branches missed.">		if (fieldName == null)</span>
+<span class="nc" id="L921">			throw new IllegalArgumentException(&quot;Tried to register a metadata field with null as name&quot;);</span>
+        // Synchronized because we might be using the map in another indexing thread
+<span class="nc" id="L923">        synchronized (metadataFieldInfos) {</span>
+<span class="nc bnc" id="L924" title="All 2 branches missed.">    		if (metadataFieldInfos.containsKey(fieldName))</span>
+<span class="nc" id="L925">    			return;</span>
+    		// Not registered yet; do so now.
+<span class="nc" id="L927">    		MetadataFieldDesc mf = new MetadataFieldDesc(fieldName, FieldType.TOKENIZED);</span>
+<span class="nc" id="L928">    		mf.setUnknownCondition(UnknownCondition.fromStringValue(defaultUnknownCondition));</span>
+<span class="nc" id="L929">    		mf.setUnknownValue(defaultUnknownValue);</span>
+<span class="nc" id="L930">    		metadataFieldInfos.put(fieldName, mf);</span>
+<span class="nc" id="L931">        }</span>
+<span class="nc" id="L932">	}</span>
+
+	/**
+	 * Do we always have words+1 tokens (before we sometimes did, if an XML tag
+	 * occurred after the last word; now we always make sure we have it, so we
+	 * can always skip the last token when matching)
+	 *
+	 * @return true if we do, false if we don't
+	 */
+	public boolean alwaysHasClosingToken() {
+<span class="fc" id="L942">		return alwaysHasClosingToken;</span>
+	}
+
+	/**
+	 * Are tag lengths stored in the start tag payload (index v3.1 and higher)
+	 * or are tag ends stored in a separate property (up until index v3)?
+	 *
+	 * @return true if tag lengths are stored in the start tag payload
+	 */
+	public boolean tagLengthInPayload() {
+<span class="fc" id="L952">		return tagLengthInPayload;</span>
+	}
+
+	/**
+	 * Don't use this.
+	 *
+	 * Change the pid field. Do not use this method.
+	 *
+	 * This exists only to support a deprecated configuration setting in BlackLab Server
+	 * and will eventually be removed.
+	 *
+	 * @param newPidField the pid field
+	 * @deprecated method only exists to support deprecated setting, will be removed soon
+	 */
+	@Deprecated
+	public void _setPidField(String newPidField) {
+<span class="nc" id="L968">		this.pidField = newPidField;</span>
+<span class="nc" id="L969">	}</span>
+
+	/**
+	 * Is this a new, empty index?
+	 *
+	 * An empty index is one that doesn't have a main contents field yet,
+	 * or has a main contents field but no indexed tokens yet.
+	 *
+	 * @return true if it is, false if not.
+	 */
+	public boolean isNewIndex() {
+<span class="pc bpc" id="L980" title="1 of 4 branches missed.">		return mainContentsField == null || tokenCount == 0;</span>
+	}
+
+	/**
+	 * Set the display name for this index. Only makes
+	 * sense in index mode where the change will be saved.
+	 * Usually called when creating an index.
+	 *
+	 * @param displayName the display name to set.
+	 */
+	public void setDisplayName(String displayName) {
+<span class="nc bnc" id="L991" title="All 2 branches missed.">		if (displayName.length() &gt; 80)</span>
+<span class="nc" id="L992">			displayName = StringUtil.abbreviate(displayName, 75);</span>
+<span class="nc" id="L993">		this.displayName = displayName;</span>
+<span class="nc" id="L994">	}</span>
+
+	/**
+	 * Set a document format (or formats) for this index.
+	 *
+	 * This should be a format identifier as understood by the
+	 * DocumentFormats class (either an abbreviation or a
+	 * (qualified) class name).
+	 *
+	 * It only makes sense to call this in index mode, where
+	 * this change will be saved.
+	 *
+	 * @param documentFormat the document format to store
+	 */
+	public void setDocumentFormat(String documentFormat) {
+<span class="fc" id="L1009">		this.documentFormat = documentFormat;</span>
+<span class="fc" id="L1010">	}</span>
+
+	public void addToTokenCount(long tokensProcessed) {
+<span class="fc" id="L1013">		tokenCount += tokensProcessed;</span>
+<span class="fc" id="L1014">	}</span>
+
+	public long getTokenCount() {
+<span class="nc" id="L1017">		return tokenCount;</span>
+	}
+
+    /**
+     * Used when creating an index to initialize contentViewable setting. Do not use otherwise.
+     *
+     * It is also used to support a deprecated configuration setting in BlackLab Server, but
+     * this use will eventually be removed.
+     *
+     * @param contentViewable whether content may be freely viewed
+     */
+	public void setContentViewable(boolean contentViewable) {
+<span class="nc" id="L1029">		this.contentViewable = contentViewable;</span>
+<span class="nc" id="L1030">	}</span>
+
+    /**
+     * Used when creating an index to initialize textDirection setting. Do not use otherwise.
+     *
+     * @param textDirection text direction
+     */
+    public void setTextDirection(TextDirection textDirection) {
+<span class="nc" id="L1038">        this.textDirection = textDirection;</span>
+<span class="nc" id="L1039">    }</span>
+
+    /**
+     * If the object node contains any keys other than those specified, warn about it
+     *
+     * @param where where are we in the file (e.g. &quot;top level&quot;, &quot;complex field 'contents'&quot;, etc.)
+     * @param node node to check
+     * @param knownKeys keys that may occur under this node
+     */
+    private void warnUnknownKeys(String where, JsonNode node, Set&lt;String&gt; knownKeys) {
+<span class="fc" id="L1049">        Iterator&lt;Entry&lt;String, JsonNode&gt;&gt; it = node.fields();</span>
+<span class="fc bfc" id="L1050" title="All 2 branches covered.">        while (it.hasNext()) {</span>
+<span class="fc" id="L1051">            Entry&lt;String, JsonNode&gt; e = it.next();</span>
+<span class="fc" id="L1052">            String key = e.getKey();</span>
+<span class="pc bpc" id="L1053" title="1 of 2 branches missed.">            if (!knownKeys.contains(key))</span>
+<span class="nc" id="L1054">                logger.warn(&quot;Unknown key &quot; + key + &quot; &quot; + where + &quot; in indexmetadata file&quot;);</span>
+<span class="fc" id="L1055">        }</span>
+<span class="fc" id="L1056">    }</span>
+
+    /** Extract the index structure from the (in-memory) JSON structure (and Lucene index).
+     *
+     * Looks at the Lucene index to detect certain information (sometimes) missing from the
+     * JSON structure, such as naming scheme and available properties and alternatives for complex
+     * fields. (Should probably eventually all be recorded in the metadata.)
+     *
+     * @param jsonRoot JSON structure to extract
+     * @param reader index reader used to detect certain information, or null if we don't have an
+     *          index reader (e.g. because we're creating a new index)
+     * @param usedTemplate whether the JSON structure was read from a indextemplate file. If so,
+     *          clear certain parts of it that aren't relevant anymore.
+     * @param initTimestamps whether or not to update blacklab build time, version, and index
+     *          creation/modification time
+     */
+    private void extractFromJson(ObjectNode jsonRoot, IndexReader reader, boolean usedTemplate, boolean initTimestamps) {
+        // Read and interpret index metadata file
+<span class="fc" id="L1074">        warnUnknownKeys(&quot;at top-level&quot;, jsonRoot, KEYS_TOP_LEVEL);</span>
+<span class="fc" id="L1075">        displayName = Json.getString(jsonRoot, &quot;displayName&quot;, &quot;&quot;);</span>
+<span class="fc" id="L1076">        description = Json.getString(jsonRoot, &quot;description&quot;, &quot;&quot;);</span>
+<span class="fc" id="L1077">        contentViewable = Json.getBoolean(jsonRoot, &quot;contentViewable&quot;, false);</span>
+<span class="fc" id="L1078">        textDirection = TextDirection.fromCode(Json.getString(jsonRoot, &quot;textDirection&quot;, &quot;ltr&quot;));</span>
+<span class="fc" id="L1079">        documentFormat = Json.getString(jsonRoot, &quot;documentFormat&quot;, &quot;&quot;);</span>
+<span class="fc" id="L1080">        tokenCount = Json.getLong(jsonRoot, &quot;tokenCount&quot;, 0);</span>
+
+<span class="fc" id="L1082">        ObjectNode versionInfo = Json.getObject(jsonRoot, &quot;versionInfo&quot;);</span>
+<span class="fc" id="L1083">        warnUnknownKeys(&quot;in versionInfo&quot;, versionInfo, KEYS_VERSION_INFO);</span>
+<span class="fc" id="L1084">        indexFormat = Json.getString(versionInfo, &quot;indexFormat&quot;, &quot;&quot;);</span>
+<span class="pc bpc" id="L1085" title="1 of 2 branches missed.">        if (initTimestamps) {</span>
+<span class="nc" id="L1086">            blackLabBuildTime = Searcher.getBlackLabBuildTime();</span>
+<span class="nc" id="L1087">            blackLabVersion = Searcher.getBlackLabVersion();</span>
+<span class="nc" id="L1088">            timeModified = timeCreated = IndexStructure.getTimestamp();</span>
+        } else {
+<span class="fc" id="L1090">            blackLabBuildTime = Json.getString(versionInfo, &quot;blackLabBuildTime&quot;, &quot;UNKNOWN&quot;);</span>
+<span class="fc" id="L1091">            blackLabVersion = Json.getString(versionInfo, &quot;blackLabVersion&quot;, &quot;UNKNOWN&quot;);</span>
+<span class="fc" id="L1092">            timeCreated = Json.getString(versionInfo, &quot;timeCreated&quot;, &quot;&quot;);</span>
+<span class="fc" id="L1093">            timeModified = Json.getString(versionInfo, &quot;timeModified&quot;, timeCreated);</span>
+        }
+<span class="fc" id="L1095">        alwaysHasClosingToken = Json.getBoolean(versionInfo, &quot;alwaysAddClosingToken&quot;, false);</span>
+<span class="fc" id="L1096">        tagLengthInPayload = Json.getBoolean(versionInfo, &quot;tagLengthInPayload&quot;, false);</span>
+
+        // Specified in index metadata file?
+        String namingScheme;
+<span class="fc" id="L1100">        ObjectNode fieldInfo = Json.getObject(jsonRoot, &quot;fieldInfo&quot;);</span>
+<span class="fc" id="L1101">        warnUnknownKeys(&quot;in fieldInfo&quot;, fieldInfo, KEYS_FIELD_INFO);</span>
+<span class="pc bpc" id="L1102" title="1 of 2 branches missed.">        FieldInfos fis = reader == null ? null : MultiFields.getMergedFieldInfos(reader);</span>
+<span class="fc bfc" id="L1103" title="All 2 branches covered.">        if (fieldInfo.has(&quot;namingScheme&quot;)) {</span>
+            // Yes.
+<span class="fc" id="L1105">            namingScheme = fieldInfo.get(&quot;namingScheme&quot;).textValue();</span>
+<span class="pc bpc" id="L1106" title="3 of 4 branches missed.">            if (!namingScheme.equals(&quot;DEFAULT&quot;) &amp;&amp; !namingScheme.equals(&quot;NO_SPECIAL_CHARS&quot;)) {</span>
+<span class="nc" id="L1107">                throw new RuntimeException(&quot;Unknown value for namingScheme: &quot; + namingScheme);</span>
+            }
+<span class="fc" id="L1109">            ComplexFieldUtil.setFieldNameSeparators(namingScheme.equals(&quot;NO_SPECIAL_CHARS&quot;));</span>
+        } else {
+            // Not specified; detect it.
+<span class="pc bpc" id="L1112" title="2 of 4 branches missed.">            boolean hasNoFieldsYet = fis == null || fis.size() == 0;</span>
+<span class="fc" id="L1113">            boolean usingSpecialCharsAsSeparators = hasNoFieldsYet;</span>
+<span class="fc" id="L1114">            boolean usingCharacterCodesAsSeparators = false;</span>
+<span class="pc bpc" id="L1115" title="1 of 2 branches missed.">            if (fis != null) {</span>
+<span class="pc bpc" id="L1116" title="1 of 2 branches missed.">                for (int i1 = 0; i1 &lt; fis.size(); i1++) {</span>
+<span class="nc" id="L1117">                    FieldInfo fi = fis.fieldInfo(i1);</span>
+<span class="nc" id="L1118">                    String name1 = fi.name;</span>
+<span class="nc bnc" id="L1119" title="All 6 branches missed.">                    if (name1.contains(&quot;%&quot;) || name1.contains(&quot;@&quot;) || name1.contains(&quot;#&quot;)) {</span>
+<span class="nc" id="L1120">                        usingSpecialCharsAsSeparators = true;</span>
+                    }
+<span class="nc bnc" id="L1122" title="All 6 branches missed.">                    if (name1.contains(&quot;_PR_&quot;) || name1.contains(&quot;_AL_&quot;) || name1.contains(&quot;_BK_&quot;)) {</span>
+<span class="nc" id="L1123">                        usingCharacterCodesAsSeparators = true;</span>
+                    }
+                }
+            }
+<span class="pc bpc" id="L1127" title="3 of 4 branches missed.">            if (!usingSpecialCharsAsSeparators &amp;&amp; !usingCharacterCodesAsSeparators) {</span>
+<span class="nc" id="L1128">                throw new RuntimeException(&quot;Could not detect index naming scheme. If your index was created with an old version of BlackLab, it may use the old naming scheme and cannot be opened with this version. Please re-index your data, or use a BlackLab version from before August 2014.&quot;);</span>
+            }
+<span class="pc bpc" id="L1130" title="2 of 4 branches missed.">            if (usingSpecialCharsAsSeparators &amp;&amp; usingCharacterCodesAsSeparators) {</span>
+<span class="nc" id="L1131">                throw new RuntimeException(&quot;Your index seems to use two different naming schemes. Avoid using '%', '@', '#' or '_' in (metadata) field names and re-index your data.&quot;);</span>
+            }
+<span class="fc" id="L1133">            ComplexFieldUtil.setFieldNameSeparators(usingCharacterCodesAsSeparators);</span>
+        }
+<span class="fc" id="L1135">        defaultUnknownCondition = Json.getString(fieldInfo, &quot;unknownCondition&quot;, &quot;NEVER&quot;);</span>
+<span class="fc" id="L1136">        defaultUnknownValue = Json.getString(fieldInfo, &quot;unknownValue&quot;, &quot;unknown&quot;);</span>
+
+<span class="fc" id="L1138">        ObjectNode metaFieldConfigs = Json.getObject(fieldInfo, &quot;metadataFields&quot;);</span>
+<span class="pc bpc" id="L1139" title="1 of 2 branches missed.">        boolean hasMetaFields = metaFieldConfigs.size() &gt; 0;</span>
+<span class="fc" id="L1140">        ObjectNode complexFieldConfigs = Json.getObject(fieldInfo, &quot;complexFields&quot;);</span>
+<span class="fc bfc" id="L1141" title="All 2 branches covered.">        boolean hasComplexFields = complexFieldConfigs.size() &gt; 0;</span>
+<span class="pc bpc" id="L1142" title="1 of 4 branches missed.">        boolean hasFieldInfo = hasMetaFields || hasComplexFields;</span>
+
+<span class="pc bpc" id="L1144" title="1 of 4 branches missed.">        if (hasFieldInfo &amp;&amp; fieldInfo.has(&quot;metadataFieldGroups&quot;)) {</span>
+<span class="fc" id="L1145">            metadataGroups.clear();</span>
+<span class="fc" id="L1146">            JsonNode groups = fieldInfo.get(&quot;metadataFieldGroups&quot;);</span>
+<span class="pc bpc" id="L1147" title="1 of 2 branches missed.">            for (int i = 0; i &lt; groups.size(); i++) {</span>
+<span class="nc" id="L1148">                JsonNode group = groups.get(i);</span>
+<span class="nc" id="L1149">                warnUnknownKeys(&quot;in metadataFieldGroup&quot;, group, KEYS_METADATA_GROUP);</span>
+<span class="nc" id="L1150">                String name = Json.getString(group, &quot;name&quot;, &quot;UNKNOWN&quot;);</span>
+<span class="nc" id="L1151">                List&lt;String&gt; fields = Json.getListOfStrings(group, &quot;fields&quot;);</span>
+<span class="nc" id="L1152">                MetadataGroup metadataGroup = new MetadataGroup(name, fields);</span>
+<span class="nc bnc" id="L1153" title="All 2 branches missed.">                if (Json.getBoolean(group, &quot;addRemainingFields&quot;, false))</span>
+<span class="nc" id="L1154">                    metadataGroup.setAddRemainingFields(true);</span>
+<span class="nc" id="L1155">                metadataGroups.put(name, metadataGroup);</span>
+            }
+        }
+<span class="fc bfc" id="L1158" title="All 2 branches covered.">        if (hasFieldInfo) {</span>
+            // Metadata fields
+<span class="fc" id="L1160">            Iterator&lt;Entry&lt;String, JsonNode&gt;&gt; it = metaFieldConfigs.fields();</span>
+<span class="pc bpc" id="L1161" title="1 of 2 branches missed.">            while (it.hasNext()) {</span>
+<span class="nc" id="L1162">                Entry&lt;String, JsonNode&gt; entry = it.next();</span>
+<span class="nc" id="L1163">                String fieldName = entry.getKey();</span>
+<span class="nc" id="L1164">                JsonNode fieldConfig = entry.getValue();</span>
+<span class="nc" id="L1165">                warnUnknownKeys(&quot;in metadata field config for '&quot; + fieldName + &quot;'&quot;, fieldConfig, KEYS_META_FIELD_CONFIG);</span>
+<span class="nc" id="L1166">                FieldType fieldType = FieldType.fromStringValue(Json.getString(fieldConfig, &quot;type&quot;, &quot;tokenized&quot;));</span>
+<span class="nc" id="L1167">                MetadataFieldDesc fieldDesc = new MetadataFieldDesc(fieldName, fieldType);</span>
+<span class="nc" id="L1168">                fieldDesc.setDisplayName     (Json.getString(fieldConfig, &quot;displayName&quot;, fieldName));</span>
+<span class="nc" id="L1169">                fieldDesc.setUiType          (Json.getString(fieldConfig, &quot;uiType&quot;, &quot;&quot;));</span>
+<span class="nc" id="L1170">                fieldDesc.setDescription     (Json.getString(fieldConfig, &quot;description&quot;, &quot;&quot;));</span>
+<span class="nc" id="L1171">                fieldDesc.setGroup           (Json.getString(fieldConfig, &quot;group&quot;, &quot;&quot;));</span>
+<span class="nc" id="L1172">                fieldDesc.setAnalyzer        (Json.getString(fieldConfig, &quot;analyzer&quot;, &quot;DEFAULT&quot;));</span>
+<span class="nc" id="L1173">                fieldDesc.setUnknownValue    (Json.getString(fieldConfig, &quot;unknownValue&quot;, defaultUnknownValue));</span>
+<span class="nc" id="L1174">                UnknownCondition unk = UnknownCondition.fromStringValue(Json.getString(fieldConfig, &quot;unknownCondition&quot;, defaultUnknownCondition));</span>
+<span class="nc" id="L1175">                fieldDesc.setUnknownCondition(unk);</span>
+<span class="nc bnc" id="L1176" title="All 2 branches missed.">                if (fieldConfig.has(&quot;values&quot;))</span>
+<span class="nc" id="L1177">                    fieldDesc.setValues(fieldConfig.get(&quot;values&quot;));</span>
+<span class="nc bnc" id="L1178" title="All 2 branches missed.">                if (fieldConfig.has(&quot;displayValues&quot;))</span>
+<span class="nc" id="L1179">                    fieldDesc.setDisplayValues(fieldConfig.get(&quot;displayValues&quot;));</span>
+<span class="nc bnc" id="L1180" title="All 2 branches missed.">                if (fieldConfig.has(&quot;displayOrder&quot;))</span>
+<span class="nc" id="L1181">                    fieldDesc.setDisplayOrder(Json.getListOfStrings(fieldConfig, &quot;displayOrder&quot;));</span>
+<span class="nc" id="L1182">                fieldDesc.setValueListComplete(Json.getBoolean(fieldConfig, &quot;valueListComplete&quot;, false));</span>
+<span class="nc" id="L1183">                metadataFieldInfos.put(fieldName, fieldDesc);</span>
+<span class="nc" id="L1184">            }</span>
+
+            // Complex fields
+<span class="fc" id="L1187">            it = complexFieldConfigs.fields();</span>
+<span class="fc bfc" id="L1188" title="All 2 branches covered.">            while (it.hasNext()) {</span>
+<span class="fc" id="L1189">                Entry&lt;String, JsonNode&gt; entry = it.next();</span>
+<span class="fc" id="L1190">                String fieldName = entry.getKey();</span>
+<span class="fc" id="L1191">                JsonNode fieldConfig = entry.getValue();</span>
+<span class="fc" id="L1192">                warnUnknownKeys(&quot;in complex field config for '&quot; + fieldName + &quot;'&quot;, fieldConfig, KEYS_COMPLEX_FIELD_CONFIG);</span>
+<span class="fc" id="L1193">                ComplexFieldDesc fieldDesc = new ComplexFieldDesc(fieldName);</span>
+<span class="fc" id="L1194">                fieldDesc.setDisplayName (Json.getString(fieldConfig, &quot;displayName&quot;, fieldName));</span>
+<span class="fc" id="L1195">                fieldDesc.setDescription (Json.getString(fieldConfig, &quot;description&quot;, &quot;&quot;));</span>
+<span class="fc" id="L1196">                String mainPropertyName = Json.getString(fieldConfig, &quot;mainProperty&quot;, &quot;&quot;);</span>
+<span class="pc bpc" id="L1197" title="1 of 2 branches missed.">                if (mainPropertyName.length() &gt; 0)</span>
+<span class="fc" id="L1198">                    fieldDesc.setMainPropertyName(mainPropertyName);</span>
+
+                // Process information about annotations (displayName, uiType, etc.
+<span class="fc" id="L1201">                ArrayList&lt;String&gt; annotationOrder = new ArrayList&lt;&gt;();</span>
+<span class="pc bpc" id="L1202" title="1 of 2 branches missed.">                if (fieldConfig.has(&quot;annotations&quot;)) {</span>
+<span class="fc" id="L1203">                    JsonNode annotations = fieldConfig.get(&quot;annotations&quot;);</span>
+<span class="fc" id="L1204">                    Iterator&lt;JsonNode&gt; itAnnot = annotations.elements();</span>
+<span class="fc bfc" id="L1205" title="All 2 branches covered.">                    while (itAnnot.hasNext()) {</span>
+<span class="fc" id="L1206">                        JsonNode annotation = itAnnot.next();</span>
+<span class="fc" id="L1207">                        Iterator&lt;Entry&lt;String, JsonNode&gt;&gt; itAnnotOpt = annotation.fields();</span>
+<span class="fc" id="L1208">                        PropertyDesc propDesc = new PropertyDesc();</span>
+<span class="fc bfc" id="L1209" title="All 2 branches covered.">                        while (itAnnotOpt.hasNext()) {</span>
+<span class="fc" id="L1210">                            Entry&lt;String, JsonNode&gt; opt = itAnnotOpt.next();</span>
+<span class="pc bpc" id="L1211" title="6 of 18 branches missed.">                            switch (opt.getKey()) {</span>
+                            case &quot;name&quot;:
+<span class="fc" id="L1213">                                propDesc.setName(opt.getValue().textValue());</span>
+<span class="fc" id="L1214">                                annotationOrder.add(opt.getValue().textValue());</span>
+<span class="fc" id="L1215">                                break;</span>
+                            case &quot;displayName&quot;:
+<span class="fc" id="L1217">                                propDesc.setDisplayName(opt.getValue().textValue());</span>
+<span class="fc" id="L1218">                                break;</span>
+                            case &quot;description&quot;:
+<span class="fc" id="L1220">                                propDesc.setDescription(opt.getValue().textValue());</span>
+<span class="fc" id="L1221">                                break;</span>
+                            case &quot;uiType&quot;:
+<span class="fc" id="L1223">                                propDesc.setUiType(opt.getValue().textValue());</span>
+<span class="fc" id="L1224">                                break;</span>
+                            default:
+<span class="nc" id="L1226">                                logger.warn(&quot;Unknown key &quot; + opt.getKey() + &quot; in annotation for field '&quot; + fieldName + &quot;' in indexmetadata file&quot;);</span>
+                                break;
+                            }
+<span class="fc" id="L1229">                        }</span>
+<span class="pc bpc" id="L1230" title="1 of 2 branches missed.">                        if (StringUtils.isEmpty(propDesc.getName()))</span>
+<span class="nc" id="L1231">                            logger.warn(&quot;Annotation entry without name for field '&quot; + fieldName + &quot;' in indexmetadata file; skipping&quot;);</span>
+                        else
+<span class="fc" id="L1233">                            fieldDesc.putProperty(propDesc);</span>
+<span class="fc" id="L1234">                    }</span>
+                }
+
+                // These properties should get no forward index
+                // TODO: refactor this so this information is stored with each property instead, deprecating this setting
+<span class="fc" id="L1239">                JsonNode nodeNoForwardIndexProps = fieldConfig.get(&quot;noForwardIndexProps&quot;);</span>
+<span class="pc bpc" id="L1240" title="1 of 2 branches missed.">                if (nodeNoForwardIndexProps instanceof ArrayNode) {</span>
+<span class="nc" id="L1241">                    Iterator&lt;JsonNode&gt; itNFIP = nodeNoForwardIndexProps.elements();</span>
+<span class="nc" id="L1242">                    Set&lt;String&gt; noForwardIndex = new HashSet&lt;&gt;();</span>
+<span class="nc bnc" id="L1243" title="All 2 branches missed.">                    while (itNFIP.hasNext()) {</span>
+<span class="nc" id="L1244">                        noForwardIndex.add(itNFIP.next().asText());</span>
+                    }
+<span class="nc" id="L1246">                    fieldDesc.setNoForwardIndexProps(noForwardIndex);</span>
+<span class="nc" id="L1247">                } else {</span>
+<span class="fc" id="L1248">                    String noForwardIndex = Json.getString(fieldConfig, &quot;noForwardIndexProps&quot;, &quot;&quot;).trim();</span>
+<span class="pc bpc" id="L1249" title="1 of 2 branches missed.">                    if (noForwardIndex.length() &gt; 0) {</span>
+<span class="nc" id="L1250">                        String[] noForwardIndexProps = noForwardIndex.split(&quot;\\s+&quot;);</span>
+<span class="nc" id="L1251">                        fieldDesc.setNoForwardIndexProps(new HashSet&lt;&gt;(Arrays.asList(noForwardIndexProps)));</span>
+                    }
+                }
+
+                // This is the &quot;natural order&quot; of our annotations
+                // (probably not needed anymore - if not specified, the order of the annotations will be used)
+<span class="fc" id="L1257">                List&lt;String&gt; displayOrder = Json.getListOfStrings(fieldConfig, &quot;displayOrder&quot;);</span>
+<span class="pc bpc" id="L1258" title="1 of 2 branches missed.">                if (displayOrder.size() == 0) {</span>
+<span class="fc" id="L1259">                    displayOrder.addAll(annotationOrder);</span>
+                }
+<span class="fc" id="L1261">                fieldDesc.setDisplayOrder(displayOrder);</span>
+
+<span class="fc" id="L1263">                complexFields.put(fieldName, fieldDesc);</span>
+<span class="fc" id="L1264">            }</span>
+        }
+<span class="pc bpc" id="L1266" title="1 of 2 branches missed.">        if (fis != null) {</span>
+            // Detect fields
+<span class="fc bfc" id="L1268" title="All 2 branches covered.">            for (int i = 0; i &lt; fis.size(); i++) {</span>
+<span class="fc" id="L1269">            	FieldInfo fi = fis.fieldInfo(i);</span>
+<span class="fc" id="L1270">            	String name = fi.name;</span>
+
+            	// Parse the name to see if it is a metadata field or part of a complex field.
+            	String[] parts;
+<span class="pc bpc" id="L1274" title="1 of 2 branches missed.">            	if (name.endsWith(&quot;Numeric&quot;)) {</span>
+            		// Special case: this is not a property alternative, but a numeric
+            		// alternative for a metadata field.
+            		// (TODO: this should probably be changed or removed)
+<span class="nc" id="L1278">            		parts = new String[] { name };</span>
+            	} else {
+<span class="fc" id="L1280">            		parts = ComplexFieldUtil.getNameComponents(name);</span>
+            	}
+<span class="pc bpc" id="L1282" title="1 of 4 branches missed.">            	if (parts.length == 1 &amp;&amp; !complexFields.containsKey(parts[0])) {</span>
+<span class="pc bpc" id="L1283" title="1 of 2 branches missed.">            		if (!metadataFieldInfos.containsKey(name)) {</span>
+            			// Metadata field, not found in metadata JSON file
+<span class="fc" id="L1285">            			FieldType type = getFieldType(name);</span>
+<span class="fc" id="L1286">            			MetadataFieldDesc metadataFieldDesc = new MetadataFieldDesc(name, type);</span>
+<span class="fc" id="L1287">            			metadataFieldDesc.setUnknownCondition(UnknownCondition.fromStringValue(defaultUnknownCondition));</span>
+<span class="fc" id="L1288">            			metadataFieldDesc.setUnknownValue(defaultUnknownValue);</span>
+<span class="fc" id="L1289">            			metadataFieldInfos.put(name, metadataFieldDesc);</span>
+<span class="fc" id="L1290">            		}</span>
+            	} else {
+            		// Part of complex field.
+<span class="pc bpc" id="L1293" title="1 of 2 branches missed.">            		if (metadataFieldInfos.containsKey(parts[0])) {</span>
+<span class="nc" id="L1294">            			throw new RuntimeException(</span>
+            					&quot;Complex field and metadata field with same name, error! (&quot;
+            							+ parts[0] + &quot;)&quot;);
+            		}
+
+            		// Get or create descriptor object.
+<span class="fc" id="L1300">            		ComplexFieldDesc cfd = getOrCreateComplexField(parts[0]);</span>
+<span class="fc" id="L1301">            		cfd.processIndexField(parts);</span>
+            	}
+            } // even if we have metadata, we still have to detect props/alts
+        }
+
+<span class="fc" id="L1306">        defaultAnalyzerName = Json.getString(fieldInfo, &quot;defaultAnalyzer&quot;, &quot;DEFAULT&quot;);</span>
+
+<span class="fc" id="L1308">        titleField = authorField = dateField = pidField = null;</span>
+<span class="fc bfc" id="L1309" title="All 2 branches covered.">        if (fieldInfo.has(&quot;titleField&quot;))</span>
+<span class="fc" id="L1310">            titleField = fieldInfo.get(&quot;titleField&quot;).textValue();</span>
+<span class="fc bfc" id="L1311" title="All 2 branches covered.">        if (titleField == null) {</span>
+<span class="fc" id="L1312">            titleField = findTextField(&quot;title&quot;);</span>
+<span class="pc bpc" id="L1313" title="1 of 2 branches missed.">            if (titleField == null) {</span>
+<span class="fc" id="L1314">                titleField = &quot;fromInputFile&quot;;</span>
+            }
+        }
+<span class="pc bpc" id="L1317" title="1 of 2 branches missed.">        if (fieldInfo.has(&quot;authorField&quot;))</span>
+<span class="nc" id="L1318">            authorField = fieldInfo.get(&quot;authorField&quot;).textValue();</span>
+<span class="pc bpc" id="L1319" title="1 of 2 branches missed.">        if (fieldInfo.has(&quot;dateField&quot;))</span>
+<span class="nc" id="L1320">            dateField = fieldInfo.get(&quot;dateField&quot;).textValue();</span>
+<span class="pc bpc" id="L1321" title="1 of 2 branches missed.">        if (fieldInfo.has(&quot;pidField&quot;))</span>
+<span class="nc" id="L1322">            pidField = fieldInfo.get(&quot;pidField&quot;).textValue();</span>
+
+<span class="pc bpc" id="L1324" title="1 of 2 branches missed.">        if (usedTemplate) {</span>
+            // Update / clear possible old values that were in the template file
+            // (template file may simply be the metadata file copied from a previous version)
+
+            // Reset version info
+<span class="nc" id="L1329">            blackLabBuildTime = Searcher.getBlackLabBuildTime();</span>
+<span class="nc" id="L1330">            blackLabVersion = Searcher.getBlackLabVersion();</span>
+<span class="nc" id="L1331">            indexFormat = LATEST_INDEX_FORMAT;</span>
+<span class="nc" id="L1332">            timeModified = timeCreated = IndexStructure.getTimestamp();</span>
+
+            // Clear any recorded values in metadata fields
+<span class="nc bnc" id="L1335" title="All 2 branches missed.">            for (MetadataFieldDesc f: metadataFieldInfos.values()) {</span>
+<span class="nc" id="L1336">                f.resetForIndexing();</span>
+<span class="nc" id="L1337">            }</span>
+        }
+<span class="fc" id="L1339">    }</span>
+
+    private static void addVersionInfo(ObjectNode jsonRoot) {
+<span class="fc" id="L1342">        ObjectNode versionInfo = jsonRoot.putObject(&quot;versionInfo&quot;);</span>
+<span class="fc" id="L1343">        versionInfo.put(&quot;blackLabBuildTime&quot;, Searcher.getBlackLabBuildTime());</span>
+<span class="fc" id="L1344">        versionInfo.put(&quot;blackLabVersion&quot;, Searcher.getBlackLabVersion());</span>
+<span class="fc" id="L1345">        versionInfo.put(&quot;timeCreated&quot;, IndexStructure.getTimestamp());</span>
+<span class="fc" id="L1346">        versionInfo.put(&quot;timeModified&quot;, IndexStructure.getTimestamp());</span>
+<span class="fc" id="L1347">        versionInfo.put(&quot;indexFormat&quot;, IndexStructure.LATEST_INDEX_FORMAT);</span>
+<span class="fc" id="L1348">        versionInfo.put(&quot;alwaysAddClosingToken&quot;, true);</span>
+<span class="fc" id="L1349">        versionInfo.put(&quot;tagLengthInPayload&quot;, true);</span>
+<span class="fc" id="L1350">    }</span>
+
+    private void addFieldInfoFromConfig(ObjectNode metadata, ObjectNode complex, ArrayNode metaGroups, ConfigInputFormat config) {
+
+        // Add metadata field groups info
+<span class="nc" id="L1355">        ConfigCorpus corpusConfig = config.getCorpusConfig();</span>
+<span class="nc bnc" id="L1356" title="All 2 branches missed.">        for (ConfigMetadataFieldGroup g: corpusConfig.getMetadataFieldGroups().values()) {</span>
+<span class="nc" id="L1357">            ObjectNode h = metaGroups.addObject();</span>
+<span class="nc" id="L1358">            h.put(&quot;name&quot;, g.getName());</span>
+<span class="nc bnc" id="L1359" title="All 2 branches missed.">            if (g.getFields().size() &gt; 0) {</span>
+<span class="nc" id="L1360">                ArrayNode i = h.putArray(&quot;fields&quot;);</span>
+<span class="nc bnc" id="L1361" title="All 2 branches missed.">                for (String f: g.getFields()) {</span>
+<span class="nc" id="L1362">                    i.add(f);</span>
+<span class="nc" id="L1363">                }</span>
+            }
+<span class="nc bnc" id="L1365" title="All 2 branches missed.">            if (g.isAddRemainingFields())</span>
+<span class="nc" id="L1366">                h.put(&quot;addRemainingFields&quot;, true);</span>
+<span class="nc" id="L1367">        }</span>
+
+        // Add metadata info
+<span class="nc" id="L1370">        String defaultAnalyzer = config.getMetadataDefaultAnalyzer();</span>
+<span class="nc bnc" id="L1371" title="All 2 branches missed.">        for (ConfigMetadataBlock b: config.getMetadataBlocks()) {</span>
+<span class="nc bnc" id="L1372" title="All 2 branches missed.">            for (ConfigMetadataField f: b.getFields()) {</span>
+<span class="nc bnc" id="L1373" title="All 2 branches missed.">                if (f.isForEach())</span>
+<span class="nc" id="L1374">                    continue;</span>
+<span class="nc" id="L1375">                ObjectNode g = metadata.putObject(f.getName());</span>
+<span class="nc" id="L1376">                g.put(&quot;displayName&quot;, f.getDisplayName());</span>
+<span class="nc" id="L1377">                g.put(&quot;description&quot;, f.getDescription());</span>
+<span class="nc" id="L1378">                g.put(&quot;type&quot;, f.getType().stringValue());</span>
+<span class="nc bnc" id="L1379" title="All 2 branches missed.">                if (!f.getAnalyzer().equals(defaultAnalyzer))</span>
+<span class="nc" id="L1380">                    g.put(&quot;analyzer&quot;, f.getAnalyzer());</span>
+<span class="nc" id="L1381">                g.put(&quot;uiType&quot;, f.getUiType());</span>
+<span class="nc" id="L1382">                g.put(&quot;unknownCondition&quot;, f.getUnknownCondition().stringValue());</span>
+<span class="nc" id="L1383">                g.put(&quot;unknownValue&quot;, f.getUnknownValue());</span>
+<span class="nc" id="L1384">                ObjectNode h = g.putObject(&quot;displayValues&quot;);</span>
+<span class="nc bnc" id="L1385" title="All 2 branches missed.">                for (Entry&lt;String, String&gt; e: f.getDisplayValues().entrySet()) {</span>
+<span class="nc" id="L1386">                    h.put(e.getKey(), e.getValue());</span>
+<span class="nc" id="L1387">                }</span>
+<span class="nc" id="L1388">                ArrayNode i = g.putArray(&quot;displayOrder&quot;);</span>
+<span class="nc bnc" id="L1389" title="All 2 branches missed.">                for (String v: f.getDisplayOrder()) {</span>
+<span class="nc" id="L1390">                    i.add(v);</span>
+<span class="nc" id="L1391">                }</span>
+<span class="nc" id="L1392">            }</span>
+<span class="nc" id="L1393">        }</span>
+
+        // Add complex field info
+<span class="nc bnc" id="L1396" title="All 2 branches missed.">        for (ConfigAnnotatedField f: config.getAnnotatedFields().values()) {</span>
+<span class="nc" id="L1397">            ObjectNode g = complex.putObject(f.getName());</span>
+<span class="nc" id="L1398">            g.put(&quot;displayName&quot;, f.getDisplayName());</span>
+<span class="nc" id="L1399">            g.put(&quot;description&quot;, f.getDescription());</span>
+<span class="nc" id="L1400">            g.put(&quot;mainProperty&quot;, f.getAnnotations().values().iterator().next().getName());</span>
+<span class="nc" id="L1401">            ArrayNode displayOrder = g.putArray(&quot;displayOrder&quot;);</span>
+<span class="nc" id="L1402">            ArrayNode noForwardIndexProps = g.putArray(&quot;noForwardIndexProps&quot;);</span>
+<span class="nc" id="L1403">            ArrayNode annotations = g.putArray(&quot;annotations&quot;);</span>
+<span class="nc bnc" id="L1404" title="All 2 branches missed.">            for (ConfigAnnotation a: f.getAnnotations().values()) {</span>
+<span class="nc" id="L1405">                displayOrder.add(a.getName());</span>
+<span class="nc bnc" id="L1406" title="All 2 branches missed.">                if (!a.createForwardIndex())</span>
+<span class="nc" id="L1407">                    noForwardIndexProps.add(a.getName());</span>
+<span class="nc" id="L1408">                ObjectNode annotation = annotations.addObject();</span>
+<span class="nc" id="L1409">                annotation.put(&quot;name&quot;, a.getName());</span>
+<span class="nc" id="L1410">                annotation.put(&quot;displayName&quot;, a.getDisplayName());</span>
+<span class="nc" id="L1411">                annotation.put(&quot;description&quot;, a.getDescription());</span>
+<span class="nc" id="L1412">                annotation.put(&quot;uiType&quot;, a.getUiType());</span>
+<span class="nc" id="L1413">            }</span>
+<span class="nc bnc" id="L1414" title="All 2 branches missed.">            for (ConfigStandoffAnnotations standoff: f.getStandoffAnnotations()) {</span>
+<span class="nc bnc" id="L1415" title="All 2 branches missed.">                for (ConfigAnnotation a: standoff.getAnnotations().values()) {</span>
+<span class="nc" id="L1416">                    displayOrder.add(a.getName());</span>
+<span class="nc bnc" id="L1417" title="All 2 branches missed.">                    if (!a.createForwardIndex())</span>
+<span class="nc" id="L1418">                        noForwardIndexProps.add(a.getName());</span>
+<span class="nc" id="L1419">                }</span>
+<span class="nc" id="L1420">            }</span>
+<span class="nc" id="L1421">        }</span>
+
+        // Also (recursively) add metadata and complex field config from any linked documents
+<span class="nc bnc" id="L1424" title="All 2 branches missed.">        for (ConfigLinkedDocument ld: config.getLinkedDocuments().values()) {</span>
+<span class="nc" id="L1425">            Format format = DocumentFormats.getFormat(ld.getInputFormatIdentifier());</span>
+<span class="nc bnc" id="L1426" title="All 2 branches missed.">            if (format.isConfigurationBased())</span>
+<span class="nc" id="L1427">                addFieldInfoFromConfig(metadata, complex, metaGroups, format.getConfig());</span>
+<span class="nc" id="L1428">        }</span>
+<span class="nc" id="L1429">    }</span>
+
+    /**
+     * Format the current date and time according to the SQL datetime convention.
+     *
+     * @return a string representation, e.g. &quot;1980-02-01 00:00:00&quot;
+     */
+    static String getTimestamp() {
+<span class="fc" id="L1437">    	return DATETIME_FORMAT.format(new Date());</span>
+    }
+
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

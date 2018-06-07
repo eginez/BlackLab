@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FieldType.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.indexstructure</a> &gt; <span class="el_source">FieldType.java</span></div><h1>FieldType.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.search.indexstructure;
+
+/** Possible types of metadata fields. */
+<span class="pc" id="L4">public enum FieldType {</span>
+<span class="fc" id="L5">	TOKENIZED,</span>
+<span class="fc" id="L6">	NUMERIC,</span>
+<span class="fc" id="L7">	UNTOKENIZED;</span>
+
+    public static FieldType fromStringValue(String v) {
+<span class="pc bpc" id="L10" title="14 of 17 branches missed.">        switch(v.toLowerCase()) {</span>
+        case &quot;tokenized&quot;:
+        case &quot;text&quot;: // deprecated
+<span class="nc" id="L13">            return TOKENIZED;</span>
+        case &quot;untokenized&quot;:
+<span class="fc" id="L15">            return UNTOKENIZED;</span>
+        case &quot;numeric&quot;:
+<span class="nc" id="L17">            return NUMERIC;</span>
+        default:
+<span class="nc" id="L19">            throw new IllegalArgumentException(&quot;Unknown string value for FieldType: &quot; + v + &quot; (should be tokenized|untokenized|numeric)&quot;);</span>
+        }
+    }
+
+    public String stringValue() {
+<span class="nc" id="L24">        return toString().toLowerCase();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

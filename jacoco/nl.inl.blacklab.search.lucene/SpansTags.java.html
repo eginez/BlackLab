@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SpansTags.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">SpansTags.java</span></div><h1>SpansTags.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.lucene;
+
+import java.io.IOException;
+import java.nio.ByteBuffer;
+
+import org.apache.lucene.payloads.PayloadSpanCollector;
+import org.apache.lucene.search.spans.SpanCollector;
+import nl.inl.blacklab.search.Span;
+
+/**
+ * Gets spans for a certain XML element.
+ */
+class SpansTags extends BLSpans {
+
+	private BLSpans tags;
+
+<span class="fc" id="L32">	private int end = -1; // -1: not nexted yet. -2: payload not read yet.</span>
+
+<span class="fc" id="L34">	public SpansTags(BLSpans startTags) {</span>
+<span class="fc" id="L35">		this.tags = startTags;</span>
+<span class="fc" id="L36">	}</span>
+
+	@Override
+	protected void passHitQueryContextToClauses(HitQueryContext context) {
+		// NOP
+<span class="fc" id="L41">	}</span>
+
+	@Override
+	public void getCapturedGroups(Span[] capturedGroups) {
+		// NOP
+<span class="nc" id="L46">	}</span>
+
+	@Override
+	public int nextDoc() throws IOException {
+<span class="fc" id="L50">		end = -1; // not nexted yet</span>
+<span class="fc" id="L51">		return tags.nextDoc();</span>
+	}
+
+	@Override
+	public int advance(int target) throws IOException {
+<span class="fc" id="L56">		end = -1; // not nexted yet</span>
+<span class="fc" id="L57">		return tags.advance(target);</span>
+	}
+
+	@Override
+	public int docID() {
+<span class="fc" id="L62">		return tags.docID();</span>
+	}
+
+	@Override
+	public int nextStartPosition() throws IOException {
+<span class="fc" id="L67">		end = -2; // payload not read yet</span>
+<span class="fc" id="L68">		return tags.nextStartPosition();</span>
+	}
+
+	@Override
+	public int startPosition() {
+<span class="fc" id="L73">		return tags.startPosition();</span>
+	}
+
+<span class="fc" id="L76">    private final PayloadSpanCollector collector = new PayloadSpanCollector();</span>
+
+
+
+	@Override
+	public int endPosition() {
+<span class="fc bfc" id="L82" title="All 2 branches covered.">		if (tags.startPosition() == NO_MORE_POSITIONS)</span>
+<span class="fc" id="L83">			return NO_MORE_POSITIONS;</span>
+		try {
+<span class="fc bfc" id="L85" title="All 2 branches covered.">			if (end == -2) {</span>
+<span class="fc" id="L86">				collector.reset();</span>
+<span class="fc" id="L87">				tags.collect(collector);</span>
+<span class="fc" id="L88">				byte[] payload = collector.getPayloads().iterator().next();</span>
+<span class="fc" id="L89">				ByteBuffer bb = ByteBuffer.wrap(payload);</span>
+<span class="fc" id="L90">				end = bb.getInt();</span>
+			}
+<span class="fc" id="L92">			return end;</span>
+<span class="nc" id="L93">		} catch (IOException e) {</span>
+<span class="nc" id="L94">			throw new RuntimeException(&quot;Error getting payload&quot;);</span>
+		}
+
+	}
+
+	@Override
+	public int width() {
+<span class="nc" id="L101">		return tags.width();</span>
+	}
+
+	@Override
+	public void collect(SpanCollector collector) throws IOException {
+<span class="nc" id="L106">		tags.collect(collector);</span>
+<span class="nc" id="L107">	}</span>
+
+	@Override
+	public float positionsCost() {
+<span class="nc" id="L111">		return tags.positionsCost();</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

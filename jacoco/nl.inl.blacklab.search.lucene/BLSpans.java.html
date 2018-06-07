@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BLSpans.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">BLSpans.java</span></div><h1>BLSpans.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.lucene;
+
+import java.io.IOException;
+
+import org.apache.lucene.search.spans.Spans;
+
+import nl.inl.blacklab.search.Hit;
+import nl.inl.blacklab.search.Span;
+
+
+/**
+ * Will be the base class for all our own Spans classes. Is able to give extra
+ * guarantees about the hits in this Spans object, such as if every
+ * hit is equal in length, if there may be duplicates, etc. This information
+ * will help us optimize certain operations, such as sequence queries, in certain
+ * cases.
+ *
+ * The default implementation is appropriate for Spans classes that return only
+ * single-term hits.
+ */
+<span class="fc" id="L36">public abstract class BLSpans extends Spans {</span>
+
+	public static final int MAX_UNLIMITED = BLSpanQuery.MAX_UNLIMITED;
+
+	/** Should we ask our clauses for captured groups?
+	 *  If the clauses don't capture any groups, this will be set to false
+	 *  to improve performance.
+	 */
+<span class="fc" id="L44">	protected boolean childClausesCaptureGroups = true;</span>
+
+	/**
+	 * Makes a new Hit object from the document id, start and end positions.
+	 *
+	 * Subclasses that already have a Hit object available should override this and return the
+	 * existing Hit object, to avoid excessive Hit instantiations.
+	 *
+	 * @return the Hit object for the current hit
+	 */
+	public Hit getHit() {
+<span class="fc" id="L55">		return new Hit(docID(), startPosition(), endPosition());</span>
+	}
+
+	/**
+	 * Makes a new HitSpan object from the start and end positions (no document id).
+	 *
+	 * Subclasses that already have a HitSpan object available could override this
+	 * and return the existing HitSpan object, to avoid excessive HitSpan instantiations.
+	 * (Right now, no classes use HitSpan internally, however)
+	 *
+	 * @return the HitSpan object for the current hit
+	 * @deprecated not used anymore
+	 */
+	@Deprecated
+	public Span getSpan() {
+<span class="nc" id="L70">		return new Span(startPosition(), endPosition());</span>
+	}
+
+	/**
+	 * Give the BLSpans tree a way to access captured groups, and the capture
+	 * groups themselves a way to register themselves..
+	 *
+	 * subclasses should override this method, pass the context to their child
+	 * clauses (if any), and either:
+	 * - register the captured group they represent with the context (SpansCaptureGroup does this), OR
+	 * - store the context so they can later use it to access captured groups (SpansBackreference does this)
+	 *
+	 * @param context the hit query context, that e.g. keeps track of captured groups
+	 */
+	public void setHitQueryContext(HitQueryContext context) {
+<span class="fc" id="L85">		int before = context.getCaptureRegisterNumber();</span>
+<span class="fc" id="L86">		passHitQueryContextToClauses(context);</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">		if (context.getCaptureRegisterNumber() == before) {</span>
+			// Our clauses don't capture any groups; optimize
+<span class="fc" id="L89">			childClausesCaptureGroups = false;</span>
+		}
+<span class="fc" id="L91">	}</span>
+
+	/**
+	 * Called by setHitQueryContext() to pass the context to child clauses.
+	 *
+	 * @param context the hit query context, that e.g. keeps track of captured groups
+	 */
+	abstract protected void passHitQueryContextToClauses(HitQueryContext context);
+
+	/**
+	 * Get the start and end position for the captured groups contained in
+	 * this BLSpans (sub)tree.
+	 *
+	 * @param capturedGroups an array the size of the total number of groups in the query;
+	 *   the start and end positions for the groups in this subtree will be placed in here.
+	 */
+	abstract public void getCapturedGroups(Span[] capturedGroups);
+
+	/**
+	 * Advance the start position in the current doc to target or beyond.
+	 *
+	 * Always at least advances to the next hit, even if the current start
+	 * position is already at or beyond the target.
+	 *
+	 * @param target target start position to advance to
+	 * @return new start position, or Spans.NO_MORE_POSITIONS if we're done with this document
+	 * @throws IOException
+	 */
+	public int advanceStartPosition(int target) throws IOException {
+		// Naive implementations; subclasses may provide a faster version.
+		int pos;
+		do {
+<span class="fc" id="L123">			pos = nextStartPosition();</span>
+<span class="pc bpc" id="L124" title="1 of 4 branches missed.">		} while(pos &lt; target &amp;&amp; pos != NO_MORE_POSITIONS);</span>
+<span class="fc" id="L125">		return pos;</span>
+	}
+
+	@Override
+	public long cost() {
+		// returns a completely arbitrary constant value, but it's for
+		// optimizing scoring and we don't generally use that
+<span class="fc" id="L132">		return 100;</span>
+	}
+
+	static String inf(int max) {
+<span class="nc" id="L136">		return BLSpanQuery.inf(max);</span>
+	}
+
+	public static BLSpans optSortUniq(BLSpans spans, boolean sort, boolean removeDuplicates) {
+<span class="pc bpc" id="L140" title="1 of 2 branches missed.">		if (spans == null)</span>
+<span class="nc" id="L141">			return null;</span>
+<span class="fc" id="L142">		BLSpans result = spans;</span>
+<span class="pc bpc" id="L143" title="2 of 4 branches missed.">		if (sort || removeDuplicates)</span>
+<span class="fc" id="L144">			return new PerDocumentSortedSpans(result, PerDocumentSortedSpans.cmpStartPoint, removeDuplicates);</span>
+<span class="nc bnc" id="L145" title="All 2 branches missed.">		if (removeDuplicates)</span>
+<span class="nc" id="L146">			return new SpansUnique(result);</span>
+<span class="nc" id="L147">		return result;</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

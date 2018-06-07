@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Collators.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.forwardindex</a> &gt; <span class="el_source">Collators.java</span></div><h1>Collators.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.forwardindex;
+
+import java.text.Collator;
+import java.text.ParseException;
+import java.text.RuleBasedCollator;
+
+import nl.inl.blacklab.forwardindex.ForwardIndex.CollatorVersion;
+
+/**
+ * Collators to use for term equality testing for different sensitivity settings.
+ */
+public class Collators {
+
+	private CollatorVersion version;
+
+	private Collator sensitive;
+
+	private Collator insensitive;
+
+	public Collators(Collator base, CollatorVersion version) {
+<span class="fc" id="L21">		super();</span>
+<span class="fc" id="L22">		this.version = version;</span>
+<span class="fc" id="L23">		sensitive = (Collator)base.clone();</span>
+<span class="fc" id="L24">		sensitive.setStrength(Collator.TERTIARY);</span>
+<span class="fc" id="L25">		insensitive = getCollatorInsensitive((RuleBasedCollator)base.clone(), version);</span>
+<span class="fc" id="L26">	}</span>
+
+	public Collator get(boolean caseSensitive, boolean diacSensitive) {
+<span class="pc bpc" id="L29" title="1 of 2 branches missed.">		if (caseSensitive != diacSensitive) {</span>
+<span class="nc" id="L30">			throw new UnsupportedOperationException(&quot;Different values for case- and diac-sensitive not supported here yet.&quot;);</span>
+		}
+<span class="fc bfc" id="L32" title="All 2 branches covered.">		return caseSensitive ? sensitive : insensitive;</span>
+	}
+
+	/**
+	 * Returns a case-/accent-insensitive version of the specified collator that also doesn't
+	 * ignore dash or space (as most collators do by default in PRIMARY mode). This way, the
+	 * comparison is identical to lowercasing and stripping accents before calling String.equals(),
+	 * which is what we use everywhere else for case-/accent-insensitive comparison.
+	 *
+	 * @param coll collator to make insensitive
+	 * @param collatorVersion version of the insensitive collator we want
+	 * @return insensitive collator
+	 */
+	private static Collator getCollatorInsensitive(RuleBasedCollator coll, CollatorVersion collatorVersion) {
+<span class="pc bpc" id="L46" title="1 of 2 branches missed.">		switch (collatorVersion) {</span>
+		case V1:
+			// Basic case- and accent-insensitive collator
+			// Note that this ignores dashes and spaces, which is different
+			// from how the rest of blacklab deals with term equality.
+			// Hence V2.
+<span class="nc" id="L52">			Collator cl = (Collator) coll.clone();</span>
+<span class="nc" id="L53">			cl.setStrength(Collator.PRIMARY);</span>
+<span class="nc" id="L54">			return cl;</span>
+		case V2:
+		default:
+			// Case- and accent-insensitive collator that doesn't
+			// ignore dash and space like the regular insensitive collator (V1) does.
+<span class="fc" id="L59">			String rules = coll.getRules().replaceAll(&quot;,'-'&quot;, &quot;&quot;); // don't ignore dash</span>
+<span class="fc" id="L60">			rules = rules.replaceAll(&quot;&lt;'_'&quot;, &quot;&lt;' '&lt;'-'&lt;'_'&quot;); // sort dash and space before underscore</span>
+			try {
+<span class="fc" id="L62">				coll = new RuleBasedCollator(rules);</span>
+<span class="fc" id="L63">				coll.setStrength(Collator.PRIMARY);  // ignore case and accent differences</span>
+<span class="fc" id="L64">				return coll;</span>
+<span class="nc" id="L65">			} catch (ParseException e) {</span>
+<span class="nc" id="L66">				throw new RuntimeException(e);</span>
+			}
+		}
+	}
+
+	public static Collators getDefault() {
+<span class="fc" id="L72">		return new Collators(Collator.getInstance(), CollatorVersion.V2);</span>
+	}
+
+	public CollatorVersion getVersion() {
+<span class="fc" id="L76">		return version;</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

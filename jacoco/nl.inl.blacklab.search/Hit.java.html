@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Hit.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search</a> &gt; <span class="el_source">Hit.java</span></div><h1>Hit.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search;
+
+/**
+ * Class for a hit. Normally, hits are iterated over in a Lucene Spans object, but in some places,
+ * it makes sense to place hits in separate objects: when caching or sorting hits, or just for
+ * convenience in client code.
+ *
+ * This class has public members for the sake of efficiency; this makes a non-trivial difference
+ * when iterating over hundreds of thousands of hits.
+ */
+public class Hit implements Comparable&lt;Hit&gt;, Cloneable {
+
+	@Override
+	public boolean equals(Object with) {
+<span class="nc bnc" id="L30" title="All 2 branches missed.">		if (this == with)</span>
+<span class="nc" id="L31">			return true;</span>
+<span class="nc bnc" id="L32" title="All 2 branches missed.">		if (with instanceof Hit) {</span>
+<span class="nc" id="L33">			Hit o = (Hit) with;</span>
+<span class="nc bnc" id="L34" title="All 6 branches missed.">			return doc == o.doc &amp;&amp; start == o.start &amp;&amp; end == o.end;</span>
+		}
+<span class="nc" id="L36">		return false;</span>
+	}
+
+	@Override
+	public int compareTo(Hit o) {
+<span class="nc bnc" id="L41" title="All 2 branches missed.">		if (this == o)</span>
+<span class="nc" id="L42">			return 0;</span>
+<span class="nc bnc" id="L43" title="All 2 branches missed.">		if (doc == o.doc) {</span>
+<span class="nc bnc" id="L44" title="All 2 branches missed.">			if (start == o.start) {</span>
+<span class="nc" id="L45">				return end - o.end;</span>
+			}
+<span class="nc" id="L47">			return start - o.start;</span>
+		}
+<span class="nc" id="L49">		return doc - o.doc;</span>
+	}
+
+	/** The Lucene doc this hits occurs in */
+	public int doc;
+
+	/** End of this hit's span (in word positions).
+	 *
+	 *  Note that this actually points to the first word not in the hit (just like Spans).
+	 */
+	public int end;
+
+	/** Start of this hit's span (in word positions) */
+	public int start;
+
+	/**
+	 * Construct a hit object
+	 *
+	 * @param doc
+	 *            the document
+	 * @param start
+	 *            start of the hit (word positions)
+	 * @param end
+	 *            end of the hit (word positions)
+	 */
+<span class="fc" id="L74">	public Hit(int doc, int start, int end) {</span>
+<span class="fc" id="L75">		this.doc = doc;</span>
+<span class="fc" id="L76">		this.start = start;</span>
+<span class="fc" id="L77">		this.end = end;</span>
+<span class="fc" id="L78">	}</span>
+
+	@Override
+	public String toString() {
+<span class="nc" id="L82">		return String.format(&quot;doc %d, words %d-%d&quot;, doc, start, end);</span>
+	}
+
+	@Override
+	public int hashCode() {
+<span class="fc" id="L87">		return (doc * 17 + start) * 31 + end;</span>
+	}
+
+	@Override
+	protected Object clone() {
+<span class="nc" id="L92">		Hit hit = new Hit(doc, start, end);</span>
+<span class="nc" id="L93">		return hit;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

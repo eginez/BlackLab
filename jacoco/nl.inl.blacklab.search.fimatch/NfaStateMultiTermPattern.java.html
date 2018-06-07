@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NfaStateMultiTermPattern.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.fimatch</a> &gt; <span class="el_source">NfaStateMultiTermPattern.java</span></div><h1>NfaStateMultiTermPattern.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.search.fimatch;
+
+import java.util.Collection;
+import java.util.Map;
+import java.util.Set;
+
+import nl.inl.blacklab.index.complex.ComplexFieldUtil;
+import nl.inl.util.StringUtil;
+
+/**
+ * A regex, wildcard or prefix clause.
+ */
+public abstract class NfaStateMultiTermPattern extends NfaState {
+
+	/** What property we're trying to match */
+	protected String luceneField;
+
+	/** Index of the property we're trying to match. Only valid after lookupPropertyNumber() called. */
+<span class="fc" id="L19">	private int propertyNumber = -1;</span>
+
+	/** The pattern this state accepts. */
+	protected String pattern;
+
+	/** The next state if a matching token was found. */
+	protected NfaState nextState;
+
+	/** Match case-sensitively? */
+	private boolean caseSensitive;
+
+	/** Match diacritics-sensitively? */
+	private boolean diacSensitive;
+
+<span class="fc" id="L33">	public NfaStateMultiTermPattern(String luceneField, String pattern, NfaState nextState) {</span>
+<span class="fc" id="L34">		this.luceneField = luceneField;</span>
+<span class="fc" id="L35">		this.caseSensitive = ComplexFieldUtil.isCaseSensitive(luceneField);</span>
+<span class="fc" id="L36">		this.diacSensitive = ComplexFieldUtil.isDiacriticsSensitive(luceneField);</span>
+<span class="fc" id="L37">		this.pattern = pattern;</span>
+<span class="fc" id="L38">		this.nextState = nextState;</span>
+<span class="fc" id="L39">	}</span>
+
+	/**
+	 * Find all matches for this NFA in the token source.
+	 *
+	 * @param fiDoc where to read tokens from
+	 * @param pos current matching position
+	 * @param matchEnds where to collect the matches found, or null if we don't want to collect them
+	 * @return true if any (new) matches were found, false if not
+	 */
+	@Override
+	public boolean findMatchesInternal(ForwardIndexDocument fiDoc, int pos, int direction, Set&lt;Integer&gt; matchEnds) {
+		// Token state. Check if it matches token from token source, and if so, continue.
+<span class="nc" id="L52">		int actualToken = fiDoc.getToken(propertyNumber, pos);</span>
+<span class="nc bnc" id="L53" title="All 2 branches missed.">		if (actualToken &gt;= 0) {</span>
+<span class="nc" id="L54">			String tokenString = fiDoc.getTermString(propertyNumber, actualToken);</span>
+<span class="nc bnc" id="L55" title="All 2 branches missed.">			if (matchesPattern(desensitize(tokenString))) {</span>
+<span class="nc" id="L56">				return nextState.findMatchesInternal(fiDoc, pos + direction, direction, matchEnds);</span>
+			}
+		}
+<span class="nc" id="L59">		return false;</span>
+	}
+
+	private String desensitize(String tokenString) {
+<span class="nc bnc" id="L63" title="All 2 branches missed.">		if (!caseSensitive)</span>
+<span class="nc" id="L64">			tokenString = tokenString.toLowerCase();</span>
+<span class="nc bnc" id="L65" title="All 2 branches missed.">		if (!diacSensitive)</span>
+<span class="nc" id="L66">			tokenString = StringUtil.stripAccents(tokenString);</span>
+<span class="nc" id="L67">		return tokenString;</span>
+	}
+
+	abstract boolean matchesPattern(String tokenString);
+
+	@Override
+	void fillDangling(NfaState state) {
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">		if (nextState == null)</span>
+<span class="fc" id="L75">			nextState = state;</span>
+<span class="fc" id="L76">	}</span>
+
+	@Override
+	NfaStateMultiTermPattern copyInternal(Collection&lt;NfaState&gt; dangling, Map&lt;NfaState, NfaState&gt; copiesMade) {
+<span class="fc" id="L80">		NfaStateMultiTermPattern copy = copyNoNextState();</span>
+<span class="fc" id="L81">		copiesMade.put(this, copy);</span>
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">		NfaState nextStateCopy = nextState == null ? null : nextState.copy(dangling, copiesMade);</span>
+<span class="fc" id="L83">		copy.nextState = nextStateCopy;</span>
+<span class="pc bpc" id="L84" title="2 of 4 branches missed.">		if (nextState == null &amp;&amp; dangling != null)</span>
+<span class="fc" id="L85">			dangling.add(copy);</span>
+<span class="fc" id="L86">		return copy;</span>
+	}
+
+	/** Copy this state without a next state. Used by copyInternal().
+	 * @return the copy
+	 */
+	abstract NfaStateMultiTermPattern copyNoNextState();
+
+	@Override
+	public void setNextState(int i, NfaState state) {
+<span class="nc bnc" id="L96" title="All 2 branches missed.">		if (i != 0)</span>
+<span class="nc" id="L97">			throw new RuntimeException(&quot;Token state only has one next state&quot;);</span>
+<span class="nc" id="L98">		nextState = state;</span>
+<span class="nc" id="L99">	}</span>
+
+	@Override
+	public boolean matchesEmptySequence(Set&lt;NfaState&gt; statesVisited) {
+<span class="nc" id="L103">		return false;</span>
+	}
+
+	@Override
+	public boolean hitsAllSameLength(Set&lt;NfaState&gt; statesVisited) {
+<span class="nc" id="L108">		return true;</span>
+	}
+
+	@Override
+	public int hitsLengthMin(Set&lt;NfaState&gt; statesVisited) {
+<span class="nc" id="L113">		return 1;</span>
+	}
+
+	@Override
+	public int hitsLengthMax(Set&lt;NfaState&gt; statesVisited) {
+<span class="nc" id="L118">		return 1;</span>
+	}
+
+	@Override
+	protected String dumpInternal(Map&lt;NfaState, Integer&gt; stateNrs) {
+<span class="fc" id="L123">		String name = getPatternType();</span>
+<span class="fc" id="L124">		return name + &quot;(&quot; + pattern + &quot;,&quot; + dump(nextState, stateNrs) + &quot;)&quot;;</span>
+	}
+
+	/**
+	 * Returns the pattern type, REGEX, WILDCARD or PREFIX, for use by toString().
+	 * @return pattern type
+	 */
+	abstract String getPatternType();
+
+	@Override
+	public void lookupPropertyNumbersInternal(ForwardIndexAccessor fiAccessor, Map&lt;NfaState, Boolean&gt; statesVisited) {
+<span class="nc" id="L135">		String[] comp = ComplexFieldUtil.getNameComponents(luceneField);</span>
+<span class="nc" id="L136">		String propertyName = comp[1];</span>
+<span class="nc" id="L137">		propertyNumber = fiAccessor.getPropertyNumber(propertyName);</span>
+<span class="nc bnc" id="L138" title="All 2 branches missed.">		if (nextState != null)</span>
+<span class="nc" id="L139">			nextState.lookupPropertyNumbers(fiAccessor, statesVisited);</span>
+<span class="nc" id="L140">	}</span>
+
+	@Override
+	protected void finishInternal(Set&lt;NfaState&gt; visited) {
+<span class="nc bnc" id="L144" title="All 2 branches missed.">		if (nextState == null)</span>
+<span class="nc" id="L145">			nextState = match();</span>
+		else
+<span class="nc" id="L147">			nextState.finish(visited);</span>
+<span class="nc" id="L148">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

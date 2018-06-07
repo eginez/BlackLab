@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TextPatternTags.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search</a> &gt; <span class="el_source">TextPatternTags.java</span></div><h1>TextPatternTags.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search;
+
+import java.util.HashMap;
+import java.util.Map;
+
+import org.apache.lucene.index.Term;
+
+import nl.inl.blacklab.index.complex.ComplexFieldUtil;
+import nl.inl.blacklab.search.lucene.BLSpanQuery;
+import nl.inl.blacklab.search.lucene.SpanQueryTags;
+import nl.inl.blacklab.search.lucene.SpanQueryTagsOld;
+import nl.inl.util.StringUtil;
+
+/**
+ * A TextPattern matching a word.
+ */
+@SuppressWarnings(&quot;deprecation&quot;)
+public class TextPatternTags extends TextPattern {
+
+	protected String elementName;
+
+	Map&lt;String, String&gt; attr;
+
+<span class="fc" id="L39">	public TextPatternTags(String elementName, Map&lt;String, String&gt; attr) {</span>
+<span class="fc" id="L40">		this.elementName = elementName;</span>
+<span class="fc" id="L41">		this.attr = attr;</span>
+<span class="fc" id="L42">	}</span>
+
+	public TextPatternTags(String elementName) {
+<span class="nc" id="L45">		this(elementName, null);</span>
+<span class="nc" id="L46">	}</span>
+
+	public Term getTerm(String fieldName) {
+<span class="nc" id="L49">		return new Term(fieldName, elementName);</span>
+	}
+
+	@Override
+	public BLSpanQuery translate(QueryExecutionContext context) {
+		// Desensitize tag name and attribute values if required
+<span class="fc" id="L55">		String elementName1 = optInsensitive(context, elementName);</span>
+<span class="fc" id="L56">		Map&lt;String, String&gt; attrOptIns = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">		for (Map.Entry&lt;String, String&gt; e: attr.entrySet()) {</span>
+<span class="fc" id="L58">			attrOptIns.put(e.getKey(), optInsensitive(context, e.getValue()));</span>
+<span class="fc" id="L59">		}</span>
+
+		// Return the proper SpanQuery depending on index version
+<span class="fc" id="L62">		QueryExecutionContext startTagContext = context.withProperty(ComplexFieldUtil.START_TAG_PROP_NAME);</span>
+<span class="fc" id="L63">		String startTagFieldName = startTagContext.luceneField();</span>
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">		if (!context.tagLengthInPayload()) {</span>
+			// Older index, with end tags stored in separate property
+<span class="nc" id="L66">			QueryExecutionContext endTagContext = context.withProperty(ComplexFieldUtil.END_TAG_PROP_NAME);</span>
+<span class="nc" id="L67">			String endTagFieldName = endTagContext.luceneField();</span>
+<span class="nc" id="L68">			return new SpanQueryTagsOld(startTagFieldName, endTagFieldName, elementName1, attrOptIns);</span>
+		}
+		// Modern index, with tag length in payload
+<span class="fc" id="L71">		return new SpanQueryTags(startTagFieldName, elementName1, attrOptIns);</span>
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+<span class="nc bnc" id="L76" title="All 2 branches missed.">		if (obj instanceof TextPatternTags) {</span>
+<span class="nc" id="L77">			TextPatternTags tp = ((TextPatternTags) obj);</span>
+<span class="nc bnc" id="L78" title="All 4 branches missed.">			return elementName.equals(tp.elementName) &amp;&amp; attr.equals(tp.attr);</span>
+		}
+<span class="nc" id="L80">		return false;</span>
+	}
+
+	public String getElementName() {
+<span class="nc" id="L84">		return elementName;</span>
+	}
+
+	@Override
+	public int hashCode() {
+<span class="nc" id="L89">		return elementName.hashCode() + attr.hashCode();</span>
+	}
+
+	@Deprecated
+	@Override
+	public String toString(QueryExecutionContext context) {
+<span class="nc" id="L95">		return toString();</span>
+	}
+
+	@Override
+	public String toString() {
+<span class="nc bnc" id="L100" title="All 4 branches missed.">		if (attr != null &amp;&amp; !attr.isEmpty())</span>
+<span class="nc" id="L101">			return &quot;TAGS(&quot; + elementName + &quot;, &quot; + StringUtil.join(attr) + &quot;)&quot;;</span>
+<span class="nc" id="L102">		return &quot;TAGS(&quot; + elementName + &quot;)&quot;;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

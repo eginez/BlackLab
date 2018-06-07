@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Plugin.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.indexers.preprocess</a> &gt; <span class="el_source">Plugin.java</span></div><h1>Plugin.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.indexers.preprocess;
+
+import java.util.Optional;
+
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
+/**
+ * Interface of converting a plugin (including using external services)
+ * Only a single instance of a plugin is constructed, so plugins must be threadsafe.
+ *
+ * A plugin must define a no-argument constructor.
+ */
+public interface Plugin {
+
+	public static class PluginException extends Exception {
+		public PluginException() {
+<span class="nc" id="L17">			super();</span>
+<span class="nc" id="L18">		}</span>
+
+		public PluginException(String message, Throwable cause) {
+<span class="nc" id="L21">			super(message, cause);</span>
+<span class="nc" id="L22">		}</span>
+
+		public PluginException(String message) {
+<span class="nc" id="L25">			super(message);</span>
+<span class="nc" id="L26">		}</span>
+
+		public PluginException(Throwable cause) {
+<span class="nc" id="L29">			super(cause);</span>
+<span class="nc" id="L30">		}</span>
+	}
+
+	/**
+	 * Return a globally unique id for this plugin class.
+	 * This ID must be constant across runs and versions.
+	 *
+	 * @return the global identifier for this plugin
+	 */
+	public String getId();
+
+	/**
+	 * Return a user-friendly name for this plugin that can be used in messages, etc.
+	 *
+	 * @return a user-friendly name for this plugin
+	 */
+	public String getDisplayName();
+
+
+	public String getDescription();
+
+	/**
+	 * Initializes the plugin, called once after the initial loading of the class.
+	 *
+	 * @param config the config settings for this plugin
+	 * @throws PluginException
+	 */
+	public void init(Optional&lt;ObjectNode&gt; config) throws PluginException;
+}
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

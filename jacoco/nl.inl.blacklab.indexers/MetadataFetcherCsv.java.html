@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MetadataFetcherCsv.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.indexers</a> &gt; <span class="el_source">MetadataFetcherCsv.java</span></div><h1>MetadataFetcherCsv.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.indexers;
+
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.util.Map;
+
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVParser;
+import org.apache.commons.csv.CSVRecord;
+import org.apache.commons.io.input.BOMInputStream;
+import org.apache.lucene.document.Document;
+
+import nl.inl.blacklab.index.DocIndexer;
+import nl.inl.blacklab.index.MetadataFetcher;
+
+/**
+ * Metadata fetcher for csv files.
+ * The path to the csv file is read from parameter 'metadataFile'.
+ * The csv file should be utf-8 encoded.
+ * This metadata fetcher assumes a csv file with a header. It also assumes the csv file
+ * contains a column 'id'. The id should be equal to the file name of the indexed document.
+ *
+ * Example indexer.properties:
+ * metadataFetcherClass=nl.inl.blacklab.indexers.MetadataFetcherCsv
+ * metadataFile=metadata.csv
+ */
+public class MetadataFetcherCsv extends MetadataFetcher {
+	private Iterable&lt;CSVRecord&gt; metadata;
+
+	@SuppressWarnings(&quot;deprecation&quot;)
+    public MetadataFetcherCsv(DocIndexer docIndexer) {
+<span class="nc" id="L35">		super(docIndexer);</span>
+
+<span class="nc" id="L37">		String metadataFileName = docIndexer.getParameter(&quot;metadataFile&quot;);</span>
+
+<span class="nc" id="L39">		try (</span>
+<span class="nc" id="L40">			Reader reader = new InputStreamReader(new BOMInputStream(new FileInputStream(metadataFileName)), &quot;UTF-8&quot;);</span>
+
+<span class="nc" id="L42">            CSVParser csvParser = new CSVParser(reader, CSVFormat.DEFAULT</span>
+<span class="nc" id="L43">                    .withFirstRecordAsHeader()</span>
+<span class="nc" id="L44">                    .withIgnoreHeaderCase()</span>
+<span class="nc" id="L45">                    .withTrim());</span>
+			){
+
+<span class="nc" id="L48">            metadata = csvParser.getRecords();</span>
+<span class="nc" id="L49">            reader.close();</span>
+<span class="nc bnc" id="L50" title="All 16 branches missed.">		} catch (FileNotFoundException ex) {</span>
+<span class="nc" id="L51">			System.err.println(&quot;Metadata file \&quot;&quot;+metadataFileName+&quot;\&quot; not found. Not adding metadata.&quot;);</span>
+<span class="nc" id="L52">		} catch (IOException ex){</span>
+<span class="nc" id="L53">	        System.err.println(&quot;Error while reading \&quot;&quot;+metadataFileName+&quot;\&quot;. Is it a valid csv file?&quot;);</span>
+<span class="nc" id="L54">	    }</span>
+<span class="nc" id="L55">	}</span>
+
+	@Override
+	public void addMetadata() {
+
+		String fromInputFile;
+		Map&lt;String,String&gt; map;
+<span class="nc" id="L62">		Document luceneDoc = docIndexer.getCurrentLuceneDoc();</span>
+<span class="nc" id="L63">		fromInputFile = luceneDoc.get(&quot;fromInputFile&quot;);</span>
+
+<span class="nc bnc" id="L65" title="All 2 branches missed.">	    for (CSVRecord row : metadata) {</span>
+	    	// TODO: use document id instead of document file name (it is unclear to me how to get the
+	    	// document id from the lucene doc)
+	    	// TODO: what happens if the csv file does not contain an id-column?
+	    	// TODO: some texts have multiple authors. How to deal with that?
+<span class="nc bnc" id="L70" title="All 2 branches missed.">	    	if(fromInputFile.equals(row.get(&quot;id&quot;))) {</span>
+<span class="nc" id="L71">	    		map = row.toMap();</span>
+<span class="nc bnc" id="L72" title="All 2 branches missed.">	    		for (Map.Entry&lt;String, String&gt; entry : map.entrySet()) {</span>
+	    			// Do not add the id (again)
+<span class="nc bnc" id="L74" title="All 2 branches missed.">	    			if (!entry.getKey().equals(&quot;id&quot;)) {</span>
+<span class="nc" id="L75">		    			docIndexer.addMetadataField(entry.getKey(), entry.getValue());</span>
+	    			}
+<span class="nc" id="L77">	    		}</span>
+	    	}
+<span class="nc" id="L79">	     }</span>
+<span class="nc" id="L80">	}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

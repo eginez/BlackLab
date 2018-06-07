@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ResultsGrouper.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.grouping</a> &gt; <span class="el_source">ResultsGrouper.java</span></div><h1>ResultsGrouper.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.grouping;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import nl.inl.blacklab.search.Hit;
+import nl.inl.blacklab.search.Hits;
+
+/**
+ * Groups results on the basis of a list of criteria, and provide random access to the resulting
+ * groups.
+ *
+ * This implementation doesn't care in what order the spans appear, it will just retrieve all of
+ * them and put each of them in a group. This takes more memory and time than if the spans to be
+ * grouped are sequential (in which case you should use ResultsGrouperSequential).
+ */
+public class ResultsGrouper extends HitGroups {
+	/**
+	 * The groups.
+	 */
+<span class="fc" id="L40">	Map&lt;HitPropValue, HitGroup&gt; groups = new HashMap&lt;&gt;();</span>
+
+	/**
+	 * The groups, in sorted order.
+	 */
+<span class="fc" id="L45">	List&lt;HitGroup&gt; groupsOrdered = new ArrayList&lt;&gt;();</span>
+
+	/**
+	 * Default field to make concordances from.
+	 */
+	private String defaultConcField;
+
+	/**
+	 * Field our current concordances came from.
+	 */
+	private List&lt;String&gt; contextField;
+
+	/**
+	 * Total number of hits.
+	 */
+<span class="fc" id="L60">	private int totalHits = 0;</span>
+
+	/**
+	 * Size of the largest group.
+	 */
+<span class="fc" id="L65">	private int largestGroupSize = 0;</span>
+
+	/**
+	 * Construct a ResultsGrouper object, by grouping the supplied hits.
+	 *
+	 * NOTE: this will be made package-private in a future release.
+	 * Use Hits.groupedBy(criteria) instead.
+	 *
+	 * @param hits
+	 *            the hits to group
+	 * @param criteria
+	 *            the criteria to group on
+	 */
+	ResultsGrouper(Hits hits, HitProperty criteria) {
+<span class="fc" id="L79">		super(hits.getSearcher(), criteria);</span>
+<span class="fc" id="L80">		init(hits, criteria);</span>
+<span class="fc" id="L81">	}</span>
+
+	/**
+	 * Don't use this; use Hits.groupedBy().
+	 * @param hits hits to group
+	 * @param criteria criteria to group by
+	 * @return grouped hits
+	 */
+	public static ResultsGrouper _fromHits(Hits hits, HitProperty criteria) {
+<span class="fc" id="L90">		return new ResultsGrouper(hits, criteria);</span>
+	}
+
+	private void init(Hits hits, HitProperty criteria_) {
+<span class="fc" id="L94">		defaultConcField = hits.settings().concordanceField();</span>
+<span class="fc" id="L95">		List&lt;String&gt; requiredContext = criteria_.needsContext();</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">		if (requiredContext != null) {</span>
+<span class="fc" id="L97">			hits.findContext(requiredContext);</span>
+		}
+<span class="fc" id="L99">		contextField = hits.getContextFieldPropName();</span>
+		//Thread currentThread = Thread.currentThread();
+<span class="fc" id="L101">		Map&lt;HitPropValue, List&lt;Hit&gt;&gt; groupLists = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">		for (int i = 0; i &lt; hits.size(); i++) {</span>
+
+<span class="fc" id="L104">			HitPropValue identity = getGroupIdentity(i);</span>
+<span class="fc" id="L105">			List&lt;Hit&gt; group = groupLists.get(identity);</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">			if (group == null) {</span>
+<span class="fc" id="L107">				group = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L108">				groupLists.put(identity, group);</span>
+			}
+<span class="fc" id="L110">			group.add(hits.getByOriginalOrder(i));</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">			if (group.size() &gt; largestGroupSize)</span>
+<span class="fc" id="L112">				largestGroupSize = group.size();</span>
+<span class="fc" id="L113">			totalHits++;</span>
+		}
+<span class="fc bfc" id="L115" title="All 2 branches covered.">		for (Map.Entry&lt;HitPropValue, List&lt;Hit&gt;&gt; e: groupLists.entrySet()) {</span>
+<span class="fc" id="L116">			HitPropValue groupId = e.getKey();</span>
+<span class="fc" id="L117">			List&lt;Hit&gt; hitList = e.getValue();</span>
+<span class="fc" id="L118">			HitGroup group = new HitGroup(searcher, groupId, defaultConcField, hitList);</span>
+<span class="fc" id="L119">			group.setContextField(contextField);</span>
+<span class="fc" id="L120">			groups.put(groupId, group);</span>
+<span class="fc" id="L121">			groupsOrdered.add(group);</span>
+<span class="fc" id="L122">		}</span>
+
+		// If the group identities are context words, we should possibly merge
+		// some groups if they have identical sort orders (up to now, we've grouped on
+		// token id, not sort order).
+<span class="fc" id="L127">	}</span>
+
+	/**
+	 * Get the total number of hits
+	 *
+	 * @return the number of hits
+	 */
+	@Override
+	public int getTotalResults() {
+<span class="nc" id="L136">		return totalHits;</span>
+	}
+
+	/**
+	 * Get all groups as a map
+	 *
+	 * @return a map of groups indexed by group property
+	 */
+	@Override
+	public Map&lt;HitPropValue, HitGroup&gt; getGroupMap() {
+<span class="fc" id="L146">		return Collections.unmodifiableMap(groups);</span>
+	}
+
+	/**
+	 * Get all groups as a list
+	 *
+	 * @return the list of groups
+	 */
+	@Override
+	public List&lt;HitGroup&gt; getGroups() {
+<span class="nc" id="L156">		return Collections.unmodifiableList(groupsOrdered);</span>
+	}
+
+	/**
+	 * Sort groups
+	 *
+	 * @param prop
+	 *            the property to sort on
+	 * @param sortReverse
+	 *            whether to sort in descending order
+	 */
+	@Override
+	public void sortGroups(GroupProperty prop, boolean sortReverse) {
+<span class="nc" id="L169">		Comparator&lt;Group&gt; comparator = new ComparatorGroupProperty(prop, sortReverse,</span>
+<span class="nc" id="L170">				searcher.getCollator());</span>
+
+<span class="nc" id="L172">		Collections.sort(groupsOrdered, comparator);</span>
+<span class="nc" id="L173">	}</span>
+
+	/**
+	 * Return the size of the largest group
+	 *
+	 * @return size of the largest group
+	 */
+	@Override
+	public int getLargestGroupSize() {
+<span class="nc" id="L182">		return largestGroupSize;</span>
+	}
+
+	/**
+	 * Return the number of groups
+	 *
+	 * @return number of groups
+	 */
+	@Override
+	public int numberOfGroups() {
+<span class="fc" id="L192">		return groups.size();</span>
+	}
+
+	@Override
+	public String toString() {
+<span class="nc" id="L197">		return &quot;ResultsGrouper with &quot; + numberOfGroups() + &quot; groups&quot;;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

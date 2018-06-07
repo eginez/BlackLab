@@ -108,26 +108,21 @@
 <a class="jxr_linenumber" name="L100" href="#L100">100</a> 		System.out.println(<span class="jxr_string">"Done. Elapsed time: "</span> + TimeUtil.describeInterval(System.currentTimeMillis() - getIndexStartTime()));
 <a class="jxr_linenumber" name="L101" href="#L101">101</a> 	}
 <a class="jxr_linenumber" name="L102" href="#L102">102</a> 
-<a class="jxr_linenumber" name="L103" href="#L103">103</a> 	<em class="jxr_javadoccomment">/**</em>
-<a class="jxr_linenumber" name="L104" href="#L104">104</a> <em class="jxr_javadoccomment">	 * An index error occurred. Report it.</em>
-<a class="jxr_linenumber" name="L105" href="#L105">105</a> <em class="jxr_javadoccomment">	 *</em>
-<a class="jxr_linenumber" name="L106" href="#L106">106</a> <em class="jxr_javadoccomment">	 * @param error type of error, i.e. "not found"</em>
-<a class="jxr_linenumber" name="L107" href="#L107">107</a> <em class="jxr_javadoccomment">	 * @param unitType type of indexing unit, i.e. "file", "zip", "tgz"</em>
-<a class="jxr_linenumber" name="L108" href="#L108">108</a> <em class="jxr_javadoccomment">	 * @param unit the indexing unit in which the error occurred</em>
-<a class="jxr_linenumber" name="L109" href="#L109">109</a> <em class="jxr_javadoccomment">	 * @param subunit optional subunit (i.e. which file inside zip, or null for regular files)</em>
-<a class="jxr_linenumber" name="L110" href="#L110">110</a> <em class="jxr_javadoccomment">	 * @return true if indexing should continue</em>
-<a class="jxr_linenumber" name="L111" href="#L111">111</a> <em class="jxr_javadoccomment">	 */</em>
-<a class="jxr_linenumber" name="L112" href="#L112">112</a> 	@Override
-<a class="jxr_linenumber" name="L113" href="#L113">113</a> 	<strong class="jxr_keyword">public</strong> <strong class="jxr_keyword">boolean</strong> errorOccurred(String error, String unitType, File unit, File subunit) {
-<a class="jxr_linenumber" name="L114" href="#L114">114</a> 		System.out.println(<span class="jxr_string">"An error occurred during indexing!"</span>);
-<a class="jxr_linenumber" name="L115" href="#L115">115</a> 		System.out.println(<span class="jxr_string">"error: "</span> + error + <span class="jxr_string">", unitType: "</span> + unitType +
-<a class="jxr_linenumber" name="L116" href="#L116">116</a> 				<span class="jxr_string">", unit: "</span> + unit + <span class="jxr_string">", subunit: "</span> + subunit);
-<a class="jxr_linenumber" name="L117" href="#L117">117</a> 		<strong class="jxr_keyword">return</strong> <strong class="jxr_keyword">super</strong>.errorOccurred(error, unitType, unit, subunit);
-<a class="jxr_linenumber" name="L118" href="#L118">118</a> 	}
-<a class="jxr_linenumber" name="L119" href="#L119">119</a> 
-<a class="jxr_linenumber" name="L120" href="#L120">120</a> }
+<a class="jxr_linenumber" name="L103" href="#L103">103</a> 	@Override
+<a class="jxr_linenumber" name="L104" href="#L104">104</a> 	<strong class="jxr_keyword">public</strong> <strong class="jxr_keyword">boolean</strong> errorOccurred(Throwable e, String path, File f) {
+<a class="jxr_linenumber" name="L105" href="#L105">105</a> 		System.out.println(<span class="jxr_string">"An error occurred during indexing!"</span>);
+<a class="jxr_linenumber" name="L106" href="#L106">106</a> 		System.out.println(<span class="jxr_string">"error: "</span> + e.getMessage() + <span class="jxr_string">" (in "</span> + path + <span class="jxr_string">")"</span>);
+<a class="jxr_linenumber" name="L107" href="#L107">107</a> 		<strong class="jxr_keyword">return</strong> <strong class="jxr_keyword">super</strong>.errorOccurred(e, path, f);
+<a class="jxr_linenumber" name="L108" href="#L108">108</a> 	}
+<a class="jxr_linenumber" name="L109" href="#L109">109</a> 
+<a class="jxr_linenumber" name="L110" href="#L110">110</a> 	@Override
+<a class="jxr_linenumber" name="L111" href="#L111">111</a> 	<strong class="jxr_keyword">public</strong> <strong class="jxr_keyword">void</strong> warning(String msg) {
+<a class="jxr_linenumber" name="L112" href="#L112">112</a> 		System.out.println(<span class="jxr_string">"WARNING: "</span> + msg);
+<a class="jxr_linenumber" name="L113" href="#L113">113</a> 	}
+<a class="jxr_linenumber" name="L114" href="#L114">114</a> 
+<a class="jxr_linenumber" name="L115" href="#L115">115</a> }
 </pre>
 <hr/>
-<div id="footer">Copyright &#169; 2017 <a href="http://www.inl.nl">Instituut voor Nederlandse Taal (INT)</a>. All rights reserved.</div>
+<div id="footer">Copyright &#169; 2018 <a href="http://www.inl.nl">Instituut voor Nederlandse Taal (INT)</a>. All rights reserved.</div>
 </body>
 </html>

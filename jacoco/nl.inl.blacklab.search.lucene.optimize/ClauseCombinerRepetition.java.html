@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClauseCombinerRepetition.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene.optimize</a> &gt; <span class="el_source">ClauseCombinerRepetition.java</span></div><h1>ClauseCombinerRepetition.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.search.lucene.optimize;
+
+import org.apache.lucene.index.IndexReader;
+
+import nl.inl.blacklab.search.lucene.BLSpanQuery;
+import nl.inl.blacklab.search.lucene.SpanQueryRepetition;
+
+/**
+ * Recognize adjacent identical clauses and combine them.
+ */
+<span class="fc" id="L11">class ClauseCombinerRepetition extends ClauseCombiner {</span>
+
+	private static final int PRIORITY = 1;
+
+	@Override
+	public int priority(BLSpanQuery left, BLSpanQuery right, IndexReader reader) {
+<span class="fc bfc" id="L17" title="All 2 branches covered.">		if (left.equals(right))</span>
+<span class="fc" id="L18">			return 1;</span>
+<span class="fc bfc" id="L19" title="All 2 branches covered.">		BLSpanQuery leftCl = left instanceof SpanQueryRepetition ? ((SpanQueryRepetition)left).getClause() : left;</span>
+<span class="fc bfc" id="L20" title="All 2 branches covered.">		BLSpanQuery rightCl = right instanceof SpanQueryRepetition ? ((SpanQueryRepetition)right).getClause() : right;</span>
+<span class="fc bfc" id="L21" title="All 2 branches covered.">		return leftCl.equals(rightCl) ? PRIORITY : CANNOT_COMBINE;</span>
+	}
+
+	@Override
+	public BLSpanQuery combine(BLSpanQuery left, BLSpanQuery right, IndexReader reader) {
+<span class="pc bpc" id="L26" title="1 of 2 branches missed.">		if (!canCombine(left, right, reader))</span>
+<span class="nc" id="L27">			throw new UnsupportedOperationException(&quot;Cannot combine &quot; + left + &quot; and &quot; + right);</span>
+<span class="fc" id="L28">		BLSpanQuery leftCl = left;</span>
+<span class="fc" id="L29">		int leftMin = 1, leftMax = 1;</span>
+<span class="fc" id="L30">		int rightMin = 1, rightMax = 1;</span>
+<span class="fc bfc" id="L31" title="All 2 branches covered.">		if (left instanceof SpanQueryRepetition) {</span>
+<span class="fc" id="L32">			SpanQueryRepetition l = ((SpanQueryRepetition)left);</span>
+<span class="fc" id="L33">			leftCl = l.getClause();</span>
+<span class="fc" id="L34">			leftMin = l.getMinRep();</span>
+<span class="fc" id="L35">			leftMax = l.getMaxRep();</span>
+		}
+<span class="fc bfc" id="L37" title="All 2 branches covered.">		if (right instanceof SpanQueryRepetition) {</span>
+<span class="fc" id="L38">			SpanQueryRepetition r = ((SpanQueryRepetition)right);</span>
+<span class="fc" id="L39">			rightMin = r.getMinRep();</span>
+<span class="fc" id="L40">			rightMax = r.getMaxRep();</span>
+		}
+<span class="fc" id="L42">		return new SpanQueryRepetition(leftCl, leftMin + rightMin, BLSpanQuery.addMaxValues(leftMax, rightMax));</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

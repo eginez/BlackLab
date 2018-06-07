@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ConfigInlineTag.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.index.config</a> &gt; <span class="el_source">ConfigInlineTag.java</span></div><h1>ConfigInlineTag.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.index.config;
+
+/**
+ * Configuration for an XML element occurring in an annotated field.
+ */
+public class ConfigInlineTag {
+
+	/** XPath to the inline tag, relative to the container element */
+    private String path;
+    
+    /** (optional) How to display this inline tag when viewing document in the frontend
+     *  (used as CSS class for this inline tag in generated XSLT; there are several
+     *   predefined classes such as sentence, paragraph, line-beginning, page-beginning) */
+<span class="fc" id="L14">	private String displayAs = &quot;&quot;;</span>
+
+<span class="fc" id="L16">	public ConfigInlineTag() {</span>
+<span class="fc" id="L17">    }</span>
+
+<span class="fc" id="L19">	public ConfigInlineTag(String path, String displayAs) {</span>
+<span class="fc" id="L20">        setPath(path);</span>
+<span class="fc" id="L21">        setDisplayAs(displayAs);</span>
+<span class="fc" id="L22">    }</span>
+
+    public void validate() {
+<span class="fc" id="L25">        ConfigInputFormat.req(path, &quot;inline tag&quot;, &quot;path&quot;);</span>
+<span class="fc" id="L26">    }</span>
+
+    public ConfigInlineTag copy() {
+<span class="fc" id="L29">        return new ConfigInlineTag(path, displayAs);</span>
+    }
+
+    public String getPath() {
+<span class="nc" id="L33">        return path;</span>
+    }
+
+    public void setPath(String path) {
+<span class="fc" id="L37">        this.path = path;</span>
+<span class="fc" id="L38">    }</span>
+
+	public String getDisplayAs() {
+<span class="nc" id="L41">		return displayAs;</span>
+	}
+
+    public void setDisplayAs(String displayAs) {
+<span class="fc" id="L45">		this.displayAs = displayAs;</span>
+<span class="fc" id="L46">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

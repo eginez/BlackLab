@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HitsSample.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search</a> &gt; <span class="el_source">HitsSample.java</span></div><h1>HitsSample.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.search;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
+
+import org.apache.lucene.search.spans.SpanQuery;
+
+import nl.inl.blacklab.search.lucene.BLSpanQuery;
+
+public abstract class HitsSample extends HitsImpl {
+
+	public final static long RANDOM_SEED = Long.MIN_VALUE;
+
+	protected static long getRandomSeed() {
+<span class="nc" id="L16">		Random random = new Random();</span>
+<span class="nc" id="L17">		return random.nextLong();</span>
+	}
+
+	protected float ratioOfHitsToSelect;
+
+	protected int numberOfHitsToSelect;
+
+<span class="pc" id="L24">	protected boolean exactNumberGiven = false;</span>
+
+	protected long seed;
+
+	protected Random random;
+
+	protected HitsSample(Searcher searcher, float ratio, long seed) {
+<span class="fc" id="L31">		super(searcher, new ArrayList&lt;Hit&gt;());</span>
+<span class="fc" id="L32">		this.ratioOfHitsToSelect = ratio;</span>
+<span class="pc bpc" id="L33" title="1 of 2 branches missed.">		this.seed = seed == RANDOM_SEED ? getRandomSeed() : seed;</span>
+<span class="fc" id="L34">		this.random = new Random(seed);</span>
+<span class="fc" id="L35">	}</span>
+
+	protected HitsSample(Searcher searcher, int number, long seed) {
+<span class="fc" id="L38">		super(searcher, new ArrayList&lt;Hit&gt;());</span>
+<span class="fc" id="L39">		this.numberOfHitsToSelect = number;</span>
+<span class="fc" id="L40">		exactNumberGiven = true;</span>
+<span class="pc bpc" id="L41" title="1 of 2 branches missed.">		this.seed = seed == RANDOM_SEED ? getRandomSeed() : seed;</span>
+<span class="fc" id="L42">		this.random = new Random(seed);</span>
+<span class="fc" id="L43">	}</span>
+
+	protected HitsSample(Searcher searcher, List&lt;Hit&gt; hits, float ratio, long seed) {
+<span class="nc" id="L46">		super(searcher, hits);</span>
+<span class="nc" id="L47">		this.ratioOfHitsToSelect = ratio;</span>
+<span class="nc bnc" id="L48" title="All 2 branches missed.">		this.seed = seed == RANDOM_SEED ? getRandomSeed() : seed;</span>
+<span class="nc" id="L49">		this.random = new Random(seed);</span>
+<span class="nc" id="L50">	}</span>
+
+	/**
+	 * Take a sample of hits by wrapping an existing Hits object.
+	 *
+	 * @param hits hits object to wrap
+	 * @param ratio ratio of hits to select, from 0 (none) to 1 (all)
+	 * @param seed seed for the random generator, or HitsSample.RANDOM_SEED to use a randomly chosen seed
+	 * @return the sample
+	 */
+	public static HitsSample fromHits(Hits hits, float ratio, long seed) {
+		// We can later provide an optimized version that uses a HitsSampleCopy or somesuch
+		// (this class could save memory by only storing the hits we're interested in)
+<span class="fc" id="L63">		return new HitsSampleImpl(hits, ratio, seed);</span>
+	}
+
+	/**
+	 * Take a sample of hits by wrapping an existing Hits object.
+	 *
+	 * @param hits hits object to wrap
+	 * @param number number of hits to select
+	 * @param seed seed for the random generator, or HitsSample.RANDOM_SEED to use a randomly chosen seed
+	 * @return the sample
+	 */
+	public static HitsSample fromHits(Hits hits, int number, long seed) {
+		// We can later provide an optimized version that uses a HitsSampleCopy or somesuch
+		// (this class could save memory by only storing the hits we're interested in)
+<span class="fc" id="L77">		return new HitsSampleImpl(hits, number, seed);</span>
+	}
+
+	/**
+	 * Take a sample of hits by executing a SpanQuery and sampling the results.
+	 *
+	 * @param searcher searcher object
+	 * @param query query to sample
+	 * @param ratio ratio of hits to select, from 0 (none) to 1 (all)
+	 * @param seed seed for the random generator, or HitsSample.RANDOM_SEED to use a randomly chosen seed
+	 * @return the sample
+	 */
+	public static HitsSample fromSpanQuery(Searcher searcher, SpanQuery query, float ratio, long seed) {
+		// We can later provide an optimized version that uses a HitsSampleSpans or somesuch
+		// (this class could save memory by only storing the hits we're interested in)
+<span class="nc bnc" id="L92" title="All 2 branches missed.">		if (!(query instanceof BLSpanQuery))</span>
+<span class="nc" id="L93">			throw new IllegalArgumentException(&quot;Supplied query must be a BLSpanQuery!&quot;);</span>
+<span class="nc" id="L94">		return new HitsSampleImpl(Hits.fromSpanQuery(searcher, query), ratio, seed);</span>
+	}
+
+	/**
+	 * Take a sample of hits by executing a SpanQuery and sampling the results.
+	 *
+	 * @param searcher searcher object
+	 * @param query query to sample
+	 * @param number number of hits to select
+	 * @param seed seed for the random generator, or HitsSample.RANDOM_SEED to use a randomly chosen seed
+	 * @return the sample
+	 */
+	public static HitsSample fromSpanQuery(Searcher searcher, SpanQuery query, int number, long seed) {
+		// We can later provide an optimized version that uses a HitsSampleSpans or somesuch
+		// (this class could save memory by only storing the hits we're interested in)
+<span class="nc bnc" id="L109" title="All 2 branches missed.">		if (!(query instanceof BLSpanQuery))</span>
+<span class="nc" id="L110">			throw new IllegalArgumentException(&quot;Supplied query must be a BLSpanQuery!&quot;);</span>
+<span class="nc" id="L111">		return new HitsSampleImpl(Hits.fromSpanQuery(searcher, query), number, seed);</span>
+	}
+
+	public float ratio() {
+<span class="nc" id="L115">		return ratioOfHitsToSelect;</span>
+	}
+
+	public long seed() {
+<span class="nc" id="L119">		return seed;</span>
+	}
+
+	public int numberOfHitsToSelect() {
+<span class="nc" id="L123">		return numberOfHitsToSelect;</span>
+	}
+
+	public boolean exactNumberGiven() {
+<span class="nc" id="L127">		return exactNumberGiven;</span>
+	}
+
+    @Override
+    public String toString() {
+<span class="nc" id="L132">        return &quot;HitsSample#&quot; + hitsObjId;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

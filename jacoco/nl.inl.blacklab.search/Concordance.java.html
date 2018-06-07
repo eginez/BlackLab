@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Concordance.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search</a> &gt; <span class="el_source">Concordance.java</span></div><h1>Concordance.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search;
+
+import nl.inl.util.XmlUtil;
+
+/**
+ * A concordance (left context, hit text, right context).
+ * Hits class matches this to the Hit.
+ */
+public class Concordance {
+
+	/** Document fragment to use to create concordance */
+	String fragment;
+
+	/** Where in content the match starts */
+	int matchStart;
+
+	/** Where in content the match ends */
+	int matchEnd;
+
+	/**
+	 * Construct a concordance.
+	 *
+	 * @param conc array containing left part, match part and right part of the concordance
+	 */
+<span class="fc" id="L40">	public Concordance(String[] conc) {</span>
+<span class="fc" id="L41">		fragment = conc[0] + conc[1] + conc[2];</span>
+<span class="fc" id="L42">		matchStart = conc[0].length();</span>
+<span class="fc" id="L43">		matchEnd = matchStart + conc[1].length();</span>
+<span class="fc" id="L44">	}</span>
+
+	/**
+	 * Construct a concordance.
+	 *
+	 * Note that if it not guaranteed that each parts will be well-formed XML;
+	 * if you require that, you should use XmlHighlighter to do this yourself.
+	 *
+	 * @param contents part of the document content to use as concordance
+	 * @param matchStart where the match starts
+	 * @param matchEnd where the match ends
+	 */
+<span class="fc" id="L56">	public Concordance(String contents, int matchStart, int matchEnd) {</span>
+<span class="fc" id="L57">		fragment = contents;</span>
+<span class="fc" id="L58">		this.matchStart = matchStart;</span>
+<span class="fc" id="L59">		this.matchEnd = matchEnd;</span>
+<span class="fc" id="L60">	}</span>
+
+	@Override
+	public String toString() {
+<span class="nc" id="L64">		return String.format(&quot;conc: %s[%s]%s&quot;, left(), match(), right());</span>
+	}
+
+	/**
+	 * Return the part of the content to the left of the matched part.
+	 * @return the left context
+	 */
+	public String left() {
+<span class="fc" id="L72">		return fragment.substring(0, matchStart);</span>
+	}
+
+	/**
+	 * Return the matched part of the content.
+	 * @return the matched text.
+	 */
+	public String match() {
+<span class="fc" id="L80">		return fragment.substring(matchStart, matchEnd);</span>
+	}
+
+	/**
+	 * Return the part of the content to the right of the matched part.
+	 * @return the right context
+	 */
+	public String right() {
+<span class="fc" id="L88">		return fragment.substring(matchEnd);</span>
+	}
+
+	/** Return the three parts of the concordance: left, middle and right.
+	 *  @return an array of concordance parts
+	 */
+	public String[] parts() {
+<span class="nc" id="L95">		return new String[] {left(), match(), right()};</span>
+	}
+
+	/**
+	 * Return the parts of the concordance with XML tags stripped out.
+	 *
+	 * @return an array of three Strings: the left context, the matched text,
+	 *         and the right context.
+	 */
+	public String[] partsNoXml() {
+<span class="nc" id="L105">		String leftContext = XmlUtil.xmlToPlainText(left());</span>
+<span class="nc" id="L106">		String matchedWords = XmlUtil.xmlToPlainText(match());</span>
+<span class="nc" id="L107">		String rightContext = XmlUtil.xmlToPlainText(right());</span>
+<span class="nc" id="L108">		return new String[] {leftContext, matchedWords, rightContext};</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

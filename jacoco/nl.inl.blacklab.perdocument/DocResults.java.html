@@ -1,0 +1,548 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DocResults.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.perdocument</a> &gt; <span class="el_source">DocResults.java</span></div><h1>DocResults.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.perdocument;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Iterator;
+import java.util.List;
+import java.util.NoSuchElementException;
+
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.Scorer;
+import org.apache.lucene.search.SimpleCollector;
+
+import nl.inl.blacklab.search.Hit;
+import nl.inl.blacklab.search.Hits;
+import nl.inl.blacklab.search.Prioritizable;
+import nl.inl.blacklab.search.Searcher;
+import nl.inl.blacklab.search.grouping.HitPropValueInt;
+import nl.inl.util.ReverseComparator;
+import nl.inl.util.ThreadPriority.Level;
+
+/**
+ * A list of DocResult objects (document-level query results).
+ */
+public class DocResults implements Iterable&lt;DocResult&gt;, Prioritizable {
+	/**
+	 * (Part of) our document results
+	 */
+<span class="pc" id="L48">	protected List&lt;DocResult&gt; results = new ArrayList&lt;&gt;();</span>
+
+	/**
+	 * Our searcher object
+	 */
+	Searcher searcher;
+
+	/**
+	 * Our source hits object
+	 */
+	private Hits sourceHits;
+
+	/**
+	 * Iterator in our source hits object
+	 */
+	private Iterator&lt;Hit&gt; sourceHitsIterator;
+
+	/**
+	 * A partial list of hits in a doc, because we stopped iterating through the Hits.
+	 * (or null if we don't have partial doc hits)
+	 * Pick this up when we continue iterating through it.
+	 */
+<span class="pc" id="L70">	private List&lt;Hit&gt; partialDocHits = null;</span>
+
+	/** id of the partial doc we've done (because we stopped iterating through the Hits),
+	 * or -1 for no partial doc.
+	 */
+<span class="pc" id="L75">	private int partialDocId = -1;</span>
+
+	/**
+	 * Don't use this; use Hits.perDocResults().
+	 *
+	 * @param searcher searcher object
+	 * @param hits hits to get per-doc result for
+	 * @return the per-document results.
+	 */
+	static public DocResults _fromHits(Searcher searcher, Hits hits) {
+<span class="fc" id="L85">		return new DocResults(searcher, hits);</span>
+	}
+
+	boolean sourceHitsFullyRead() {
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">		if (sourceHits == null)</span>
+<span class="nc" id="L90">			return true;</span>
+<span class="fc" id="L91">		synchronized(sourceHitsIterator) {</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">			return !sourceHitsIterator.hasNext();</span>
+<span class="nc" id="L93">		}</span>
+	}
+
+	/**
+	 * Construct per-document results objects from a Hits object
+	 * @param searcher search object
+	 * @param hits the hits to view per-document
+	 */
+<span class="fc" id="L101">	DocResults(Searcher searcher, Hits hits) {</span>
+<span class="fc" id="L102">		this.searcher = searcher;</span>
+		try {
+<span class="fc" id="L104">			sourceHits = hits;</span>
+<span class="fc" id="L105">			sourceHitsIterator = hits.iterator();</span>
+<span class="nc" id="L106">		} catch (Exception e) {</span>
+<span class="nc" id="L107">			throw new RuntimeException(e);</span>
+<span class="fc" id="L108">		}</span>
+<span class="fc" id="L109">	}</span>
+
+	/**
+	 * Wraps a list of DocResult objects with the DocResults interface.
+	 *
+	 * NOTE: the list is not copied but referenced!
+	 *
+	 * Used by DocGroups constructor.
+	 *
+	 * @param searcher the searcher that generated the results
+	 * @param results the list of results
+	 */
+<span class="nc" id="L121">	DocResults(Searcher searcher, List&lt;DocResult&gt; results) {</span>
+<span class="nc" id="L122">		this.searcher = searcher;</span>
+<span class="nc" id="L123">		this.results = results;</span>
+<span class="nc" id="L124">	}</span>
+
+	/**
+	 * Construct DocResults from a Scorer (Lucene document results).
+	 *
+	 * @param searcher the searcher that generated the results
+	 * @param scorer the scorer to read document results from
+	 */
+<span class="nc" id="L132">	DocResults(Searcher searcher, Scorer scorer) {</span>
+<span class="nc" id="L133">		this.searcher = searcher;</span>
+<span class="nc bnc" id="L134" title="All 2 branches missed.">		if (scorer == null)</span>
+<span class="nc" id="L135">			return; // no matches, empty result set</span>
+		try {
+<span class="nc" id="L137">			DocIdSetIterator it = scorer.iterator();</span>
+			while (true) {
+				int docId;
+				try {
+<span class="nc" id="L141">					docId = it.nextDoc();</span>
+<span class="nc" id="L142">				} catch (IOException e) {</span>
+<span class="nc" id="L143">					throw new RuntimeException(e);</span>
+<span class="nc" id="L144">				}</span>
+<span class="nc bnc" id="L145" title="All 2 branches missed.">				if (docId == DocIdSetIterator.NO_MORE_DOCS)</span>
+<span class="nc" id="L146">					break;</span>
+
+<span class="nc" id="L148">				DocResult dr = new DocResult(searcher, null, docId, scorer.score());</span>
+<span class="nc" id="L149">				results.add(dr);</span>
+<span class="nc" id="L150">			}</span>
+<span class="nc" id="L151">		} catch (Exception e) {</span>
+<span class="nc" id="L152">			throw new RuntimeException(e);</span>
+<span class="nc" id="L153">		}</span>
+<span class="nc" id="L154">	}</span>
+
+	/**
+	 * Don't use this, use Searcher.queryDocuments().
+	 *
+	 * @param searcher searcher object
+	 * @param query query to execute
+	 * @return per-document results
+	 */
+	public static DocResults _fromQuery(Searcher searcher, Query query) {
+<span class="nc" id="L164">		return new DocResults(searcher, query);</span>
+	}
+
+	/**
+	 * Find documents whose metadata matches the specified query
+	 * @param searcher searcher object
+	 * @param query metadata query, or null to match all documents
+	 */
+<span class="nc" id="L172">	DocResults(Searcher searcher, Query query) {</span>
+
+<span class="nc" id="L174">		this.searcher = searcher;</span>
+
+		// TODO: a better approach is to only read documents we're actually interested in instead of all of them; compare with Hits.
+		//    even better: make DocResults abstract and provide two implementations, DocResultsFromHits and DocResultsFromQuery.
+
+		try {
+<span class="nc" id="L180">			searcher.getIndexSearcher().search(query, new SimpleCollector() {</span>
+
+				private int docBase;
+
+				@Override
+				protected void doSetNextReader(LeafReaderContext context)
+						throws IOException {
+<span class="nc" id="L187">					docBase = context.docBase;</span>
+<span class="nc" id="L188">					super.doSetNextReader(context);</span>
+<span class="nc" id="L189">				}</span>
+
+				@Override
+				public void collect(int docId) throws IOException {
+<span class="nc" id="L193">					int globalDocId = docId + docBase;</span>
+<span class="nc" id="L194">					results.add(new DocResult(DocResults.this.searcher, null, globalDocId, 0.0f));</span>
+<span class="nc" id="L195">				}</span>
+
+				@Override
+				public void setScorer(Scorer scorer) {
+					// (ignore)
+<span class="nc" id="L200">				}</span>
+
+				@Override
+				public boolean needsScores() {
+<span class="nc" id="L204">					return false;</span>
+				}
+			});
+<span class="nc" id="L207">		} catch (IOException e) {</span>
+<span class="nc" id="L208">			throw new RuntimeException(e);</span>
+<span class="nc" id="L209">		}</span>
+
+		//this(searcher, searcher.findDocScores(query == null ? new MatchAllDocsQuery(): query));
+<span class="nc" id="L212">	}</span>
+
+<span class="nc" id="L214">	DocResults(Searcher searcher) {</span>
+<span class="nc" id="L215">		this.searcher = searcher;</span>
+<span class="nc" id="L216">	}</span>
+
+	/**
+	 * Sort the results using the given comparator.
+	 *
+	 * @param comparator
+	 *            how to sort the results
+	 */
+	void sort(Comparator&lt;DocResult&gt; comparator) {
+		try {
+<span class="nc" id="L226">			ensureAllResultsRead();</span>
+<span class="nc" id="L227">		} catch (InterruptedException e) {</span>
+			// Thread was interrupted; just sort the results we have.
+			// Let caller detect and deal with interruption.
+<span class="nc" id="L230">		}</span>
+<span class="nc" id="L231">		Collections.sort(results, comparator);</span>
+<span class="nc" id="L232">	}</span>
+
+	/**
+	 * Determines if there are at least a certain number of results
+	 *
+	 * This may be used if we don't want to process all results (which
+	 * may be a lot) but we do need to know something about the size
+	 * of the result set (such as for paging).
+	 *
+	 * @param lowerBound the number we're testing against
+	 *
+	 * @return true if the size of this set is at least lowerBound, false otherwise.
+	 */
+	public boolean sizeAtLeast(int lowerBound) {
+		try {
+			// Try to fetch at least this many hits
+<span class="nc" id="L248">			ensureResultsRead(lowerBound);</span>
+<span class="nc" id="L249">		} catch (InterruptedException e) {</span>
+			// Thread was interrupted; abort operation
+			// and let client decide what to do
+<span class="nc" id="L252">		}</span>
+
+<span class="nc bnc" id="L254" title="All 2 branches missed.">		return results.size() &gt;= lowerBound;</span>
+	}
+
+	/**
+	 * Get the number of documents in this results set.
+	 *
+	 * Note that this returns the number of document results available;
+	 * if there were so many hits that not all were retrieved (call
+	 * maxHitsRetrieved()), you can find the grand total of documents
+	 * by calling totalSize().
+	 *
+	 * @return the number of documents.
+	 */
+	public int size() {
+		// Make sure we've collected all results and return the size of our result list.
+		try {
+<span class="nc" id="L270">			ensureAllResultsRead();</span>
+<span class="nc" id="L271">		} catch (InterruptedException e) {</span>
+			// Thread was interrupted; return size of the results we have.
+			// Let caller detect and deal with interruption.
+<span class="nc" id="L274">			sourceHits.setMaxHitsCounted(true);</span>
+<span class="nc" id="L275">		}</span>
+<span class="nc" id="L276">		return results.size();</span>
+	}
+
+	/**
+	 * Get the total number of documents.
+	 * This even counts documents that weren't retrieved because the
+	 * set of hits was too large.
+	 *
+	 * @return the total number of documents.
+	 */
+	public int totalSize() {
+<span class="nc bnc" id="L287" title="All 2 branches missed.">		if (sourceHits == null)</span>
+<span class="nc" id="L288">			return size(); // no hits, just documents</span>
+<span class="nc" id="L289">		return sourceHits.totalNumberOfDocs();</span>
+	}
+
+	/**
+	 * Sort documents based on a document property.
+	 * @param prop the property to sort on
+	 * @param sortReverse true iff we want to sort in reverse.
+	 */
+	public void sort(DocProperty prop, boolean sortReverse) {
+<span class="nc" id="L298">		Comparator&lt;DocResult&gt; comparator = new ComparatorDocProperty(prop);</span>
+<span class="nc bnc" id="L299" title="All 2 branches missed.">		if (sortReverse) {</span>
+<span class="nc" id="L300">			comparator = new ReverseComparator&lt;&gt;(comparator);</span>
+		}
+<span class="nc" id="L302">		sort(comparator);</span>
+<span class="nc" id="L303">	}</span>
+
+	/**
+	 * Retrieve a sublist of hits.
+	 * @param fromIndex first hit to include in the resulting list
+	 * @param toIndex first hit not to include in the resulting list
+	 * @return the sublist
+	 */
+	public List&lt;DocResult&gt; subList(int fromIndex, int toIndex) {
+		try {
+<span class="nc" id="L313">			ensureResultsRead(toIndex - 1);</span>
+<span class="nc" id="L314">		} catch (InterruptedException e) {</span>
+			// Thread was interrupted. We may not even have read
+			// the first result in the sublist, so just return an empty list.
+<span class="nc" id="L317">			return Collections.emptyList();</span>
+<span class="nc" id="L318">		}</span>
+<span class="nc" id="L319">		return results.subList(fromIndex, toIndex);</span>
+	}
+
+	/**
+	 * If we still have only partially read our Hits object,
+	 * read the rest of it and add all the hits.
+	 * @throws InterruptedException
+	 */
+	private void ensureAllResultsRead() throws InterruptedException {
+<span class="nc" id="L328">		ensureResultsRead(-1);</span>
+<span class="nc" id="L329">	}</span>
+
+	/**
+	 * If we still have only partially read our Hits object,
+	 * read some more of it and add the hits.
+	 *
+	 * @param index the number of results we want to ensure have been read, or negative for all results
+	 * @throws InterruptedException
+	 */
+	synchronized void ensureResultsRead(int index) throws InterruptedException {
+<span class="fc bfc" id="L339" title="All 2 branches covered.">		if (sourceHitsFullyRead())</span>
+<span class="fc" id="L340">			return;</span>
+
+<span class="fc" id="L342">		synchronized(sourceHitsIterator) {</span>
+			// Fill list of document results
+<span class="fc" id="L344">			int doc = partialDocId;</span>
+<span class="fc" id="L345">			List&lt;Hit&gt; docHits = partialDocHits;</span>
+<span class="fc" id="L346">			partialDocId = -1;</span>
+<span class="fc" id="L347">			partialDocHits = null;</span>
+
+<span class="fc" id="L349">			IndexReader indexReader = searcher.getIndexReader();</span>
+<span class="pc bpc" id="L350" title="1 of 6 branches missed.">			while ( (index &lt; 0 || results.size() &lt;= index) &amp;&amp; sourceHitsIterator.hasNext()) {</span>
+
+<span class="fc" id="L352">				Hit hit = sourceHitsIterator.next();</span>
+<span class="fc bfc" id="L353" title="All 2 branches covered.">				if (hit.doc != doc) {</span>
+<span class="fc bfc" id="L354" title="All 2 branches covered.">					if (docHits != null) {</span>
+<span class="fc" id="L355">						Hits hits = Hits.fromList(searcher, docHits);</span>
+<span class="fc" id="L356">						hits.copySettingsFrom(sourceHits); // concordance type, etc.</span>
+<span class="fc" id="L357">						addDocResultToList(doc, hits, indexReader);</span>
+					}
+<span class="fc" id="L359">					doc = hit.doc;</span>
+<span class="fc" id="L360">					docHits = new ArrayList&lt;&gt;();</span>
+				}
+<span class="fc" id="L362">				docHits.add(hit);</span>
+<span class="fc" id="L363">			}</span>
+			// add the final dr instance to the results collection
+<span class="pc bpc" id="L365" title="1 of 2 branches missed.">			if (docHits != null) {</span>
+<span class="fc bfc" id="L366" title="All 2 branches covered.">				if (sourceHitsIterator.hasNext()) {</span>
+<span class="fc" id="L367">					partialDocId = doc;</span>
+<span class="fc" id="L368">					partialDocHits = docHits; // not done, continue from here later</span>
+				} else {
+<span class="fc" id="L370">					Hits hits = Hits.fromList(searcher, docHits);</span>
+<span class="fc" id="L371">					hits.copySettingsFrom(sourceHits); // concordance type, etc.</span>
+<span class="fc" id="L372">					addDocResultToList(doc, hits, indexReader);</span>
+				}
+			}
+<span class="pc" id="L375">		}</span>
+<span class="fc" id="L376">	}</span>
+
+	private void addDocResultToList(int doc, Hits docHits, IndexReader indexReader) {
+<span class="fc" id="L379">		DocResult docResult = new DocResult(searcher, sourceHits.settings().concordanceField(), doc, docHits);</span>
+		// Make sure we remember what kind of context we have, if any
+<span class="fc" id="L381">		docResult.setContextField(sourceHits.getContextFieldPropName());</span>
+<span class="fc" id="L382">		results.add(docResult);</span>
+<span class="fc" id="L383">	}</span>
+
+	/**
+	 * Did we stop retrieving hits because we reached the maximum?
+	 * @return true if we reached the maximum and stopped retrieving hits
+	 */
+	public boolean maxHitsRetrieved() {
+<span class="nc bnc" id="L390" title="All 2 branches missed.">		if (sourceHits == null)</span>
+<span class="nc" id="L391">			return false; // no hits, only docs</span>
+<span class="nc" id="L392">		return sourceHits.maxHitsRetrieved();</span>
+	}
+
+	/**
+	 * Did we stop counting hits because we reached the maximum?
+	 * @return true if we reached the maximum and stopped counting hits
+	 */
+	public boolean maxHitsCounted() {
+<span class="nc bnc" id="L400" title="All 2 branches missed.">		if (sourceHits == null)</span>
+<span class="nc" id="L401">			return false; // no hits, only docs</span>
+<span class="nc" id="L402">		return sourceHits.maxHitsCounted();</span>
+	}
+
+	/**
+	 * Return an iterator over these hits.
+	 *
+	 * @return the iterator
+	 */
+	@Override
+	public Iterator&lt;DocResult&gt; iterator() {
+		// Construct a custom iterator that iterates over the hits in the hits
+		// list, but can also take into account the Spans object that may not have
+		// been fully read. This ensures we don't instantiate Hit objects for all hits
+		// if we just want to display the first few.
+<span class="fc" id="L416">		return new Iterator&lt;DocResult&gt;() {</span>
+
+<span class="fc" id="L418">			int index = -1;</span>
+
+			@Override
+			public boolean hasNext() {
+				// Do we still have hits in the hits list?
+				try {
+<span class="fc" id="L424">					ensureResultsRead(index + 1);</span>
+<span class="nc" id="L425">				} catch (InterruptedException e) {</span>
+					// Thread was interrupted. Act like we're done.
+					// Let caller detect and deal with interruption.
+<span class="nc" id="L428">					return false;</span>
+<span class="fc" id="L429">				}</span>
+<span class="fc bfc" id="L430" title="All 2 branches covered.">				return index + 1 &lt; results.size();</span>
+			}
+
+			@Override
+			public DocResult next() {
+				// Check if there is a next, taking unread hits from Spans into account
+<span class="pc bpc" id="L436" title="1 of 2 branches missed.">				if (hasNext()) {</span>
+<span class="fc" id="L437">					index++;</span>
+<span class="fc" id="L438">					return results.get(index);</span>
+				}
+<span class="nc" id="L440">				throw new NoSuchElementException();</span>
+			}
+
+			@Override
+			public void remove() {
+<span class="nc" id="L445">				throw new UnsupportedOperationException();</span>
+			}
+
+		};
+	}
+
+	public DocResult get(int i) {
+		try {
+<span class="nc" id="L453">			ensureResultsRead(i);</span>
+<span class="nc" id="L454">		} catch (InterruptedException e) {</span>
+			// Thread was interrupted. Required hit hasn't been gathered;
+			// we will just return null.
+<span class="nc" id="L457">		}</span>
+<span class="nc bnc" id="L458" title="All 2 branches missed.">		if (i &gt;= results.size())</span>
+<span class="nc" id="L459">			return null;</span>
+<span class="nc" id="L460">		return results.get(i);</span>
+	}
+
+	public Searcher getSearcher() {
+<span class="nc" id="L464">		return searcher;</span>
+	}
+
+	/**
+	 * Group these results by the specified document property
+	 * @param docProp the document property to group on (i.e. number of hits in doc, value of metadata field, etc.)
+	 * @return the grouped results
+	 */
+	public DocGroups groupedBy(DocProperty docProp) {
+<span class="nc" id="L473">		return new DocGroups(this, docProp);</span>
+	}
+
+	/**
+	 * Get a window into the doc results
+	 * @param first first document result to include
+	 * @param number maximum number of document results to include
+	 * @return the window
+	 */
+	public DocResultsWindow window(int first, int number) {
+<span class="nc" id="L483">		return new DocResultsWindow(this, first, number);</span>
+	}
+
+	public Hits getOriginalHits() {
+<span class="nc" id="L487">		return sourceHits;</span>
+	}
+
+	/**
+	 * Count the number of results that have the same value for the specified
+	 * property. Basically a grouping operation without storing the results.
+	 * Used for e.g. faceted search.
+	 *
+	 * @param countBy property to count
+	 * @return the counts
+	 */
+	public DocCounts countBy(DocProperty countBy) {
+<span class="nc" id="L499">		return new DocCounts(this, countBy);</span>
+	}
+
+	/**
+	 * Sum a property for all the documents.
+	 *
+	 * Can be used to calculate the total number of tokens in a subcorpus, for example.
+	 * Note that this does retrieve all results, so it may be slow for large sets.
+	 * In particular, you should try to call this method only for DocResults created with
+	 * Searcher.queryDocuments() (and not ones created with Hits.perDocResults()) to avoid
+	 * the overhead of fetching hits.
+	 *
+	 * @param numProp a numeric property to sum
+	 * @return the sum
+	 */
+	public int intSum(DocProperty numProp) {
+		try {
+<span class="nc" id="L516">			ensureAllResultsRead();</span>
+<span class="nc" id="L517">		} catch (InterruptedException e) {</span>
+			// Thread was interrupted; just process the results we have.
+			// Let caller detect and deal with interruption.
+<span class="nc" id="L520">		}</span>
+<span class="nc" id="L521">		int sum = 0;</span>
+<span class="nc bnc" id="L522" title="All 2 branches missed.">		for (DocResult result: results) {</span>
+<span class="nc" id="L523">			sum += ((HitPropValueInt)numProp.get(result)).getValue();</span>
+<span class="nc" id="L524">		}</span>
+<span class="nc" id="L525">		return sum;</span>
+	}
+
+	@Override
+	public void setPriorityLevel(Level level) {
+<span class="nc bnc" id="L530" title="All 2 branches missed.">		if (sourceHits != null) {</span>
+<span class="nc" id="L531">			sourceHits.setPriorityLevel(level);</span>
+		}
+<span class="nc" id="L533">	}</span>
+
+	@Override
+	public Level getPriorityLevel() {
+<span class="nc" id="L537">		return sourceHits.getPriorityLevel();</span>
+	}
+
+	public int countSoFarDocsCounted() {
+<span class="nc bnc" id="L541" title="All 2 branches missed.">		return sourceHits == null ? results.size() : sourceHits.countSoFarDocsCounted();</span>
+	}
+
+	public int countSoFarDocsRetrieved() {
+<span class="nc bnc" id="L545" title="All 2 branches missed.">		return sourceHits == null ? results.size() : sourceHits.countSoFarDocsRetrieved();</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

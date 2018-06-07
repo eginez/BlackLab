@@ -1,0 +1,387 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SpanQuerySequenceOfTwo.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">SpanQuerySequenceOfTwo.java</span></div><h1>SpanQuerySequenceOfTwo.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.lucene;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.index.TermContext;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.spans.SpanWeight;
+
+import nl.inl.blacklab.search.fimatch.ForwardIndexAccessor;
+import nl.inl.blacklab.search.fimatch.Nfa;
+import nl.inl.blacklab.search.lucene.optimize.ClauseCombiner;
+
+/**
+ * Combines two spans, keeping only combinations of hits that occur one after the other. The order is
+ * significant: a hit from the first span must be followed by a hit from the second.
+ *
+ * Note that this class is different from org.apache.lucene.search.spans.SpanNearQuery: it tries to
+ * make sure it generates *all* possible sequence matches. SpanNearQuery doesn't do this; once a hit
+ * is used in a SpanNearQuery match, it advances to the next hit.
+ *
+ * In the future, this class could be expanded to make the exact behaviour configurable: find all
+ * matches / find longest matches / find shortest matches / ...
+ *
+ * See SpanSequenceRaw for details on the matching process.
+ */
+@SuppressWarnings(&quot;unused&quot;)
+class SpanQuerySequenceOfTwo extends BLSpanQueryAbstract {
+
+	public SpanQuerySequenceOfTwo(BLSpanQuery first, BLSpanQuery second) {
+<span class="nc" id="L54">		super(first, second);</span>
+<span class="nc" id="L55">	}</span>
+
+	public SpanQuerySequenceOfTwo(Collection&lt;BLSpanQuery&gt; clauscol) {
+<span class="nc" id="L58">		super(clauscol);</span>
+<span class="nc bnc" id="L59" title="All 2 branches missed.">		if (clauses.size() != 2)</span>
+<span class="nc" id="L60">			throw new IllegalArgumentException(&quot;Can only handle two clauses!&quot;);</span>
+<span class="nc" id="L61">	}</span>
+
+	public SpanQuerySequenceOfTwo(BLSpanQuery[] _clauses) {
+<span class="nc" id="L64">		super(_clauses);</span>
+<span class="nc bnc" id="L65" title="All 2 branches missed.">		if (clauses.size() != 2)</span>
+<span class="nc" id="L66">			throw new IllegalArgumentException(&quot;Can only handle two clauses!&quot;);</span>
+<span class="nc" id="L67">	}</span>
+
+	static boolean rewriteClauses(List&lt;BLSpanQuery&gt; clauses, IndexReader reader) throws IOException {
+<span class="nc" id="L70">		boolean anyRewritten = false;</span>
+		// Rewrite all clauses and flatten again if necessary.
+<span class="nc bnc" id="L72" title="All 2 branches missed.">		for (int i = 0; i &lt; clauses.size(); i++) {</span>
+<span class="nc" id="L73">			BLSpanQuery child = clauses.get(i);</span>
+<span class="nc" id="L74">			BLSpanQuery rewritten = child.rewrite(reader);</span>
+<span class="nc bnc" id="L75" title="All 2 branches missed.">			if (child != rewritten) {</span>
+				// Replace the child with the rewritten version
+<span class="nc" id="L77">				anyRewritten = true;</span>
+<span class="nc" id="L78">				clauses.set(i, rewritten);</span>
+			}
+		}
+<span class="nc" id="L81">		return anyRewritten;</span>
+	}
+
+	@Override
+	public BLSpanQuery rewrite(IndexReader reader) throws IOException {
+
+<span class="nc" id="L87">		boolean anyRewritten = false;</span>
+
+		// Make a copy, because our methods rewrite things in-place.
+<span class="nc" id="L90">		List&lt;BLSpanQuery&gt; cl = new ArrayList&lt;&gt;(clauses);</span>
+
+		// Rewrite each clause
+<span class="nc" id="L93">		anyRewritten |= rewriteClauses(cl, reader);</span>
+
+		// If any part of the sequence matches the empty sequence, we must
+		// rewrite it to several alternatives combined with OR. Do so now.
+<span class="nc" id="L97">		List&lt;List&lt;BLSpanQuery&gt;&gt; results = makeAlternatives(cl, reader);</span>
+<span class="nc bnc" id="L98" title="All 4 branches missed.">		if (results.size() == 1 &amp;&amp; !anyRewritten)</span>
+<span class="nc" id="L99">			return this;</span>
+<span class="nc" id="L100">		List&lt;BLSpanQuery&gt; orCl = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L101" title="All 2 branches missed.">		for (List&lt;BLSpanQuery&gt; seq: results) {</span>
+<span class="nc bnc" id="L102" title="All 2 branches missed.">			if (seq.size() == 1)</span>
+<span class="nc" id="L103">				orCl.add(seq.get(0));</span>
+			else
+<span class="nc" id="L105">				orCl.add(new SpanQuerySequenceOfTwo(seq.toArray(new BLSpanQuery[0])));</span>
+<span class="nc" id="L106">		}</span>
+<span class="nc bnc" id="L107" title="All 2 branches missed.">		if (orCl.size() == 1)</span>
+<span class="nc" id="L108">			return orCl.get(0);</span>
+<span class="nc" id="L109">		return new BLSpanOrQuery(orCl.toArray(new BLSpanQuery[0])).rewrite(reader);</span>
+	}
+
+	/**
+	 * Given translated clauses, builds several alternatives and combines them with OR.
+	 *
+	 * This is necessary because of how sequence matching works: first the hits in each
+	 * of the clauses are located, then we try to detect valid sequences by looking at these
+	 * hits. But when a clause also matches the empty sequence, you may miss valid sequence
+	 * matches because there's no hit in the clause to combine with the hits from other clauses.
+	 *
+	 * @param alternatives the alternative sequences we have built so far
+	 * @param parts translation results for each of the clauses so far
+	 * @param reader the index reader
+	 * @return several alternatives combined with or
+	 * @throws IOException
+	 */
+	List&lt;List&lt;BLSpanQuery&gt;&gt; makeAlternatives(List&lt;BLSpanQuery&gt; parts, IndexReader reader) throws IOException {
+<span class="nc bnc" id="L127" title="All 2 branches missed.">		if (parts.size() == 1) {</span>
+			// Last clause in the sequence; just return it
+			// (noEmpty() version because we will build alternatives
+			//  in the caller if the input matched the empty sequence)
+<span class="nc" id="L131">			return Arrays.asList(Arrays.asList(parts.get(0).noEmpty().rewrite(reader)));</span>
+		}
+
+		// Recursively determine the query for the &quot;tail&quot; of the list,
+		// and whether it matches the empty sequence or not.
+<span class="nc" id="L136">		List&lt;BLSpanQuery&gt; partsTail = parts.subList(1, parts.size());</span>
+<span class="nc" id="L137">		boolean restMatchesEmpty = true;</span>
+<span class="nc bnc" id="L138" title="All 2 branches missed.">		for (BLSpanQuery part: partsTail) {</span>
+<span class="nc bnc" id="L139" title="All 2 branches missed.">			if (!part.matchesEmptySequence()) {</span>
+<span class="nc" id="L140">				restMatchesEmpty = false;</span>
+<span class="nc" id="L141">				break;</span>
+			}
+<span class="nc" id="L143">		}</span>
+<span class="nc" id="L144">		List&lt;List&lt;BLSpanQuery&gt;&gt; altTail = makeAlternatives(partsTail, reader);</span>
+
+		// Now, add the head part and check if that matches the empty sequence.
+<span class="nc" id="L147">		return combine(parts.get(0), altTail, restMatchesEmpty, reader);</span>
+	}
+
+	private static List&lt;List&lt;BLSpanQuery&gt;&gt; combine(BLSpanQuery head,
+			List&lt;List&lt;BLSpanQuery&gt;&gt; tailAlts, boolean tailMatchesEmpty, IndexReader reader) throws IOException {
+<span class="nc" id="L152">		List&lt;List&lt;BLSpanQuery&gt;&gt; results = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L153">		BLSpanQuery headNoEmpty = head.noEmpty().rewrite(reader);</span>
+<span class="nc" id="L154">		boolean headMatchesEmpty = head.matchesEmptySequence();</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">		for (List&lt;BLSpanQuery&gt; tailAlt: tailAlts) {</span>
+			// Add head in front of each tail alternative
+<span class="nc" id="L157">			List&lt;BLSpanQuery&gt; n = new ArrayList&lt;&gt;(tailAlt);</span>
+<span class="nc" id="L158">			n.add(0, headNoEmpty);</span>
+<span class="nc" id="L159">			results.add(n);</span>
+
+			// If head can be empty, also add original tail alternative
+<span class="nc bnc" id="L162" title="All 2 branches missed.">			if (headMatchesEmpty)</span>
+<span class="nc" id="L163">				results.add(tailAlt);</span>
+<span class="nc" id="L164">		}</span>
+		// If tail can be empty, also add the head separately
+<span class="nc bnc" id="L166" title="All 2 branches missed.">		if (tailMatchesEmpty)</span>
+<span class="nc" id="L167">			results.add(Arrays.asList(headNoEmpty));</span>
+<span class="nc" id="L168">		return results;</span>
+	}
+
+	@Override
+	public boolean matchesEmptySequence() {
+<span class="nc bnc" id="L173" title="All 2 branches missed.">		for (BLSpanQuery cl: clauses) {</span>
+<span class="nc bnc" id="L174" title="All 2 branches missed.">			if (!cl.matchesEmptySequence())</span>
+<span class="nc" id="L175">				return false;</span>
+<span class="nc" id="L176">		}</span>
+<span class="nc" id="L177">		return true;</span>
+	}
+
+	@Override
+	public BLSpanQuery noEmpty() {
+<span class="nc bnc" id="L182" title="All 2 branches missed.">		if (!matchesEmptySequence())</span>
+<span class="nc" id="L183">			return this;</span>
+<span class="nc" id="L184">		throw new RuntimeException(&quot;Sequence should have been rewritten!&quot;);</span>
+	}
+
+	@Override
+	public BLSpanWeight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
+<span class="nc" id="L189">		List&lt;BLSpanWeight&gt; weights = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L190" title="All 2 branches missed.">		for (BLSpanQuery clause: clauses) {</span>
+<span class="nc" id="L191">			weights.add(clause.createWeight(searcher, needsScores));</span>
+<span class="nc" id="L192">		}</span>
+<span class="nc bnc" id="L193" title="All 2 branches missed.">		Map&lt;Term, TermContext&gt; contexts = needsScores ? getTermContexts(weights.toArray(new SpanWeight[0])) : null;</span>
+<span class="nc" id="L194">		return new SpanWeightSequenceOfTwo(weights, searcher, contexts);</span>
+	}
+
+	class SpanWeightSequenceOfTwo extends BLSpanWeight {
+
+		final List&lt;BLSpanWeight&gt; weights;
+
+<span class="nc" id="L201">		public SpanWeightSequenceOfTwo(List&lt;BLSpanWeight&gt; weights, IndexSearcher searcher, Map&lt;Term, TermContext&gt; terms) throws IOException {</span>
+<span class="nc" id="L202">			super(SpanQuerySequenceOfTwo.this, searcher, terms);</span>
+<span class="nc" id="L203">			this.weights = weights;</span>
+<span class="nc" id="L204">		}</span>
+
+		@Override
+		public void extractTerms(Set&lt;Term&gt; terms) {
+<span class="nc bnc" id="L208" title="All 2 branches missed.">			for (SpanWeight weight: weights) {</span>
+<span class="nc" id="L209">				weight.extractTerms(terms);</span>
+<span class="nc" id="L210">			}</span>
+<span class="nc" id="L211">		}</span>
+
+		@Override
+		public void extractTermContexts(Map&lt;Term, TermContext&gt; contexts) {
+<span class="nc bnc" id="L215" title="All 2 branches missed.">			for (SpanWeight weight: weights) {</span>
+<span class="nc" id="L216">				weight.extractTermContexts(contexts);</span>
+<span class="nc" id="L217">			}</span>
+<span class="nc" id="L218">		}</span>
+
+		@Override
+		public BLSpans getSpans(final LeafReaderContext context, Postings requiredPostings) throws IOException {
+<span class="nc" id="L222">			BLSpans combi = weights.get(0).getSpans(context, requiredPostings);</span>
+<span class="nc bnc" id="L223" title="All 2 branches missed.">			if (combi == null)</span>
+<span class="nc" id="L224">				return null;</span>
+<span class="nc" id="L225">			boolean combiUniqueEnds = clauses.get(0).hitsHaveUniqueEnd();</span>
+<span class="nc" id="L226">			boolean combiEndpointSorted = clauses.get(0).hitsEndPointSorted();</span>
+<span class="nc bnc" id="L227" title="All 2 branches missed.">			for (int i = 1; i &lt; weights.size(); i++) {</span>
+<span class="nc" id="L228">				BLSpanWeight weight = weights.get(i);</span>
+<span class="nc" id="L229">				BLSpans si = weight.getSpans(context, requiredPostings);</span>
+<span class="nc bnc" id="L230" title="All 2 branches missed.">				if (si == null)</span>
+<span class="nc" id="L231">					return null;</span>
+
+				// Note: the spans coming from SequenceSpansRaw may not be sorted by end point.
+				// We keep track of this and sort them manually if necessary.
+<span class="nc bnc" id="L235" title="All 4 branches missed.">				if (combiUniqueEnds &amp;&amp; combiEndpointSorted &amp;&amp;</span>
+<span class="nc bnc" id="L236" title="All 4 branches missed.">					clauses.get(i).hitsStartPointSorted() &amp;&amp; clauses.get(i).hitsHaveUniqueStart()) {</span>
+					// We can take a shortcut because of what we know about the Spans we're combining.
+<span class="nc" id="L238">					combi = new SpansSequenceSimple(combi, si);</span>
+<span class="nc" id="L239">					combiEndpointSorted = clauses.get(i).hitsAllSameLength();</span>
+<span class="nc" id="L240">					combiUniqueEnds = clauses.get(i).hitsHaveUniqueEnd();</span>
+				} else {
+<span class="nc bnc" id="L242" title="All 2 branches missed.">					if (!combiEndpointSorted)</span>
+<span class="nc" id="L243">						combi = new PerDocumentSortedSpans(combi, PerDocumentSortedSpans.cmpEndPoint, false);</span>
+<span class="nc bnc" id="L244" title="All 2 branches missed.">					if (!clauses.get(i).hitsStartPointSorted())</span>
+<span class="nc" id="L245">						si = new PerDocumentSortedSpans(si, PerDocumentSortedSpans.cmpStartPoint, false);</span>
+<span class="nc" id="L246">					combi = new SpansSequenceRaw(combi, si);</span>
+<span class="nc bnc" id="L247" title="All 4 branches missed.">					combiUniqueEnds = combiUniqueEnds &amp;&amp; clauses.get(i).hitsHaveUniqueEnd();</span>
+<span class="nc" id="L248">					combiEndpointSorted = clauses.get(i).hitsAllSameLength();</span>
+				}
+			}
+
+<span class="nc" id="L252">			return combi;</span>
+		}
+
+	}
+
+	@Override
+	public String toString(String field) {
+<span class="nc bnc" id="L259" title="All 4 branches missed.">		boolean leftSimple = clauses.get(0).hitsHaveUniqueEnd() &amp;&amp; clauses.get(0).hitsEndPointSorted();</span>
+<span class="nc bnc" id="L260" title="All 4 branches missed.">		boolean rightSimple = clauses.get(1).hitsHaveUniqueStart() &amp;&amp; clauses.get(1).hitsStartPointSorted();</span>
+<span class="nc bnc" id="L261" title="All 4 branches missed.">		if (leftSimple &amp;&amp; rightSimple) {</span>
+			// Indicate that this will be matched using SpansSequenceSimple
+<span class="nc" id="L263">			return &quot;SEQS(&quot; + clausesToString(field) + &quot;)&quot;;</span>
+		}
+		// Indicate that this will be matched using SpansSequenceRaw (slower)
+<span class="nc" id="L266">		return &quot;SEQ(&quot; + clausesToString(field) + &quot;)&quot;;</span>
+	}
+
+	@Override
+	public boolean hitsAllSameLength() {
+<span class="nc bnc" id="L271" title="All 2 branches missed.">		for (BLSpanQuery clause: clauses) {</span>
+<span class="nc bnc" id="L272" title="All 2 branches missed.">			if (!clause.hitsAllSameLength())</span>
+<span class="nc" id="L273">				return false;</span>
+<span class="nc" id="L274">		}</span>
+<span class="nc" id="L275">		return true;</span>
+	}
+
+	@Override
+	public int hitsLengthMin() {
+<span class="nc" id="L280">		int n = 0;</span>
+<span class="nc bnc" id="L281" title="All 2 branches missed.">		for (BLSpanQuery clause: clauses) {</span>
+<span class="nc" id="L282">			n += clause.hitsLengthMin();</span>
+<span class="nc" id="L283">		}</span>
+<span class="nc" id="L284">		return n;</span>
+	}
+
+	@Override
+	public int hitsLengthMax() {
+<span class="nc" id="L289">		int n = 0;</span>
+<span class="nc bnc" id="L290" title="All 2 branches missed.">		for (BLSpanQuery clause: clauses) {</span>
+<span class="nc" id="L291">			int max = clause.hitsLengthMax();</span>
+<span class="nc bnc" id="L292" title="All 2 branches missed.">			if (max == Integer.MAX_VALUE)</span>
+<span class="nc" id="L293">				return max; // infinite</span>
+<span class="nc" id="L294">			n += max;</span>
+<span class="nc" id="L295">		}</span>
+<span class="nc" id="L296">		return n;</span>
+	}
+
+	@Override
+	public boolean hitsEndPointSorted() {
+<span class="nc bnc" id="L301" title="All 2 branches missed.">		for (int i = 0; i &lt; clauses.size() - 1; i++) {</span>
+<span class="nc bnc" id="L302" title="All 2 branches missed.">			if (!clauses.get(i).hitsHaveUniqueEnd())</span>
+<span class="nc" id="L303">				return false;</span>
+		}
+<span class="nc bnc" id="L305" title="All 2 branches missed.">		for (int i = 1; i &lt; clauses.size(); i++) {</span>
+<span class="nc bnc" id="L306" title="All 2 branches missed.">			if (!clauses.get(i).hitsAllSameLength())</span>
+<span class="nc" id="L307">				return false;</span>
+		}
+<span class="nc" id="L309">		return true;</span>
+	}
+
+	@Override
+	public boolean hitsStartPointSorted() {
+<span class="nc bnc" id="L314" title="All 2 branches missed.">		for (int i = 0; i &lt; clauses.size() - 1; i++) {</span>
+<span class="nc bnc" id="L315" title="All 2 branches missed.">			if (!clauses.get(i).hitsAllSameLength())</span>
+<span class="nc" id="L316">				return false;</span>
+		}
+<span class="nc" id="L318">		return true;</span>
+	}
+
+	@Override
+	public boolean hitsHaveUniqueStart() {
+<span class="nc bnc" id="L323" title="All 2 branches missed.">		for (BLSpanQuery clause: clauses) {</span>
+<span class="nc bnc" id="L324" title="All 2 branches missed.">			if (!clause.hitsHaveUniqueStart())</span>
+<span class="nc" id="L325">				return false;</span>
+<span class="nc" id="L326">		}</span>
+<span class="nc" id="L327">		return true;</span>
+	}
+
+	@Override
+	public boolean hitsHaveUniqueEnd() {
+<span class="nc bnc" id="L332" title="All 2 branches missed.">		for (BLSpanQuery clause: clauses) {</span>
+<span class="nc bnc" id="L333" title="All 2 branches missed.">			if (!clause.hitsHaveUniqueEnd())</span>
+<span class="nc" id="L334">				return false;</span>
+<span class="nc" id="L335">		}</span>
+<span class="nc" id="L336">		return true;</span>
+
+	}
+
+	@Override
+	public boolean hitsAreUnique() {
+<span class="nc bnc" id="L342" title="All 4 branches missed.">		return hitsHaveUniqueStart() || hitsHaveUniqueEnd();</span>
+	}
+
+	@Override
+	public Nfa getNfa(ForwardIndexAccessor fiAccessor, int direction) {
+<span class="nc" id="L347">		Nfa frag = null;</span>
+<span class="nc bnc" id="L348" title="All 2 branches missed.">		int start = direction == 1 ? 0 : clauses.size() - 1;</span>
+<span class="nc bnc" id="L349" title="All 2 branches missed.">		int end   = direction == 1 ? clauses.size() : -1;</span>
+<span class="nc bnc" id="L350" title="All 2 branches missed.">		for (int i = start; i != end; i += direction) {</span>
+<span class="nc" id="L351">			BLSpanQuery clause = clauses.get(i);</span>
+<span class="nc bnc" id="L352" title="All 2 branches missed.">			if (frag == null)</span>
+<span class="nc" id="L353">				frag = clause.getNfa(fiAccessor, direction);</span>
+			else
+<span class="nc" id="L355">				frag.append(clause.getNfa(fiAccessor, direction));</span>
+		}
+<span class="nc" id="L357">		return frag;</span>
+	}
+
+	@Override
+	public boolean canMakeNfa() {
+<span class="nc bnc" id="L362" title="All 2 branches missed.">		for (BLSpanQuery clause: clauses) {</span>
+<span class="nc bnc" id="L363" title="All 2 branches missed.">			if (!clause.canMakeNfa())</span>
+<span class="nc" id="L364">				return false;</span>
+<span class="nc" id="L365">		}</span>
+<span class="nc" id="L366">		return true;</span>
+	}
+
+	@Override
+	public long reverseMatchingCost(IndexReader reader) {
+<span class="nc" id="L371">		long cost = Integer.MAX_VALUE;</span>
+<span class="nc bnc" id="L372" title="All 2 branches missed.">		for (BLSpanQuery clause: clauses) {</span>
+<span class="nc" id="L373">			cost = Math.min(cost, clause.reverseMatchingCost(reader));</span>
+<span class="nc" id="L374">		}</span>
+<span class="nc" id="L375">		return cost;</span>
+	}
+
+	@Override
+	public int forwardMatchingCost() {
+<span class="nc" id="L380">		int cost = 0;</span>
+<span class="nc bnc" id="L381" title="All 2 branches missed.">		for (BLSpanQuery clause: clauses) {</span>
+<span class="nc" id="L382">			cost += clause.forwardMatchingCost();</span>
+<span class="nc" id="L383">		}</span>
+<span class="nc" id="L384">		return cost;</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

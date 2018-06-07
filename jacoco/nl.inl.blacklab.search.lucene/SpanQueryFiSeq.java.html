@@ -1,0 +1,256 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SpanQueryFiSeq.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">SpanQueryFiSeq.java</span></div><h1>SpanQueryFiSeq.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.lucene;
+
+import java.io.IOException;
+import java.util.IdentityHashMap;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.index.TermContext;
+import org.apache.lucene.search.IndexSearcher;
+
+import nl.inl.blacklab.search.fimatch.ForwardIndexAccessor;
+import nl.inl.blacklab.search.fimatch.Nfa;
+import nl.inl.blacklab.search.fimatch.NfaState;
+import nl.inl.blacklab.search.fimatch.NfaTwoWay;
+
+/**
+ * Find hits that match the specified NFA, starting from the
+ * specified anchor query (either the start of end of those hits,
+ * with a possible offset added), in the specified direction.
+ */
+public class SpanQueryFiSeq extends BLSpanQueryAbstract {
+
+	boolean startOfAnchor;
+
+	/** Our NFA, both in our own direction and the opposite direction. */
+	NfaTwoWay nfa;
+
+	private BLSpanQuery nfaQuery;
+
+	int direction;
+
+	ForwardIndexAccessor fiAccessor;
+
+	/**
+	 *
+	 * @param anchor hits to use as anchor to start NFA matching
+	 * @param startOfAnchor if true, use the starts of anchor hits; if false, use the ends
+	 * @param nfa the NFA to use for matching
+	 * @param nfaQuery the query that generated the NFA, so we can still use its guarantee methods for optimization
+	 * @param direction the direction to match in (-1 = right-to-left, 1 = left-to-right)
+	 * @param fiAccessor maps between term strings and term indices for each property
+	 */
+	public SpanQueryFiSeq(BLSpanQuery anchor, boolean startOfAnchor, NfaTwoWay nfa, BLSpanQuery nfaQuery, int direction, ForwardIndexAccessor fiAccessor) {
+<span class="fc" id="L62">		super(anchor);</span>
+<span class="fc" id="L63">		this.startOfAnchor = startOfAnchor;</span>
+<span class="fc" id="L64">		this.nfa = nfa;</span>
+<span class="fc" id="L65">		this.nfaQuery = nfaQuery;</span>
+<span class="fc" id="L66">		this.direction = direction;</span>
+<span class="fc" id="L67">		this.fiAccessor = fiAccessor;</span>
+<span class="fc" id="L68">	}</span>
+
+	@Override
+	public BLSpanQuery rewrite(IndexReader reader) throws IOException {
+<span class="fc" id="L72">		BLSpanQuery rewritten = clauses.get(0).rewrite(reader);</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">		if (rewritten != clauses.get(0)) {</span>
+<span class="fc" id="L74">			SpanQueryFiSeq result = new SpanQueryFiSeq(rewritten, startOfAnchor, nfa, nfaQuery, direction, fiAccessor);</span>
+<span class="fc" id="L75">			return result;</span>
+		}
+<span class="fc" id="L77">		return this;</span>
+	}
+
+	@Override
+	public BLSpanWeight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
+
+		// Finalize our NFA, so it looks up property numbers for its property names.
+<span class="fc" id="L84">		nfa.finish();</span>
+<span class="fc" id="L85">		nfa.lookupPropertyNumbers(fiAccessor, new IdentityHashMap&lt;NfaState,Boolean&gt;());</span>
+
+<span class="fc" id="L87">		BLSpanWeight anchorWeight = clauses.get(0).createWeight(searcher, needsScores);</span>
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">		Map&lt;Term, TermContext&gt; contexts = needsScores ? getTermContexts(anchorWeight) : null;</span>
+<span class="fc" id="L89">		return new SpanWeightFiSeq(anchorWeight, searcher, contexts);</span>
+	}
+
+	class SpanWeightFiSeq extends BLSpanWeight {
+
+		final BLSpanWeight anchorWeight;
+
+<span class="fc" id="L96">		public SpanWeightFiSeq(BLSpanWeight anchorWeight, IndexSearcher searcher, Map&lt;Term, TermContext&gt; terms) throws IOException {</span>
+<span class="fc" id="L97">			super(SpanQueryFiSeq.this, searcher, terms);</span>
+<span class="fc" id="L98">			this.anchorWeight = anchorWeight;</span>
+<span class="fc" id="L99">		}</span>
+
+		@Override
+		public void extractTerms(Set&lt;Term&gt; terms) {
+<span class="fc" id="L103">			anchorWeight.extractTerms(terms);</span>
+<span class="fc" id="L104">		}</span>
+
+		@Override
+		public void extractTermContexts(Map&lt;Term, TermContext&gt; contexts) {
+<span class="nc" id="L108">			anchorWeight.extractTermContexts(contexts);</span>
+<span class="nc" id="L109">		}</span>
+
+		@Override
+		public BLSpans getSpans(final LeafReaderContext context, Postings requiredPostings) throws IOException {
+<span class="fc" id="L113">			BLSpans anchorSpans = anchorWeight.getSpans(context, requiredPostings);</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">			if (anchorSpans == null)</span>
+<span class="fc" id="L115">				return null;</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">			if (!clauses.get(0).hitsAreUnique())</span>
+<span class="fc" id="L117">				anchorSpans = BLSpans.optSortUniq(anchorSpans, false, true);</span>
+<span class="fc" id="L118">			return new SpansFiSeq(anchorSpans, startOfAnchor, nfa.getNfa().getStartingState(), direction,</span>
+<span class="fc" id="L119">					fiAccessor.getForwardIndexAccessorLeafReader(context.reader()));</span>
+		}
+	}
+
+	@Override
+	public String toString(String field) {
+<span class="fc" id="L125">		return &quot;FISEQ(&quot; + clausesToString(field) + &quot;, &quot; + nfa.getNfa() + &quot;, &quot; + direction + &quot;)&quot;;</span>
+	}
+
+	// public SpanQueryFiSeq copy() {
+	// return new SpanQueryFiSeq(clauses.get(0), startOfAnchor, nfaFrag, direction, fiAccessor);
+	// }
+
+	@Override
+	public boolean matchesEmptySequence() {
+<span class="fc" id="L134">		return false; // can't be used if clause matches empty sequence, we need anchors</span>
+	}
+
+	@Override
+	public BLSpanQuery noEmpty() {
+<span class="fc" id="L139">		return this;</span>
+	}
+
+	@Override
+	public boolean hitsAllSameLength() {
+<span class="pc bpc" id="L144" title="2 of 4 branches missed.">		return clauses.get(0).hitsAllSameLength() &amp;&amp; nfaQuery.hitsAllSameLength();</span>
+	}
+
+	@Override
+	public int hitsLengthMin() {
+<span class="nc bnc" id="L149" title="All 8 branches missed.">		if (startOfAnchor &amp;&amp; direction == -1 || !startOfAnchor &amp;&amp; direction == 1) {</span>
+			// Non-overlapping; add the two values
+<span class="nc" id="L151">			return clauses.get(0).hitsLengthMin() + nfaQuery.hitsLengthMin();</span>
+		}
+		// Overlapping; use the largest value
+<span class="nc" id="L154">		return Math.max(clauses.get(0).hitsLengthMin(), nfaQuery.hitsLengthMin());</span>
+	}
+
+	@Override
+	public int hitsLengthMax() {
+<span class="nc bnc" id="L159" title="All 8 branches missed.">		if (startOfAnchor &amp;&amp; direction == -1 || !startOfAnchor &amp;&amp; direction == 1) {</span>
+			// Non-overlapping; add the two values
+<span class="nc" id="L161">			return clauses.get(0).hitsLengthMax() + nfaQuery.hitsLengthMax();</span>
+		}
+		// Overlapping; use the largest value
+<span class="nc" id="L164">		return Math.min(clauses.get(0).hitsLengthMax(), nfaQuery.hitsLengthMax());</span>
+	}
+
+	@Override
+	public boolean hitsStartPointSorted() {
+<span class="fc bfc" id="L169" title="All 2 branches covered.">		if (direction == 1)</span>
+<span class="fc" id="L170">			return clauses.get(0).hitsStartPointSorted();</span>
+<span class="pc bpc" id="L171" title="1 of 4 branches missed.">		return clauses.get(0).hitsStartPointSorted() &amp;&amp; nfaQuery.hitsAllSameLength();</span>
+	}
+
+	@Override
+	public boolean hitsEndPointSorted() {
+<span class="nc bnc" id="L176" title="All 2 branches missed.">		if (direction == -1)</span>
+<span class="nc" id="L177">			return clauses.get(0).hitsEndPointSorted();</span>
+<span class="nc bnc" id="L178" title="All 4 branches missed.">		return clauses.get(0).hitsEndPointSorted() &amp;&amp; nfaQuery.hitsAllSameLength();</span>
+	}
+
+	@Override
+	public boolean hitsHaveUniqueStart() {
+<span class="fc bfc" id="L183" title="All 2 branches covered.">		if (direction == 1)</span>
+<span class="fc" id="L184">			return clauses.get(0).hitsHaveUniqueStart();</span>
+<span class="fc bfc" id="L185" title="All 6 branches covered.">		return clauses.get(0).hitsHaveUniqueStart() &amp;&amp; nfaQuery.hitsAllSameLength() || nfaQuery.hitsHaveUniqueStart();</span>
+	}
+
+	@Override
+	public boolean hitsHaveUniqueEnd() {
+<span class="fc bfc" id="L190" title="All 2 branches covered.">		if (direction == -1)</span>
+<span class="fc" id="L191">			return clauses.get(0).hitsHaveUniqueEnd();</span>
+<span class="pc bpc" id="L192" title="2 of 6 branches missed.">		return clauses.get(0).hitsHaveUniqueEnd() &amp;&amp; nfaQuery.hitsAllSameLength() || nfaQuery.hitsHaveUniqueEnd();</span>
+	}
+
+	@Override
+	public boolean hitsAreUnique() {
+<span class="pc bpc" id="L197" title="1 of 4 branches missed.">		return hitsHaveUniqueStart() || hitsHaveUniqueEnd();</span>
+	}
+
+	@Override
+	public long reverseMatchingCost(IndexReader reader) {
+<span class="fc" id="L202">		return clauses.get(0).reverseMatchingCost(reader);</span>
+	}
+
+	@Override
+	public int forwardMatchingCost() {
+<span class="fc" id="L207">		return clauses.get(0).forwardMatchingCost() + nfaQuery.forwardMatchingCost();</span>
+	}
+
+	public int getDirection() {
+<span class="fc" id="L211">		return direction;</span>
+	}
+
+	/**
+	 * Append a new NFA fragment to (a copy of) our existing NFA, and return a new SpanQueryFiSeq using it.
+	 *
+	 * @param originalQuery query that yielded this NFA
+	 * @return newly created, expanded SpanQueryFiSeq
+	 */
+	public SpanQueryFiSeq appendNfa(BLSpanQuery originalQuery) {
+<span class="fc" id="L221">		NfaTwoWay newNfa = nfa.copy();</span>
+<span class="fc" id="L222">		newNfa.append(originalQuery.getNfaTwoWay(fiAccessor, direction));</span>
+<span class="pc bpc" id="L223" title="1 of 2 branches missed.">		boolean addToRight = direction == 1;</span>
+<span class="fc" id="L224">		SpanQuerySequence newNfaQuery = SpanQuerySequence.sequenceInternalize(nfaQuery, originalQuery, addToRight);</span>
+<span class="fc" id="L225">		return new SpanQueryFiSeq(clauses.get(0), startOfAnchor, newNfa, newNfaQuery, direction, fiAccessor);</span>
+	}
+
+	public ForwardIndexAccessor getFiAccessor() {
+<span class="nc" id="L229">		return fiAccessor;</span>
+	}
+
+	@Override
+	public Nfa getNfa(ForwardIndexAccessor fiAccessor, int direction) {
+		// Convert our anchor to an NFA.
+<span class="fc" id="L235">		Nfa anchorNfa = clauses.get(0).getNfa(fiAccessor, direction);</span>
+
+		// Is the direction we want the same as the current direction?
+<span class="fc bfc" id="L238" title="All 2 branches covered.">		if (direction == this.direction) {</span>
+			// Yes, same direction. Append original NFA to new anchor NFA.
+<span class="fc" id="L240">			anchorNfa.append(nfa.getNfa().copy());</span>
+<span class="fc" id="L241">			return anchorNfa;</span>
+		}
+		// Reverse direction. Reverse our original NFA and append the anchor NFA.
+<span class="fc" id="L244">		Nfa result = nfa.getNfaReverse().copy();</span>
+<span class="fc" id="L245">		result.append(anchorNfa);</span>
+<span class="fc" id="L246">		return result;</span>
+	}
+
+	@Override
+	public boolean canMakeNfa() {
+<span class="fc" id="L251">		return clauses.get(0).canMakeNfa();</span>
+	}
+
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

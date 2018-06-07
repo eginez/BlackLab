@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Nfa.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.fimatch</a> &gt; <span class="el_source">Nfa.java</span></div><h1>Nfa.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.search.fimatch;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import nl.inl.blacklab.search.lucene.BLSpanQuery;
+
+/**
+ * A fragment of an NFA being built.
+ * Contains a starting state and a list of dangling end states
+ */
+public class Nfa {
+
+	/** Starting state for this NFA */
+	NfaState startingState;
+
+	/** Where we need to add arrows if we want to append another bit of NFA to this one. */
+	Collection&lt;NfaState&gt; danglingArrows;
+
+<span class="fc" id="L26">	public Nfa(NfaState startingState, Collection&lt;NfaState&gt; danglingArrows) {</span>
+<span class="fc" id="L27">		this.startingState = startingState;</span>
+<span class="fc" id="L28">		this.danglingArrows = danglingArrows;</span>
+<span class="fc" id="L29">		this.danglingArrows = new ArrayList&lt;&gt;();</span>
+<span class="pc bpc" id="L30" title="1 of 2 branches missed.">		if (danglingArrows != null)</span>
+<span class="fc" id="L31">			this.danglingArrows.addAll(danglingArrows);</span>
+<span class="fc" id="L32">	}</span>
+
+	public NfaState getStartingState() {
+<span class="fc" id="L35">		return startingState;</span>
+	}
+
+	private void setStartingState(NfaState start) {
+<span class="fc" id="L39">		this.startingState = start;</span>
+<span class="fc" id="L40">	}</span>
+
+	public Nfa copy() {
+<span class="fc" id="L43">		List&lt;NfaState&gt; dangling = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L44">		Map&lt;NfaState, NfaState&gt; copiesMade = new IdentityHashMap&lt;&gt;();</span>
+<span class="fc" id="L45">		NfaState copy = startingState.copy(dangling, copiesMade);</span>
+<span class="fc" id="L46">		return new Nfa(copy, dangling);</span>
+	}
+
+	public void append(Nfa state) {
+<span class="fc bfc" id="L50" title="All 2 branches covered.">		for (NfaState d: danglingArrows) {</span>
+<span class="fc" id="L51">			d.fillDangling(state.getStartingState());</span>
+<span class="fc" id="L52">		}</span>
+<span class="fc" id="L53">		danglingArrows.clear();</span>
+<span class="fc" id="L54">		danglingArrows.addAll(state.getDanglingArrows());</span>
+<span class="fc" id="L55">	}</span>
+
+	public void repeat(int min, int max) {
+		// {min, max} with min &gt; 0 or * (0 or more)
+		// First, create a sequence of min copies of the clause.
+		// Then, follow up with (max - min) links with an escape arrow
+		// each (or loop back to the last copy of the min sequence for
+		// max == infinite)
+
+		// Create the min part
+<span class="fc" id="L65">		Nfa link = this; // we'll loop back to link later if max == infinite</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">		if (min &gt; 1) {</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">			for (int i = 1; i &lt; min; i++) {</span>
+<span class="fc" id="L68">				link = link.copy();</span>
+<span class="fc" id="L69">				append(link);</span>
+			}
+		}
+
+		// Create the max part, depending on whether it's infinite or not.
+<span class="fc bfc" id="L74" title="All 2 branches covered.">		if (max == BLSpanQuery.MAX_UNLIMITED) {</span>
+			// Infinite. Loop back to start of last link added.
+<span class="fc" id="L76">			NfaState loopBack = NfaState.or(true, Arrays.asList(link.getStartingState(), null), false);</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">			for (NfaState d: danglingArrows) {</span>
+<span class="fc" id="L78">				d.fillDangling(loopBack);</span>
+<span class="fc" id="L79">			}</span>
+<span class="fc" id="L80">			danglingArrows.clear();</span>
+<span class="fc" id="L81">			danglingArrows.add(loopBack);</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">			if (min == 0) {</span>
+				// For * (0 or more), loopback becomes the starting state, so we
+				// don't have to go through the clause but can skip it entirely.
+<span class="fc" id="L85">				startingState = loopBack;</span>
+			}
+<span class="fc" id="L87">		} else {</span>
+			// How many optional clauses do we still need to add?
+<span class="fc" id="L89">			int numberOfLinksToAdd = max - min;</span>
+
+			// Finite. Allow (max - min) more occurrences of the clause.
+<span class="fc bfc" id="L92" title="All 4 branches covered.">			if (min != 0 &amp;&amp; numberOfLinksToAdd &gt; 0) {</span>
+				// There's already required occurrences of the clause.
+				// Make a copy of link first so we don't destroy those.
+<span class="fc" id="L95">				link = link.copy();</span>
+			}
+<span class="fc" id="L97">			Set&lt;NfaState&gt; escapeArrows = new HashSet&lt;&gt;();</span>
+
+			// Do we need to make the optional fragment?
+<span class="fc bfc" id="L100" title="All 2 branches covered.">			if (numberOfLinksToAdd &gt; 0) {</span>
+				// Make optional clause fragment (note that if min == 0, this link
+				// will already be in its correct place)
+<span class="fc" id="L103">				NfaState start = NfaState.or(true, Arrays.asList(link.getStartingState(), null), false);</span>
+<span class="fc" id="L104">				escapeArrows.add(start);</span>
+<span class="fc" id="L105">				link.setStartingState(start);</span>
+			}
+
+<span class="fc bfc" id="L108" title="All 2 branches covered.">			if (min == 0) {</span>
+				// We already have one link (see above), so add one less.
+<span class="fc" id="L110">				numberOfLinksToAdd--;</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">				if (numberOfLinksToAdd &gt; 0) {</span>
+					// The first link is the one we already made.
+					// This copy is the next link we'll add.
+<span class="fc" id="L114">					link = link.copy();</span>
+				}
+			}
+<span class="fc bfc" id="L117" title="All 2 branches covered.">			for (int i = 0; i &lt; numberOfLinksToAdd; i++) {</span>
+<span class="fc" id="L118">				append(link);</span>
+<span class="fc" id="L119">				escapeArrows.add(link.getStartingState());</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">				if (i &lt; numberOfLinksToAdd - 1)</span>
+<span class="fc" id="L121">					link = link.copy(); // this will be the next link</span>
+			}
+			// Escape arrows may have been filled in by append(). Set them to null again so
+			// they will be treated as dangling arrows.
+<span class="fc bfc" id="L125" title="All 2 branches covered.">			for (NfaState state: escapeArrows) {</span>
+<span class="fc" id="L126">				state.setNextState(1, null);</span>
+<span class="fc" id="L127">				danglingArrows.add(state);</span>
+<span class="fc" id="L128">			}</span>
+		}
+<span class="fc" id="L130">	}</span>
+
+	public void invert() {
+<span class="fc" id="L133">		NfaState not = new NfaStateNot(startingState, null);</span>
+<span class="fc" id="L134">		startingState = not;</span>
+<span class="fc" id="L135">		danglingArrows.clear();</span>
+<span class="fc" id="L136">		danglingArrows.add(not);</span>
+<span class="fc" id="L137">	}</span>
+
+	public Collection&lt;NfaState&gt; getDanglingArrows() {
+<span class="fc" id="L140">		return danglingArrows;</span>
+	}
+
+	@Override
+	public String toString() {
+<span class="fc" id="L145">		return startingState.toString();</span>
+	}
+
+	public void lookupPropertyNumbers(ForwardIndexAccessor fiAccessor, Map&lt;NfaState, Boolean&gt; statesVisited) {
+<span class="fc" id="L149">		startingState.lookupPropertyNumbers(fiAccessor, statesVisited);</span>
+<span class="fc" id="L150">	}</span>
+
+	public void finish() {
+<span class="fc" id="L153">		startingState.finish(new HashSet&lt;NfaState&gt;());</span>
+<span class="fc" id="L154">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

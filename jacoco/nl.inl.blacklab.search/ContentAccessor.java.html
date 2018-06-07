@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ContentAccessor.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search</a> &gt; <span class="el_source">ContentAccessor.java</span></div><h1>ContentAccessor.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search;
+
+import org.apache.lucene.document.Document;
+
+import nl.inl.blacklab.externalstorage.ContentStore;
+import nl.inl.blacklab.index.complex.ComplexFieldUtil;
+
+/**
+ * Defines a way to access the original indexed content.
+ */
+public class ContentAccessor {
+	protected String fieldName;
+
+	private ContentStore contentStore;
+
+<span class="pc" id="L31">	private String contentIdField = null;</span>
+
+<span class="fc" id="L33">	public ContentAccessor(String fieldName, ContentStore contentStore) {</span>
+<span class="fc" id="L34">		contentIdField = ComplexFieldUtil.contentIdField(ComplexFieldUtil.getBaseName(fieldName));</span>
+<span class="fc" id="L35">		this.contentStore = contentStore;</span>
+<span class="fc" id="L36">	}</span>
+
+	public String getFieldName() {
+<span class="nc" id="L39">		return fieldName;</span>
+	}
+
+	public ContentStore getContentStore() {
+<span class="fc" id="L43">		return contentStore;</span>
+	}
+
+<span class="nc" id="L46">	public ContentAccessor(String fieldName) {</span>
+<span class="nc" id="L47">		this.fieldName = fieldName;</span>
+<span class="nc" id="L48">	}</span>
+
+	/**
+	 * Get substrings from a document.
+	 *
+	 * Note: if start and end are both -1 for a certain substring, the whole document is returned.
+	 *
+	 * @param d
+	 *            the Lucene document (contains the file name)
+	 * @param start
+	 *            start positions of the substrings.
+	 *            -1 means start of document.
+	 * @param end
+	 *            end positions of the substrings.
+	 *            -1 means end of document.
+	 * @return the requested substrings from this document
+	 */
+	public String[] getSubstringsFromDocument(Document d, int[] start, int[] end) {
+<span class="nc" id="L66">		int contentId = getContentId(d);</span>
+<span class="nc" id="L67">		return getSubstringsFromDocument(contentId, start, end);</span>
+	}
+
+	private int getContentId(Document d) {
+<span class="nc" id="L71">		String contentIdStr = d.get(contentIdField);</span>
+<span class="nc bnc" id="L72" title="All 2 branches missed.">		if (contentIdStr == null)</span>
+<span class="nc" id="L73">			throw new RuntimeException(&quot;Lucene document has no content id: &quot; + d);</span>
+<span class="nc" id="L74">		int contentId = Integer.parseInt(contentIdStr);</span>
+<span class="nc" id="L75">		return contentId;</span>
+	}
+
+	/**
+	 * Get substrings from a document.
+	 *
+	 * Note: if start and end are both -1 for a certain substring, the whole document is returned.
+	 *
+	 * @param contentId
+	 *            the content id
+	 * @param start
+	 *            start positions of the substrings.
+	 *            -1 means start of document.
+	 * @param end
+	 *            end positions of the substrings.
+	 *            -1 means end of document.
+	 * @return the requested substrings from this document
+	 */
+	public String[] getSubstringsFromDocument(int contentId, int[] start, int[] end) {
+<span class="nc" id="L94">		return contentStore.retrieveParts(contentId, start, end);</span>
+	}
+
+	public void delete(Document d) {
+<span class="nc" id="L98">		delete(getContentId(d));</span>
+<span class="nc" id="L99">	}</span>
+
+	private void delete(int contentId) {
+<span class="nc" id="L102">		contentStore.delete(contentId);</span>
+<span class="nc" id="L103">	}</span>
+
+	public void close() {
+<span class="fc" id="L106">		contentStore.close();</span>
+<span class="fc" id="L107">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

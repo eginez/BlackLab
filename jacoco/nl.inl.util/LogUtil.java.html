@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LogUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.util</a> &gt; <span class="el_source">LogUtil.java</span></div><h1>LogUtil.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.util;
+
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.Appender;
+import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.core.appender.ConsoleAppender;
+import org.apache.logging.log4j.core.appender.ConsoleAppender.Target;
+import org.apache.logging.log4j.core.config.AppenderRef;
+import org.apache.logging.log4j.core.config.Configuration;
+import org.apache.logging.log4j.core.config.LoggerConfig;
+import org.apache.logging.log4j.core.layout.PatternLayout;
+import org.apache.logging.log4j.status.StatusLogger;
+
+/**
+ * Utilities for log4j logging.
+ */
+public class LogUtil {
+
+<span class="nc" id="L35">	private LogUtil() {</span>
+<span class="nc" id="L36">	}</span>
+
+	/**
+	 * Will initialize a simple console appender
+	 * the root logger has no appenders set yet.
+	 *
+	 * This gives you a reasonable default if you don't want to create a
+	 * log4j2.xml (e.g. for simple tools that don't need any fancy logging).
+	 *
+	 * @param level level to use for the console appender, if created
+	 */
+    @SuppressWarnings(&quot;deprecation&quot;)
+	public static void setupBasicLoggingConfig(Level level) {
+		// (use a config file (e.g. log4j2.xml) or programmatically configure log4j yourself)
+
+		// Temporarily disable status logger to suppress &quot;no config file found&quot; message
+<span class="nc" id="L52">		StatusLogger statusLogger = StatusLogger.getLogger();</span>
+<span class="nc" id="L53">		Level oldLevel = statusLogger.getLevel();</span>
+<span class="nc" id="L54">		statusLogger.setLevel(Level.OFF);</span>
+
+<span class="nc" id="L56">		final LoggerContext ctx = (LoggerContext) LogManager.getContext(false);</span>
+<span class="nc" id="L57">        final Configuration config = ctx.getConfiguration();</span>
+<span class="nc" id="L58">        boolean changed = false;</span>
+<span class="nc bnc" id="L59" title="All 2 branches missed.">        if (config.getAppenders().size() == 0) {</span>
+<span class="nc" id="L60">			PatternLayout layout = PatternLayout.createLayout(PatternLayout.SIMPLE_CONVERSION_PATTERN,</span>
+	        	null, config, null, null, true, false, null, null);
+<span class="nc" id="L62">	        Appender appender = ConsoleAppender.createAppender(layout, null, Target.SYSTEM_OUT, &quot;Console&quot;, true, false, true);</span>
+<span class="nc" id="L63">	        appender.start();</span>
+<span class="nc" id="L64">	        config.addAppender(appender);</span>
+<span class="nc" id="L65">	        AppenderRef ref = AppenderRef.createAppenderRef(&quot;Console&quot;, null, null);</span>
+<span class="nc" id="L66">	        AppenderRef[] refs = new AppenderRef[] {ref};</span>
+<span class="nc" id="L67">	        LoggerConfig loggerConfig = LoggerConfig.createLogger(false, level, &quot;org.apache.logging.log4j&quot;,</span>
+	            &quot;true&quot;, refs, null, config, null );
+<span class="nc" id="L69">	        loggerConfig.addAppender(appender, null, null);</span>
+<span class="nc" id="L70">	        config.addLogger(&quot;org.apache.logging.log4j&quot;, loggerConfig);</span>
+<span class="nc" id="L71">	        changed = true;</span>
+        }
+
+		// Restore status logger level
+<span class="nc" id="L75">		statusLogger.setLevel(oldLevel);</span>
+
+<span class="nc bnc" id="L77" title="All 2 branches missed.">		if (changed)</span>
+<span class="nc" id="L78">			ctx.updateLoggers();</span>
+<span class="nc" id="L79">	}</span>
+
+	/**
+	 * Will initialize a simple console appender at level WARN if
+	 * the root logger has no appenders set yet.
+	 *
+	 * This gives you a reasonable default if you don't want to create a
+	 * log4j2.xml (e.g. for simple tools that don't need any fancy logging).
+	 */
+	public static void setupBasicLoggingConfig() {
+<span class="nc" id="L89">		setupBasicLoggingConfig(Level.WARN); // Log warnings and up</span>
+<span class="nc" id="L90">	}</span>
+
+	/**
+	 * @deprecated renamed to setupBasicLoggingConfig
+	 */
+	@Deprecated
+	public static void initLog4jIfNotAlready() {
+<span class="nc" id="L97">		setupBasicLoggingConfig();</span>
+<span class="nc" id="L98">	}</span>
+
+	/**
+	 * @param level log level
+	 * @deprecated renamed to setupBasicLoggingConfig
+	 */
+	@Deprecated
+	public static void initLog4jIfNotAlready(Level level) {
+<span class="nc" id="L106">		setupBasicLoggingConfig(level);</span>
+<span class="nc" id="L107">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

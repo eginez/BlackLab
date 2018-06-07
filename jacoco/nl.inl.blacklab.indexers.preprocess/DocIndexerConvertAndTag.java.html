@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DocIndexerConvertAndTag.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.indexers.preprocess</a> &gt; <span class="el_source">DocIndexerConvertAndTag.java</span></div><h1>DocIndexerConvertAndTag.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.indexers.preprocess;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.io.PushbackInputStream;
+import java.io.Reader;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.util.Collection;
+
+import org.apache.commons.io.FilenameUtils;
+import org.apache.commons.io.input.ReaderInputStream;
+import org.apache.lucene.document.Document;
+
+import nl.inl.blacklab.index.Indexer;
+import nl.inl.blacklab.index.PluginManager;
+import nl.inl.blacklab.index.config.ConfigInputFormat;
+import nl.inl.blacklab.index.config.DocIndexerConfig;
+
+public class DocIndexerConvertAndTag extends DocIndexerConfig {
+
+	PushbackInputStream input;
+	/** Charset of the data for our converter and tagger input/output, might be null if our converter/tagger do not use charsets (because they process binary data for example). */
+	Charset charset;
+
+	private DocIndexerConfig outputIndexer;
+
+<span class="nc" id="L31">	public DocIndexerConvertAndTag(DocIndexerConfig actualIndexer, ConfigInputFormat config) {</span>
+<span class="nc" id="L32">	    this.outputIndexer = actualIndexer;</span>
+<span class="nc" id="L33">	    this.config = config;	}</span>
+
+	@Override
+	public void close() throws Exception {
+<span class="nc" id="L37">		outputIndexer.close();</span>
+<span class="nc" id="L38">	}</span>
+
+	/**
+	 * Use {@link DocIndexerConvertAndTag#setDocument(InputStream, Charset)} if at all possible.
+	 */
+	@Override
+	public void setDocument(Reader reader) {
+		// Reader outputs chars, so we can determine our own charset when we put them back into a stream
+		// We just need to make sure to pass it on to whatever consumes the stream
+<span class="nc" id="L47">		input = new PushbackInputStream(new ReaderInputStream(reader, StandardCharsets.UTF_8), 251);</span>
+<span class="nc" id="L48">		charset = StandardCharsets.UTF_8;</span>
+<span class="nc" id="L49">	}</span>
+
+	@Override
+	public void setDocument(InputStream is, Charset cs) {
+<span class="nc" id="L53">		input = new PushbackInputStream(is, 251);</span>
+<span class="nc" id="L54">		charset = cs;</span>
+<span class="nc" id="L55">	}</span>
+
+	@Override
+	public void index() throws Exception {
+<span class="nc bnc" id="L59" title="All 2 branches missed.">		if (this.input == null)</span>
+<span class="nc" id="L60">			throw new IllegalStateException(&quot;A document must be set before calling index()&quot;);</span>
+
+		/*
+		 * If the converter can't handle the file,
+		 * we assume that the file is already in the output format, and we attempt to index it directly.
+		 * This isn't entirely correct when the file is in a format neither the converter nor the indexer can handle, but that is technically user error.
+		 */
+		// ByteArrayOutputStream can conveniently be read and reused even after close()
+<span class="nc" id="L68">		ByteArrayOutputStream output = new ByteArrayOutputStream();</span>
+<span class="nc bnc" id="L69" title="All 2 branches missed.">        if (config.getConvertPluginId() != null) {</span>
+<span class="nc" id="L70">            ConvertPlugin converter = PluginManager.getConverter(config.getConvertPluginId())</span>
+<span class="nc" id="L71">                .orElseThrow(() -&gt; new RuntimeException(&quot;Unknown conversion plugin: &quot; + config.getConvertPluginId()));</span>
+
+            // convertplugin always outputs in the input charset if provided, utf8 otherwise
+<span class="nc bnc" id="L74" title="All 2 branches missed.">            if (converter.canConvert(input, charset, FilenameUtils.getExtension(this.documentName).toLowerCase())) {</span>
+<span class="nc" id="L75">                converter.perform(input, charset, FilenameUtils.getExtension(this.documentName).toLowerCase(), output);</span>
+<span class="nc" id="L76">                input = new PushbackInputStream(new ByteArrayInputStream(output.toByteArray()), 1);</span>
+<span class="nc" id="L77">                output.reset();</span>
+            }
+        }
+
+<span class="nc bnc" id="L81" title="All 2 branches missed.">        if (config.getTagPluginId() != null) {</span>
+<span class="nc" id="L82">            TagPlugin tagger = PluginManager.getTagger(config.getTagPluginId())</span>
+<span class="nc" id="L83">                .orElseThrow(() -&gt; new RuntimeException(&quot;Unknown tagging plugin: &quot; + config.getTagPluginId()));</span>
+
+            // read in the original charset (if provided)
+<span class="nc" id="L86">            Reader taggerInput = new InputStreamReader(input, charset);</span>
+
+            // always output in utf8 for ease of mind
+<span class="nc" id="L89">            charset = StandardCharsets.UTF_8;</span>
+<span class="nc" id="L90">			try (OutputStreamWriter w = new OutputStreamWriter(output, charset)) {</span>
+<span class="nc" id="L91">				tagger.perform(taggerInput, w);</span>
+<span class="nc bnc" id="L92" title="All 8 branches missed.">			}</span>
+
+<span class="nc" id="L94">			this.documentName = tagger.getOutputFileName(this.documentName);</span>
+		}
+
+<span class="nc" id="L97">        this.outputIndexer.setDocumentName(this.documentName);</span>
+<span class="nc" id="L98">        this.outputIndexer.setConfigInputFormat(config);</span>
+
+<span class="nc" id="L100">        try (InputStream is = new ByteArrayInputStream(output.toByteArray())) {</span>
+<span class="nc" id="L101">            this.outputIndexer.setDocument(is, charset);</span>
+<span class="nc" id="L102">            this.outputIndexer.index();</span>
+<span class="nc bnc" id="L103" title="All 8 branches missed.">        }</span>
+<span class="nc" id="L104">	}</span>
+
+	@Override
+	protected int getCharacterPosition() {
+<span class="nc" id="L108">	    return 0;</span>
+	}
+
+    @Override
+    protected void storeDocument() {
+        // TODO Auto-generated method stub
+<span class="nc" id="L114">    }</span>
+
+    @Override
+    public void setIndexer(Indexer indexer) {
+<span class="nc" id="L118">        outputIndexer.setIndexer(indexer);</span>
+<span class="nc" id="L119">    }</span>
+
+    @Override
+    public void addMetadataField(String fieldName, String value) {
+<span class="nc" id="L123">        outputIndexer.addMetadataField(fieldName, value);</span>
+<span class="nc" id="L124">    }</span>
+
+    @Override
+    public void addNumericFields(Collection&lt;String&gt; fields) {
+<span class="nc" id="L128">        outputIndexer.addNumericFields(fields);</span>
+<span class="nc" id="L129">    }</span>
+
+    @Override
+    public Document getCurrentLuceneDoc() {
+<span class="nc" id="L133">        return outputIndexer.getCurrentLuceneDoc();</span>
+    }
+
+    @Override
+    public Indexer getIndexer() {
+<span class="nc" id="L138">        return outputIndexer.getIndexer();</span>
+    }
+
+    @Override
+    public void indexSpecificDocument(String documentExpr) {
+<span class="nc" id="L143">        outputIndexer.indexSpecificDocument(documentExpr);</span>
+<span class="nc" id="L144">    }</span>
+
+    @Override
+    public void setConfigInputFormat(ConfigInputFormat config) {
+<span class="nc" id="L148">        outputIndexer.setConfigInputFormat(config);</span>
+<span class="nc" id="L149">    }</span>
+
+    @Override
+    public void setOmitNorms(boolean b) {
+<span class="nc" id="L153">        outputIndexer.setOmitNorms(b);</span>
+<span class="nc" id="L154">    }</span>
+
+    @Override
+    public boolean shouldAddDefaultPunctuation() {
+<span class="nc" id="L158">        return outputIndexer.shouldAddDefaultPunctuation();</span>
+    }
+
+    // do not override setDocumentName
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

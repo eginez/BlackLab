@@ -1,0 +1,1283 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DocIndexerChat.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.index.config</a> &gt; <span class="el_source">DocIndexerChat.java</span></div><h1>DocIndexerChat.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.index.config;
+import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.io.Reader;
+import java.nio.charset.Charset;
+import java.text.DateFormat;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.TimeZone;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.apache.commons.io.input.BOMInputStream;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.time.DateUtils;
+import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.apache.commons.lang3.tuple.Pair;
+
+import nl.inl.util.ExUtil;
+import nl.inl.util.FileUtil;
+
+/**
+ * Class to read files in (CHILDES) CHAT format.
+ *
+ * Ported from Python code by Jan Odijk, see https://github.com/JanOdijk/chamd
+ */
+<span class="nc" id="L40">public class DocIndexerChat extends DocIndexerConfig {</span>
+
+    private BufferedReader reader;
+
+    private StringBuilder fullText;
+
+	/** Where to write log messages, or null for no logging */
+<span class="nc" id="L47">	private PrintWriter log = null;</span>
+
+	/** The locale to use for date parsing (by default, use system locale) */
+<span class="nc" id="L50">    private Locale locale = null;</span>
+
+	/** Fallback locale in case we can't parse the date */
+<span class="nc" id="L53">    private Locale usLocale = new Locale(&quot;en&quot;, &quot;US&quot;);</span>
+
+    private ConfigAnnotatedField currentAnnotatedField;
+
+	@Override
+	public void indexSpecificDocument(String documentExpr) {
+        // documentExpr is ignored because CHAT files always contain 1 document
+        try {
+<span class="nc" id="L61">            index();</span>
+<span class="nc" id="L62">        } catch (Exception e) {</span>
+<span class="nc" id="L63">            throw ExUtil.wrapRuntimeException(e);</span>
+<span class="nc" id="L64">        }</span>
+<span class="nc" id="L65">	}</span>
+
+    @Override
+    protected void storeDocument() {
+<span class="nc" id="L69">        storeWholeDocument(fullText.toString());</span>
+<span class="nc" id="L70">    }</span>
+
+    @Override
+	protected int getCharacterPosition() {
+<span class="nc" id="L74">        return fullText.length();</span>
+	}
+
+    @Override
+    public void setConfigInputFormat(ConfigInputFormat config) {
+<span class="nc bnc" id="L79" title="All 2 branches missed.">        if (config.getAnnotatedFields().size() &gt; 1)</span>
+<span class="nc" id="L80">            throw new InputFormatConfigException(&quot;CHAT input type can only have 1 annotated field&quot;);</span>
+<span class="nc" id="L81">        super.setConfigInputFormat(config);</span>
+<span class="nc" id="L82">    }</span>
+
+    @Override
+    public void setDocument(File file, Charset defaultCharset) throws FileNotFoundException {
+		String charEncodingLine;
+<span class="nc" id="L87">		try (BufferedReader thefile = FileUtil.openForReading(file, &quot;utf8&quot;)) {</span>
+<span class="nc" id="L88">			charEncodingLine = thefile.readLine();</span>
+<span class="nc bnc" id="L89" title="All 8 branches missed.">		} catch (IOException e) {</span>
+<span class="nc" id="L90">			throw new RuntimeException(e);</span>
+<span class="nc" id="L91">		}</span>
+<span class="nc" id="L92">		Charset charEncoding = getCharEncoding(charEncodingLine);</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">		if (charEncoding == null) {</span>
+<span class="nc" id="L94">		    log(&quot;No character encoding encountered in &quot; + file.getPath() + &quot;; using utf-8&quot;);</span>
+<span class="nc" id="L95">		    charEncoding = defaultCharset;</span>
+		}
+<span class="nc" id="L97">		setDocumentName(file.getPath());</span>
+<span class="nc" id="L98">	    setDocument(FileUtil.openForReading(file, charEncoding));</span>
+<span class="nc" id="L99">    }</span>
+
+    @Override
+    public void setDocument(byte[] contents, Charset defaultCharset) {
+<span class="nc" id="L103">        setDocument(new ByteArrayInputStream(contents), defaultCharset);</span>
+<span class="nc" id="L104">    }</span>
+
+    @Override
+    public void setDocument(InputStream is, Charset defaultCharset) {
+<span class="nc" id="L108">        setDocument(new InputStreamReader(new BOMInputStream(is), defaultCharset));</span>
+<span class="nc" id="L109">    }</span>
+
+    @Override
+    public void setDocument(Reader reader) {
+<span class="nc bnc" id="L113" title="All 2 branches missed.">        this.reader = reader instanceof BufferedReader ? (BufferedReader)reader : new BufferedReader(reader);</span>
+<span class="nc" id="L114">    }</span>
+
+    @Override
+    public void close() throws IOException {
+<span class="nc" id="L118">        reader.close();</span>
+<span class="nc" id="L119">    }</span>
+
+	@Override
+	public void index() throws Exception {
+<span class="nc" id="L123">        super.index();</span>
+
+<span class="nc" id="L125">        startDocument();</span>
+
+<span class="nc" id="L127">        fullText = new StringBuilder();</span>
+
+        // For the configured annotated field...
+<span class="nc bnc" id="L130" title="All 2 branches missed.">        for (ConfigAnnotatedField annotatedField: config.getAnnotatedFields().values()) {</span>
+<span class="nc" id="L131">            currentAnnotatedField = annotatedField;</span>
+<span class="nc" id="L132">            setCurrentComplexField(annotatedField.getName());</span>
+
+<span class="nc" id="L134">            log(&quot;processing &quot; + documentName + &quot;...&quot;);</span>
+
+<span class="nc" id="L136">			metadata = new HashMap&lt;&gt;();</span>
+<span class="nc" id="L137">			currentFileBaseName = new File(documentName).getName().replaceAll(&quot;\\.[^\\.]+$&quot;, &quot;&quot;);</span>
+
+<span class="nc" id="L139">			int lineNumber = 0;</span>
+<span class="nc" id="L140">			int uttId = 0;</span>
+<span class="nc" id="L141">			counter = new HashMap&lt;&gt;();</span>
+<span class="nc bnc" id="L142" title="All 2 branches missed.">			for (String el: SIMPLE_COUNTER_HEADERS)</span>
+<span class="nc" id="L143">			    counter.put(el, 0);</span>
+<span class="nc" id="L144">			boolean headerModified = false;</span>
+<span class="nc" id="L145">			String lineToProcess = &quot;&quot;;</span>
+			while (true) {
+<span class="nc" id="L147">			    String line = reader.readLine();</span>
+<span class="nc bnc" id="L148" title="All 2 branches missed.">			    if (line == null)</span>
+<span class="nc" id="L149">			        break;</span>
+<span class="nc bnc" id="L150" title="All 2 branches missed.">                if (getStoreDocuments()) {</span>
+<span class="nc" id="L151">                    fullText.append(line);</span>
+                }
+<span class="nc" id="L153">			    lineNumber++;</span>
+<span class="nc" id="L154">			    char startChar = line.charAt(0);</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">			    if (startChar == '\t')</span>
+<span class="nc" id="L156">			        lineToProcess = combineLines(lineToProcess, line);</span>
+<span class="nc bnc" id="L157" title="All 2 branches missed.">			    else if (START_CHARS_TO_CHECK.contains(startChar)) {</span>
+<span class="nc bnc" id="L158" title="All 2 branches missed.">			        if (!lineToProcess.isEmpty()) {</span>
+<span class="nc" id="L159">			            Pair&lt;Integer, Boolean&gt; result = processLine(lineNumber, lineToProcess, metadata, uttId, headerModified);</span>
+<span class="nc" id="L160">			            uttId = result.getLeft();</span>
+<span class="nc" id="L161">			            headerModified = result.getRight();</span>
+			        }
+<span class="nc" id="L163">			        lineToProcess = line;</span>
+			    }
+			    // print(metadata, file = logfile)
+			    // print(input(&quot;Continue?&quot;), file = logfile)
+<span class="nc" id="L167">			}</span>
+<span class="nc bnc" id="L168" title="All 2 branches missed.">	    	if (inBlock)</span>
+<span class="nc" id="L169">	    		endBlock();</span>
+<span class="nc" id="L170">			addDocumentMetadata(metadata); // &quot;header metadata&quot; is document metadata (?)</span>
+			// deal with the last line
+<span class="nc" id="L172">			Pair&lt;Integer, Boolean&gt; result2 = processLine(lineNumber, lineToProcess, metadata, uttId, headerModified);</span>
+<span class="nc" id="L173">			uttId = result2.getLeft();</span>
+<span class="nc" id="L174">			headerModified = result2.getRight();</span>
+<span class="nc" id="L175">        }</span>
+
+<span class="nc" id="L177">        endDocument();</span>
+
+<span class="nc" id="L179">	}</span>
+
+
+	// JN Added some helper variables and methods
+
+//	private static void output(String msg) {
+//        System.out.println(msg);
+//    }
+
+	private void log(String msg) {
+<span class="nc bnc" id="L189" title="All 2 branches missed.">		if (log != null)</span>
+<span class="nc" id="L190">			log.println(&quot;LOG: &quot; + msg);</span>
+<span class="nc" id="L191">    }</span>
+
+	private void printToCleanfile(String msg) {
+<span class="nc bnc" id="L194" title="All 2 branches missed.">		if (log != null)</span>
+<span class="nc" id="L195">			log.println(&quot;CLN: &quot; + msg);</span>
+<span class="nc" id="L196">    }</span>
+
+	private static String toIsoFormat(Date d) {
+<span class="nc" id="L199">        TimeZone tz = TimeZone.getTimeZone(&quot;UTC&quot;);</span>
+<span class="nc" id="L200">        DateFormat df = new SimpleDateFormat(&quot;yyyy-MM-dd'T'HH:mm:ss&quot;);</span>
+<span class="nc" id="L201">        df.setTimeZone(tz);</span>
+<span class="nc" id="L202">        return df.format(new Date());</span>
+    }
+
+	/**
+	 * Slice a string like Python.
+	 *
+	 * Negative indices are counted from the end of the string.
+	 * Indices out of range result in an empty string, not an exception.
+	 *
+	 * @param str string to slice
+	 * @param start starting point
+	 * @param end end point
+	 * @return slice
+	 */
+    private static String slice(String str, int start, int end) {
+<span class="nc bnc" id="L217" title="All 2 branches missed.">		if (start &lt; 0) {</span>
+<span class="nc" id="L218">			start += str.length();</span>
+<span class="nc bnc" id="L219" title="All 2 branches missed.">			if (start &lt; 0)</span>
+<span class="nc" id="L220">				start = 0;</span>
+		}
+<span class="nc bnc" id="L222" title="All 2 branches missed.">		if (end &lt; 0) {</span>
+<span class="nc" id="L223">			end += str.length();</span>
+<span class="nc bnc" id="L224" title="All 2 branches missed.">			if (end &lt; 0)</span>
+<span class="nc" id="L225">				end = 0;</span>
+		}
+<span class="nc bnc" id="L227" title="All 2 branches missed.">		if (start &gt; str.length())</span>
+<span class="nc" id="L228">			start = str.length();</span>
+<span class="nc bnc" id="L229" title="All 2 branches missed.">		if (end &gt; str.length())</span>
+<span class="nc" id="L230">			end = str.length();</span>
+<span class="nc" id="L231">		return str.substring(start, end);</span>
+	}
+
+	/**
+	 * Slice a string like Python.
+	 *
+	 * Negative indices are counted from the end of the string.
+	 * Indices out of range result in an empty string, not an exception.
+	 *
+	 * @param str string to slice
+	 * @param start starting point
+	 * @return slice
+	 */
+    private static String slice(String str, int start) {
+<span class="nc" id="L245">		return slice(str, start, str.length());</span>
+	}
+
+    /**
+     * Set the locale to use for date parsing.
+     * @param locale locale to use
+     */
+    public void setLocale(Locale locale) {
+<span class="nc" id="L253">		this.locale = locale;</span>
+<span class="nc" id="L254">	}</span>
+
+    /**
+     * Set where to write log messages.
+     * @param log where to write messages, or null to disable logging.
+     */
+    public void setLog(PrintWriter log) {
+<span class="nc" id="L261">		this.log = log;</span>
+<span class="nc" id="L262">	}</span>
+
+    //-----------------
+
+    // Combine continued input lines into one longer line.
+	private static String combineLines(String str1, String str2) {
+<span class="nc bnc" id="L268" title="All 2 branches missed.">        if (str1.isEmpty())</span>
+<span class="nc" id="L269">            return str2;</span>
+<span class="nc" id="L270">        return slice(str1, 0, -1) + &quot; &quot; + str2;</span>
+    }
+
+	// Trim string and replace internal whitespace with underscore.
+	// Used for outputting metadata names
+	private static String despaceMetadataName(String name) {
+        // remvove leading and trailing spaces
+        // replace other sequences of spaces by underscore
+<span class="nc" id="L278">        return name.trim().replaceAll(&quot; +&quot;, &quot;_&quot;);</span>
+    }
+
+	// Get the encoding from a possible encoding line, or null if not an encoding line
+	private Charset getCharEncoding(String encodingLine) {
+        //  if str[1:] in legalcharencodings) {
+        //     result = str[1:]
+        //  else:
+        //     result = None
+<span class="nc bnc" id="L287" title="All 2 branches missed.">        if (encodingLine.charAt(0) == MD_CHAR)</span>
+<span class="nc" id="L288">            return Charset.forName(encodingLine.substring(1));  // (fixed tov origineel)</span>
+<span class="nc" id="L289">        return null;              // (fixed tov origineel)</span>
+    }
+
+	// Find name of corpus in metadata structure.
+	// Used to determine parseFile
+//	private String getCorpus(Map&lt;String, Object&gt; metadata) {
+//        String spkr;
+//        if (metadata.containsKey(&quot;speaker&quot;))
+//            spkr = metadata.get(&quot;speaker&quot;).toString();
+//        else
+//            spkr = &quot;&quot;;
+//        @SuppressWarnings(&quot;unchecked&quot;)
+//        Map&lt;String, Map&lt;String, String&gt;&gt; mdid = (Map&lt;String, Map&lt;String, String&gt;&gt;)metadata.get(&quot;id&quot;);
+//        if (mdid != null &amp;&amp; mdid.containsKey(spkr) &amp;&amp; mdid.get(spkr).containsKey(&quot;corpus&quot;))
+//            return mdid.get(spkr).get(&quot;corpus&quot;);
+//        return &quot;Unknown_corpus&quot;;
+//    }
+
+	// Convert date string to month number
+	private int getMonths(String age) {
+        // input format is 3;6.14 (y;m.d)
+        // also accept y.m.d and y;m;d and y.m;d with a warning or any separators for that matter
+<span class="nc" id="L311">        String cleanAge = age.trim();</span>
+<span class="nc" id="L312">        boolean errorFound = false;</span>
+<span class="nc" id="L313">        boolean warningNeeded = false;</span>
+<span class="nc" id="L314">        String monthStr = &quot;&quot;;</span>
+<span class="nc" id="L315">        String yearStr = &quot;&quot;;</span>
+<span class="nc" id="L316">        String[] parts = cleanAge.split(SEPS, -1);</span>
+        // print(age, thelist, file = logfile)
+        // print(input(&quot;continue?&quot;), file = logfile)
+<span class="nc bnc" id="L319" title="All 2 branches missed.">        if (parts.length &gt;= 1) {</span>
+<span class="nc" id="L320">            yearStr = parts[0];</span>
+<span class="nc bnc" id="L321" title="All 2 branches missed.">            if (!yearStr.matches(&quot;[0-9]+&quot;))</span>
+<span class="nc" id="L322">                errorFound = true;</span>
+        }
+<span class="nc bnc" id="L324" title="All 2 branches missed.">        if (parts.length &gt;= 2) {</span>
+<span class="nc" id="L325">            monthStr = parts[1];</span>
+<span class="nc bnc" id="L326" title="All 2 branches missed.">            if (!monthStr.matches(&quot;[0-9]{1,2}&quot;))</span>
+<span class="nc" id="L327">                errorFound = true;</span>
+        }
+<span class="nc bnc" id="L329" title="All 4 branches missed.">        if (parts.length &lt; 1 || parts.length &gt; 3)</span>
+<span class="nc" id="L330">            errorFound = true;</span>
+        int result;
+<span class="nc bnc" id="L332" title="All 2 branches missed.">        if (!errorFound) {</span>
+<span class="nc bnc" id="L333" title="All 2 branches missed.">            if (!cleanAge.matches(AGE_REGEX))</span>
+<span class="nc" id="L334">                warningNeeded = true;</span>
+<span class="nc" id="L335">            int year = Integer.parseInt(yearStr);</span>
+<span class="nc bnc" id="L336" title="All 2 branches missed.">            int month = monthStr.isEmpty() ? 0 : Integer.parseInt(monthStr);</span>
+<span class="nc bnc" id="L337" title="All 4 branches missed.">            if (month &lt; 0 || month &gt; 11)</span>
+<span class="nc" id="L338">                log(&quot;Warning: Illegal month value in age(0&lt; = m&lt; = 11): &quot; + cleanAge);</span>
+<span class="nc" id="L339">            result = 12 * year + month;</span>
+<span class="nc" id="L340">        } else {</span>
+<span class="nc" id="L341">            result = 0;</span>
+<span class="nc" id="L342">            log(&quot;Error: uninterpretable age value: &quot; + cleanAge + &quot;. No months attribute computed&quot;);</span>
+        }
+<span class="nc bnc" id="L344" title="All 2 branches missed.">        if (warningNeeded)</span>
+<span class="nc" id="L345">            log(&quot;Warning: Illegal age syntax for &quot; + cleanAge + &quot;. Syntax must be y;m.d&quot;);</span>
+<span class="nc" id="L346">        return result;</span>
+    }
+
+/*
+    public String[] getoutpaths(String fullname, String inpath, String outpath) {
+        String absinpath = new File(inpath).getAbsolutePath();    //absinpath = os.path.abspath(inpath)
+        String absoutpath = new File(outpath).getAbsolutePath();  //absoutpath = os.path.abspath(outpath)
+        String fullinpath = new File(fullname).getAbsoluteFile().getParentFile().getAbsolutePath();  //os.path.dirname(fullname);
+        reloutpath = os.path.relpath(fullinpath, start = absinpath);
+        fulloutpath = os.path.join(absoutpath, reloutpath);
+        return reloutpath, fulloutpath;
+    }
+    */
+
+	// Determine parsefile
+//	private String getParseFile(String corpus, String base, int uttid) {
+//        String uttidstr = String.format(&quot;u%011d&quot;, uttid); //&quot;u{:011d}&quot;.format(uttid);
+//        String newbase = StringUtils.join(Arrays.asList(corpus, base, uttidstr), UNDERSCORE);
+//        String result = newbase + PARSE_EXT;
+//        return result;
+//    }
+
+//	private boolean isNotEmpty(String str) {
+//        return str != null &amp;&amp; !str.isEmpty();
+//    }
+
+//	private String metaDate(String el, Map&lt;String, Object&gt; metadata) {
+//        Date d = (Date)metadata.get(el);
+//        String normalizeddate = toIsoFormat(d);
+//        String uel = despaceMetadataName(el);
+//        return StringUtils.join(Arrays.asList(META_KW, &quot;date&quot;, uel, &quot;=&quot;, normalizeddate), SPACE);
+//    }
+//
+//	private String metaInt(String el, Map&lt;String, Object&gt; metadata) {
+//        String uel = despaceMetadataName(el);
+//        return StringUtils.join(Arrays.asList(META_KW, &quot;int&quot;, uel, &quot;=&quot;, metadata.get(el).toString()), SPACE);
+//    }
+//
+//	private String metaTxt(String el, Map&lt;String, Object&gt; metadata) {
+//        String uel = despaceMetadataName(el);
+//        return StringUtils.join(Arrays.asList(META_KW, &quot;text&quot;, uel, &quot;=&quot;, metadata.get(el).toString()), SPACE);
+//    }
+
+	private void addMetaDate(String el, Map&lt;String, Object&gt; metadata) {
+<span class="nc" id="L390">        Date d = (Date)metadata.get(el);</span>
+<span class="nc" id="L391">        String normalizeddate = toIsoFormat(d);</span>
+<span class="nc" id="L392">        String uel = despaceMetadataName(el);</span>
+<span class="nc" id="L393">    	normalizeddate = processMetadataValue(uel, normalizeddate);</span>
+<span class="nc" id="L394">        addMetadataField(uel, normalizeddate);</span>
+<span class="nc" id="L395">    }</span>
+
+	private void addMetaInt(String el, Map&lt;String, Object&gt; metadata) {
+<span class="nc" id="L398">        String uel = despaceMetadataName(el);</span>
+<span class="nc" id="L399">        String value = processMetadataValue(uel, metadata.get(el).toString());</span>
+<span class="nc" id="L400">        addMetadataField(uel, value);</span>
+<span class="nc" id="L401">    }</span>
+
+	private void addMetaTxt(String el, Map&lt;String, Object&gt; metadata) {
+<span class="nc" id="L404">        String uel = despaceMetadataName(el);</span>
+<span class="nc" id="L405">        String value = processMetadataValue(uel, metadata.get(el).toString());</span>
+<span class="nc" id="L406">        addMetadataField(uel, value);</span>
+<span class="nc" id="L407">    }</span>
+
+	private Date normalizeDate(String str) {
+        Date date;
+        try {
+<span class="nc" id="L412">        	date = DateUtils.parseDate(str, locale, new String[] {&quot;d-M-Y&quot;, &quot;dd-MMM-yyyy&quot;});</span>
+<span class="nc" id="L413">        } catch (ParseException e) {</span>
+            try {
+<span class="nc" id="L415">            	date = DateUtils.parseDate(str, usLocale, new String[] {&quot;d-M-Y&quot;, &quot;dd-MMM-yyyy&quot;});</span>
+<span class="nc" id="L416">            } catch (ParseException e1) {</span>
+<span class="nc" id="L417">            	log(&quot;Date &quot; + str + &quot; cannot be interpreted&quot;);</span>
+<span class="nc" id="L418">            	throw new RuntimeException(e1);</span>
+<span class="nc" id="L419">            }</span>
+<span class="nc" id="L420">        }</span>
+<span class="nc" id="L421">        return date;</span>
+    }
+
+	private void addDocumentMetadata(Map&lt;String, Object&gt; metadata) {
+<span class="nc bnc" id="L425" title="All 2 branches missed.">        for (String el: metadata.keySet()) {</span>
+<span class="nc bnc" id="L426" title="All 2 branches missed.">            if (DO_NOT_PRINT_IN_HEADERS.contains(el)) {</span>
+                // (pass)
+<span class="nc bnc" id="L428" title="All 2 branches missed.">            } else if (ALL_HEADERS.contains(el)) {</span>
+<span class="nc" id="L429">                Object curval = metadata.get(el);</span>
+<span class="nc bnc" id="L430" title="All 2 branches missed.">                if (curval instanceof String) {</span>
+<span class="nc" id="L431">                    addMetaTxt(el, metadata);</span>
+<span class="nc bnc" id="L432" title="All 2 branches missed.">                } else if (curval instanceof Date) {</span>
+<span class="nc" id="L433">                	addMetaDate(el, metadata);</span>
+<span class="nc bnc" id="L434" title="All 2 branches missed.">                } else if (curval instanceof Integer) {</span>
+<span class="nc" id="L435">                	addMetaInt(el, metadata);</span>
+                }
+<span class="nc bnc" id="L437" title="All 2 branches missed.">                if (!PRINT_IN_HEADERS.contains(el))</span>
+<span class="nc" id="L438">                    log(&quot;unknown metadata element encountered: &quot;  + el);</span>
+            }
+<span class="nc" id="L440">        }</span>
+<span class="nc" id="L441">    }</span>
+
+//	private void printHeaderMetadata(Map&lt;String, Object&gt; metadata) {
+//        for (String el: metadata.keySet()) {
+//            if (DO_NOT_PRINT_IN_HEADERS.contains(el)) {
+//                // (pass)
+//            } else if (ALL_HEADERS.contains(el)) {
+//                Object curval = metadata.get(el);
+//                if (curval instanceof String) {
+//                    output(metaTxt(el, metadata));
+//                } else if (curval instanceof Date) {
+//                	output(metaDate(el, metadata));
+//                } else if (curval instanceof Integer) {
+//                	output(metaInt(el, metadata));
+//                }
+//                if (!PRINT_IN_HEADERS.contains(el))
+//                    log(&quot;unknown metadata element encountered: &quot;  + el);
+//            }
+//        }
+//    }
+
+//    @SuppressWarnings(&quot;unchecked&quot;)
+//    private void printUttMetadata(Map&lt;String, Object&gt; metadata) {
+//        String uttidline = metaInt(&quot;uttid&quot;, metadata);
+//        String spkrline = metaTxt(&quot;speaker&quot;, metadata);
+//        // parsefileline = metatxt(&quot;parsefile&quot;, metadata)
+//        String origuttline = metaTxt(&quot;origutt&quot;, metadata);
+//        output(uttidline);
+//        output(spkrline);
+//        // printToOutfile(parsefileline);
+//        output(origuttline);
+//        Object curcode = metadata.get(&quot;speaker&quot;);
+//        Map&lt;String, Object&gt; participants = (Map&lt;String, Object&gt;)metadata.get(&quot;participants&quot;);
+//        if (participants.containsKey(curcode)) {
+//            Map&lt;String, Object&gt; codeMap = (Map&lt;String, Object&gt;)participants.get(curcode);
+//            for (String el: codeMap.keySet()) {
+//                String theline = metaTxt(el, codeMap);
+//                output(theline);
+//            }
+//        }
+//        if (metadata.containsKey(&quot;id&quot;)) {
+//            Map&lt;String, Object&gt; mdid = (Map&lt;String, Object&gt;)metadata.get(&quot;id&quot;);
+//            if (mdid != null) {
+//                Map&lt;String, Object&gt; curcodeMap = (Map&lt;String, Object&gt;)mdid.get(curcode);
+//                if (curcodeMap != null) {
+//                    for (String el: curcodeMap.keySet()) {
+//                        Object curval = curcodeMap.get(el);
+//                        if (curval instanceof String) {
+//                            String theline = metaTxt(el, curcodeMap);
+//                            output(theline);
+//                        } else if (curval instanceof Integer) {
+//                            String theline = metaInt(el, curcodeMap);
+//                            output(theline);
+//                        } else if (curval instanceof Date) {
+//                            String theline = metaDate(el, curcodeMap);
+//                            output(theline);
+//                        } else {
+//                            log(&quot;print_uttmd: unknown type for &quot; + el + &quot; = &quot; + curval);
+//                        }
+//                    }
+//                }
+//            }
+//        }
+//    }
+
+    /** Are we inside a &quot;block&quot;? Blocks have their own set of metadata,
+     *  and are indexed just like inline XML tags. */
+<span class="nc" id="L508">    boolean inBlock = false;</span>
+
+<span class="nc" id="L510">    String blockTagName = &quot;block&quot;;</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+	private void startBlock() {
+<span class="nc" id="L514">    	Map&lt;String, String&gt; blockMetadata = new HashMap&lt;&gt;();</span>
+<span class="nc bnc" id="L515" title="All 2 branches missed.">        for (String el: metadata.keySet()) {</span>
+<span class="nc bnc" id="L516" title="All 2 branches missed.">            if (DO_NOT_PRINT_IN_HEADERS.contains(el)) {</span>
+                // (pass)
+<span class="nc bnc" id="L518" title="All 2 branches missed.">            } else if (ALL_HEADERS.contains(el)) {</span>
+<span class="nc" id="L519">                Object curval = metadata.get(el);</span>
+<span class="nc bnc" id="L520" title="All 2 branches missed.">                if (curval instanceof Date) {</span>
+<span class="nc" id="L521">                	blockMetadata.put(despaceMetadataName(el), toIsoFormat((Date) curval));</span>
+<span class="nc bnc" id="L522" title="All 4 branches missed.">                } else if (curval instanceof String || curval instanceof Integer) {</span>
+<span class="nc" id="L523">                	blockMetadata.put(despaceMetadataName(el), curval.toString());</span>
+                } else {
+<span class="nc" id="L525">                    log(&quot;startBlock: unknown type for &quot; + el + &quot; = &quot; + curval);</span>
+                }
+<span class="nc bnc" id="L527" title="All 2 branches missed.">                if (!PRINT_IN_HEADERS.contains(el))</span>
+<span class="nc" id="L528">                    log(&quot;unknown metadata element encountered: &quot;  + el);</span>
+            }
+<span class="nc" id="L530">        }</span>
+<span class="nc bnc" id="L531" title="All 2 branches missed.">        if (metadata.containsKey(&quot;uttid&quot;))</span>
+<span class="nc" id="L532">            blockMetadata.put(&quot;uttid&quot;, metadata.get(&quot;uttid&quot;).toString());</span>
+<span class="nc bnc" id="L533" title="All 2 branches missed.">        if (metadata.containsKey(&quot;origutt&quot;))</span>
+<span class="nc" id="L534">            blockMetadata.put(&quot;origutt&quot;, metadata.get(&quot;origutt&quot;).toString());</span>
+<span class="nc" id="L535">        String curcode = &quot;&quot;;</span>
+<span class="nc bnc" id="L536" title="All 2 branches missed.">        if (metadata.containsKey(&quot;speaker&quot;)) {</span>
+<span class="nc" id="L537">            curcode = metadata.get(&quot;speaker&quot;).toString();</span>
+<span class="nc" id="L538">            blockMetadata.put(&quot;speaker&quot;, curcode);</span>
+<span class="nc" id="L539">            Map&lt;String, Object&gt; participants = (Map&lt;String, Object&gt;)metadata.get(&quot;participants&quot;);</span>
+<span class="nc bnc" id="L540" title="All 4 branches missed.">            if (participants != null &amp;&amp; participants.containsKey(curcode)) {</span>
+<span class="nc" id="L541">                Map&lt;String, Object&gt; codeMap = (Map&lt;String, Object&gt;)participants.get(curcode);</span>
+<span class="nc bnc" id="L542" title="All 2 branches missed.">                for (String el: codeMap.keySet()) {</span>
+<span class="nc" id="L543">                    blockMetadata.put(despaceMetadataName(el), codeMap.get(el).toString());</span>
+<span class="nc" id="L544">                }</span>
+            }
+        }
+<span class="nc bnc" id="L547" title="All 2 branches missed.">        if (metadata.containsKey(&quot;id&quot;)) {</span>
+<span class="nc" id="L548">            Map&lt;String, Object&gt; mdid = (Map&lt;String, Object&gt;)metadata.get(&quot;id&quot;);</span>
+<span class="nc bnc" id="L549" title="All 2 branches missed.">            if (mdid != null) {</span>
+<span class="nc" id="L550">                Map&lt;String, Object&gt; curcodeMap = (Map&lt;String, Object&gt;)mdid.get(curcode);</span>
+<span class="nc bnc" id="L551" title="All 2 branches missed.">                if (curcodeMap != null) {</span>
+<span class="nc bnc" id="L552" title="All 2 branches missed.">                    for (String el: curcodeMap.keySet()) {</span>
+<span class="nc" id="L553">                        Object curval = curcodeMap.get(el);</span>
+<span class="nc bnc" id="L554" title="All 2 branches missed.">                        if (curval instanceof Date) {</span>
+<span class="nc" id="L555">                        	blockMetadata.put(despaceMetadataName(el), toIsoFormat((Date) curcodeMap.get(el)));</span>
+<span class="nc bnc" id="L556" title="All 4 branches missed.">                        } else if (curval instanceof String || curval instanceof Integer) {</span>
+<span class="nc" id="L557">                        	blockMetadata.put(despaceMetadataName(el), curcodeMap.get(el).toString());</span>
+                        } else {
+<span class="nc" id="L559">                            log(&quot;startBlock: unknown type for &quot; + el + &quot; = &quot; + curval);</span>
+                        }
+<span class="nc" id="L561">                    }</span>
+                }
+            }
+        }
+
+<span class="nc" id="L566">        inlineTag(blockTagName, true, blockMetadata);</span>
+<span class="nc" id="L567">    }</span>
+
+    private void endBlock() {
+<span class="nc" id="L570">    	inlineTag(blockTagName, false, null);</span>
+<span class="nc" id="L571">    }</span>
+
+    private void addWords(String line) {
+<span class="nc" id="L574">        String[] words = line.trim().split(&quot;\\s+&quot;);</span>
+<span class="nc bnc" id="L575" title="All 2 branches missed.">        for (String word: words) {</span>
+<span class="nc" id="L576">            beginWord();</span>
+<span class="nc bnc" id="L577" title="All 2 branches missed.">            for (ConfigAnnotation annot: currentAnnotatedField.getAnnotations().values()) {</span>
+<span class="nc" id="L578">                String processed = processString(word, annot.getProcess());</span>
+<span class="nc" id="L579">            	annotation(annot.getName(), processed, 1, null);</span>
+<span class="nc" id="L580">            }</span>
+<span class="nc" id="L581">            endWord();</span>
+        }
+<span class="nc" id="L583">    }</span>
+
+    private Pair&lt;Integer, Boolean&gt; processLine(int lineNumber, String line, Object md, int uttId, boolean headerModified) {
+<span class="nc" id="L586">        char startChar = line.charAt(0);</span>
+<span class="nc bnc" id="L587" title="All 2 branches missed.">        if (startChar == MD_CHAR) {</span>
+            // to implement
+<span class="nc" id="L589">            treatMetadataLine(lineNumber, line, metadata);</span>
+<span class="nc" id="L590">            headerModified = true;</span>
+        } else {
+<span class="nc bnc" id="L592" title="All 2 branches missed.">            if (headerModified) {</span>
+<span class="nc bnc" id="L593" title="All 2 branches missed.">            	if (inBlock)</span>
+<span class="nc" id="L594">            		endBlock();</span>
+
+//                printHeaderMetadata(metadata);
+//                output(&quot;\n\n&quot;);
+<span class="nc" id="L598">                headerModified = false;</span>
+
+<span class="nc" id="L600">                startBlock();</span>
+            }
+<span class="nc bnc" id="L602" title="All 2 branches missed.">            if (startChar == UTT_CHAR) {</span>
+<span class="nc" id="L603">                metadata.put(&quot;uttid&quot;, uttId);</span>
+<span class="nc" id="L604">                treatUtt(line, metadata);</span>
+
+//                String corpus = getCorpus(metadata);
+//                String parseFileName = getParseFile(corpus, currentFileBaseName, uttId);
+//                metadata.put(&quot;parsefile&quot;, parseFileName);
+
+<span class="nc" id="L610">                int endspk = line.indexOf(&quot;:&quot;);</span>
+<span class="nc bnc" id="L611" title="All 2 branches missed.">                if (endspk &lt; 0)</span>
+<span class="nc" id="L612">                    log(&quot;error in line: &quot; + line);</span>
+<span class="nc" id="L613">                String entry = line.substring(endspk + 2);</span>
+<span class="nc" id="L614">                String cleanEntry = cleanText(entry);</span>
+<span class="nc" id="L615">                writeToCleanFile(entry, cleanEntry);</span>
+<span class="nc" id="L616">                checkLine(line, cleanEntry, lineNumber);</span>
+//                updateCharMap(cleanentry, charmap);
+
+//                printUttMetadata(metadata);
+<span class="nc" id="L620">                addWords(cleanEntry);</span>
+//                output(&quot;\n&quot;);
+<span class="nc" id="L622">                uttId++;</span>
+<span class="nc bnc" id="L623" title="All 2 branches missed.">            } else if (startChar == ANNO_CHAR) {</span>
+                // to be implemented
+            } else {
+<span class="nc" id="L626">            	addWords(line);</span>
+            }
+        }
+<span class="nc" id="L629">        return new ImmutablePair&lt;&gt;(uttId, headerModified);</span>
+    }
+
+    private static String getCleanEntry(List&lt;String&gt; entryList, int i) {
+<span class="nc" id="L633">        int lentrylist = entryList.size();</span>
+<span class="nc bnc" id="L634" title="All 2 branches missed.">        if (lentrylist &gt; i)</span>
+<span class="nc" id="L635">			return entryList.get(i).trim();</span>
+<span class="nc" id="L636">        return &quot;&quot;;</span>
+    }
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    private void treatMetadataLine(int lineNumber, String headerLine, Map&lt;String, Object&gt; metadata) {
+<span class="nc" id="L641">        int headerNameEnd = headerLine.indexOf(HEADERLINE_END_SYMB);</span>
+<span class="nc bnc" id="L642" title="All 2 branches missed.">        if (headerNameEnd &lt; 0) {</span>
+<span class="nc" id="L643">            String cleanHeaderLine = headerLine.trim().toLowerCase();</span>
+<span class="nc bnc" id="L644" title="All 2 branches missed.">            if (cleanHeaderLine.equals(&quot;@utf8&quot;)) {</span>
+<span class="nc" id="L645">                metadata.put(&quot;charencoding&quot;, &quot;UTF8&quot;);</span>
+<span class="nc bnc" id="L646" title="All 2 branches missed.">            } else if (cleanHeaderLine.equals(&quot;@begin&quot;)) {</span>
+                // (pass)
+<span class="nc bnc" id="L648" title="All 2 branches missed.">            } else if (cleanHeaderLine.equals(&quot;@end&quot;)) {</span>
+                // (pass)
+<span class="nc bnc" id="L650" title="All 2 branches missed.">            } else if (cleanHeaderLine.equals(&quot;@blank&quot;)) {</span>
+                // (pass)
+            } else {
+<span class="nc" id="L653">                log(&quot;Warning: unknown header &quot; + headerLine + &quot; encountered in line &quot; + lineNumber);</span>
+            }
+
+<span class="nc" id="L656">        } else {</span>
+<span class="nc" id="L657">            String headerName= headerLine.substring(1, headerNameEnd);</span>
+<span class="nc" id="L658">            String entry = headerLine.substring(headerNameEnd+1);</span>
+<span class="nc" id="L659">            String cleanEntry = entry.trim();</span>
+<span class="nc" id="L660">            List&lt;String&gt; entryList = Arrays.asList(cleanEntry.split(&quot;,&quot;, -1));</span>
+<span class="nc" id="L661">            String cleanHeaderName = headerName.trim();</span>
+<span class="nc" id="L662">            String cleanHeaderNameBase = slice(cleanHeaderName, 0, -3).trim();</span>
+<span class="nc" id="L663">            String headerParameter = slice(cleanHeaderName, -3);</span>
+<span class="nc" id="L664">            cleanHeaderName = cleanHeaderName.toLowerCase();</span>
+<span class="nc bnc" id="L665" title="All 2 branches missed.">            if (cleanHeaderName.equals(&quot;font&quot;)) {</span>
+                // (pass)
+<span class="nc bnc" id="L667" title="All 2 branches missed.">            } else if (cleanHeaderName.equals(&quot;languages&quot;)) {</span>
+<span class="nc" id="L668">                metadata.put(&quot;languages&quot;, entryList);</span>
+<span class="nc bnc" id="L669" title="All 2 branches missed.">            } else if (cleanHeaderName.equals(&quot;colorwords&quot;)) {</span>
+<span class="nc" id="L670">                metadata.put(&quot;colorwords&quot;, entryList);</span>
+<span class="nc bnc" id="L671" title="All 2 branches missed.">            } else if (cleanHeaderName.equals(&quot;options&quot;)) {</span>
+                // (pass)
+<span class="nc bnc" id="L673" title="All 2 branches missed.">            } else if (cleanHeaderName.equals(&quot;participants&quot;)) {</span>
+<span class="nc" id="L674">                treatParticipants(entryList, metadata);</span>
+<span class="nc bnc" id="L675" title="All 2 branches missed.">            } else if (cleanHeaderName.equals(&quot;id&quot;)) {</span>
+<span class="nc" id="L676">                treatId(entry, metadata);</span>
+<span class="nc bnc" id="L677" title="All 2 branches missed.">            } else if (cleanHeaderName.equals(&quot;date&quot;)) {</span>
+<span class="nc" id="L678">                metadata.put(cleanHeaderName, normalizeDate(cleanEntry));</span>
+<span class="nc bnc" id="L679" title="All 2 branches missed.">            } else if (SIMPLE_HEADERNAMES.contains(cleanHeaderName)) {</span>
+<span class="nc" id="L680">                metadata.put(cleanHeaderName, cleanEntry);</span>
+<span class="nc bnc" id="L681" title="All 2 branches missed.">            } else if (SKIP_HEADER_NAMES.contains(cleanHeaderName)) {</span>
+                // (pass)
+<span class="nc bnc" id="L683" title="All 2 branches missed.">            } else if (SIMPLE_INT_HEADERNAMES.contains(cleanHeaderName)) {</span>
+            	int i;
+                try {
+<span class="nc" id="L686">					i = Integer.parseInt(cleanEntry);</span>
+<span class="nc" id="L687">				} catch (NumberFormatException e) {</span>
+<span class="nc" id="L688">	                log(&quot;Warning: couldn't parse integer for header &quot; + cleanHeaderName + &quot;: '&quot; + cleanEntry + &quot;'. Using -1.&quot;);</span>
+<span class="nc" id="L689">					i = -1;</span>
+<span class="nc" id="L690">				}</span>
+<span class="nc" id="L691">				metadata.put(cleanHeaderName, i);</span>
+<span class="nc bnc" id="L692" title="All 2 branches missed.">            } else if (SIMPLE_COUNTER_HEADERS.contains(cleanHeaderName)) {</span>
+<span class="nc" id="L693">                counter.put(cleanHeaderName, counter.get(cleanHeaderName) + 1);</span>
+<span class="nc" id="L694">                metadata.put(cleanHeaderName, counter.get(cleanHeaderName));</span>
+<span class="nc bnc" id="L695" title="All 2 branches missed.">            } else if (PARTICIPANT_SPECIFIC_HEADERS.contains(cleanHeaderNameBase)) {</span>
+<span class="nc bnc" id="L696" title="All 2 branches missed.">                if (!metadata.containsKey(&quot;id&quot;))</span>
+<span class="nc" id="L697">                    metadata.put(&quot;id&quot;, new HashMap&lt;String, Object&gt;());</span>
+<span class="nc" id="L698">                Map&lt;String, Object&gt; mdid = (Map&lt;String, Object&gt;)metadata.get(&quot;id&quot;);</span>
+<span class="nc bnc" id="L699" title="All 2 branches missed.">                if (!mdid.containsKey(headerParameter))</span>
+<span class="nc" id="L700">                    mdid.put(headerParameter, new HashMap&lt;String, String&gt;());</span>
+<span class="nc" id="L701">                Map&lt;String, Object&gt; hp = (Map&lt;String, Object&gt;)mdid.get(headerParameter);</span>
+<span class="nc bnc" id="L702" title="All 2 branches missed.">                if (cleanHeaderNameBase.equals(&quot;birth of&quot;)) {</span>
+<span class="nc" id="L703">                    Date date = normalizeDate(cleanEntry);</span>
+<span class="nc" id="L704">                    hp.put(cleanHeaderNameBase, date);</span>
+<span class="nc bnc" id="L705" title="All 2 branches missed.">                } else if (cleanHeaderNameBase.equals(&quot;age of&quot;)) {</span>
+                    // print(&quot;&lt;{}&gt;&quot;.format(cleanentry), file = logfile)
+                    // print(input(&quot;Continue?&quot;), file = logfile)
+<span class="nc" id="L708">                    hp.put(&quot;age&quot;, cleanEntry);</span>
+<span class="nc" id="L709">                    int months = getMonths(cleanEntry);</span>
+<span class="nc bnc" id="L710" title="All 2 branches missed.">                    if (months != 0)</span>
+<span class="nc" id="L711">                        hp.put(&quot;months&quot;, months);</span>
+<span class="nc" id="L712">                } else {</span>
+<span class="nc" id="L713">                    hp.put(cleanHeaderNameBase, cleanEntry);</span>
+                }
+
+<span class="nc" id="L716">            } else {</span>
+<span class="nc" id="L717">                log(&quot;Warning: unknown metadata element encountered: &quot; + cleanHeaderName);</span>
+            }
+        }
+<span class="nc" id="L720">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    private void treatParticipants(List&lt;String&gt; entryList, Map&lt;String, Object&gt; metadata) {
+<span class="nc bnc" id="L724" title="All 2 branches missed.">        for (String el: entryList) {</span>
+<span class="nc" id="L725">            String[] ellist = el.split(&quot;\\s+&quot;, -1);</span>
+            //int ctr = 0;
+<span class="nc" id="L727">            String code = &quot;&quot;;</span>
+<span class="nc" id="L728">            String name = &quot;&quot;;</span>
+<span class="nc" id="L729">            String role = &quot;&quot;;</span>
+<span class="nc bnc" id="L730" title="All 2 branches missed.">            if (ellist.length == 3) {</span>
+<span class="nc" id="L731">                code = ellist[0];</span>
+<span class="nc" id="L732">                name = ellist[1];</span>
+<span class="nc" id="L733">                role = ellist[2];</span>
+<span class="nc bnc" id="L734" title="All 2 branches missed.">            } else if (ellist.length ==2) {</span>
+<span class="nc" id="L735">                code = ellist[0];</span>
+<span class="nc" id="L736">                name = &quot;&quot;;</span>
+<span class="nc" id="L737">                role = ellist[1];</span>
+            } else {
+<span class="nc" id="L739">                log(&quot;error in participants: too few elements &quot; + entryList);</span>
+            }
+<span class="nc bnc" id="L741" title="All 2 branches missed.">            if (!code.isEmpty()) {</span>
+<span class="nc bnc" id="L742" title="All 2 branches missed.">                if (!metadata.containsKey(&quot;participants&quot;))</span>
+<span class="nc" id="L743">                    metadata.put(&quot;participants&quot;, new HashMap&lt;String, Object&gt;());</span>
+<span class="nc" id="L744">                Map&lt;String, Object&gt; par = (Map&lt;String, Object&gt;)metadata.get(&quot;participants&quot;);</span>
+<span class="nc bnc" id="L745" title="All 2 branches missed.">                if (!par.containsKey(code))</span>
+<span class="nc" id="L746">                    par.put(code, new HashMap&lt;String, String&gt;());</span>
+<span class="nc" id="L747">                Map&lt;String, Object&gt; codeMap = (Map&lt;String, Object&gt;)par.get(code);</span>
+<span class="nc bnc" id="L748" title="All 2 branches missed.">                if (!role.isEmpty())</span>
+<span class="nc" id="L749">                    codeMap.put(&quot;role&quot;, role);</span>
+<span class="nc bnc" id="L750" title="All 2 branches missed.">                if (!name.isEmpty())</span>
+<span class="nc" id="L751">                    codeMap.put(&quot;name&quot;, name);</span>
+            }
+<span class="nc" id="L753">        }</span>
+<span class="nc" id="L754">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    private void treatId(String entry, Map&lt;String, Object&gt; metadata) {
+<span class="nc" id="L758">        String cleanEntry = entry.trim();</span>
+<span class="nc" id="L759">        List&lt;String&gt; entrylist = Arrays.asList(cleanEntry.split(ID_SEP, -1));</span>
+<span class="nc" id="L760">        int lEntryList = entrylist.size();</span>
+<span class="nc bnc" id="L761" title="All 2 branches missed.">        if (lEntryList != 11)</span>
+<span class="nc" id="L762">            log(&quot;Warning in id: &quot; + lEntryList + &quot; elements instead of 11 in &quot; + entry);</span>
+<span class="nc" id="L763">        String language = getCleanEntry(entrylist, 0);</span>
+<span class="nc" id="L764">        String corpus  = getCleanEntry(entrylist, 1);</span>
+<span class="nc" id="L765">        String code = getCleanEntry(entrylist, 2);</span>
+<span class="nc" id="L766">        String age = getCleanEntry(entrylist, 3);</span>
+<span class="nc" id="L767">        String sex = getCleanEntry(entrylist, 4);</span>
+<span class="nc" id="L768">        String group = getCleanEntry(entrylist, 5);</span>
+<span class="nc" id="L769">        String ses = getCleanEntry(entrylist, 6);</span>
+<span class="nc" id="L770">        String role = getCleanEntry(entrylist, 7);</span>
+<span class="nc" id="L771">        String education = getCleanEntry(entrylist, 8);</span>
+<span class="nc" id="L772">        String custom = getCleanEntry(entrylist, 9);</span>
+<span class="nc bnc" id="L773" title="All 2 branches missed.">        if (code.isEmpty()) {</span>
+<span class="nc" id="L774">            log(&quot;error in id: no code element in &quot; + entry);</span>
+        } else {
+<span class="nc bnc" id="L776" title="All 2 branches missed.">            if (!metadata.containsKey(&quot;id&quot;))</span>
+<span class="nc" id="L777">                metadata.put(&quot;id&quot;, new HashMap&lt;String, Object&gt;());</span>
+<span class="nc" id="L778">            Map&lt;String, Object&gt; mdid = (Map&lt;String, Object&gt;)metadata.get(&quot;id&quot;);</span>
+<span class="nc bnc" id="L779" title="All 2 branches missed.">            if (!mdid.containsKey(code))</span>
+<span class="nc" id="L780">                mdid.put(code, new HashMap&lt;String, Object&gt;());</span>
+<span class="nc" id="L781">            Map&lt;String, Object&gt; codeMap = (Map&lt;String, Object&gt;)mdid.get(code);</span>
+<span class="nc bnc" id="L782" title="All 2 branches missed.">            if (!language.isEmpty())</span>
+<span class="nc" id="L783">                codeMap.put(&quot;language&quot;, language);</span>
+<span class="nc bnc" id="L784" title="All 2 branches missed.">            if (!corpus.isEmpty())</span>
+<span class="nc" id="L785">                codeMap.put(&quot;corpus&quot;, corpus);</span>
+<span class="nc" id="L786">            codeMap.put(&quot;age&quot;, age);</span>
+            String months;
+<span class="nc bnc" id="L788" title="All 2 branches missed.">            if (!age.isEmpty())</span>
+<span class="nc" id="L789">                months = &quot;&quot; + getMonths(age);</span>
+            else
+<span class="nc" id="L791">                months = &quot;&quot;;</span>
+<span class="nc" id="L792">            codeMap.put(&quot;months&quot;, months);</span>
+<span class="nc" id="L793">            codeMap.put(&quot;sex&quot;, sex);</span>
+<span class="nc" id="L794">            codeMap.put(&quot;group&quot;, group);</span>
+<span class="nc" id="L795">            codeMap.put(&quot;SES&quot;, ses);</span>
+<span class="nc" id="L796">            codeMap.put(&quot;role&quot;, role);</span>
+<span class="nc" id="L797">            codeMap.put(&quot;education&quot;, education);</span>
+<span class="nc" id="L798">            codeMap.put(&quot;custom&quot;, custom);</span>
+        }
+<span class="nc" id="L800">    }</span>
+
+    private void treatUtt(String line, Map&lt;String, Object&gt; metadata) {
+<span class="nc" id="L803">        int endSpk = line.indexOf(&quot;:&quot;);</span>
+<span class="nc bnc" id="L804" title="All 2 branches missed.">        if (endSpk &lt; 0)</span>
+<span class="nc" id="L805">        	log(&quot;WARNING, No : in line: &quot; + line);</span>
+<span class="nc" id="L806">        String code = line.substring(1, endSpk);</span>
+<span class="nc" id="L807">        metadata.put(&quot;speaker&quot;, code);</span>
+<span class="nc" id="L808">        metadata.put(&quot;origutt&quot;, line.substring(endSpk + 1, line.length() - 1));</span>
+<span class="nc" id="L809">    }</span>
+
+//    private void updateCharMap(String str, Map&lt;Character, Integer&gt; charmap) {
+//        for (int i = 0; i &lt; str.length(); i++) {
+//            char curchar = str.charAt(i);
+//            if (charmap.containsKey(curchar))
+//                charmap.put(curchar, charmap.get(curchar) + 1);
+//            else
+//                charmap.put(curchar, 1);
+//        }
+//    }
+
+    private void writeToCleanFile(String entry, String cleanEntry) {
+<span class="nc bnc" id="L822" title="All 2 branches missed.">        if (!entry.equals(cleanEntry)) {</span>
+<span class="nc" id="L823">            printToCleanfile(entry);</span>
+<span class="nc" id="L824">            printToCleanfile(cleanEntry);</span>
+        }
+<span class="nc" id="L826">    }</span>
+
+    // constants
+
+//  private final List&lt;String&gt; CHA_EXTS = Arrays.asList(&quot;.cha&quot;, &quot;.cex&quot;);
+//  private final String DEFAULT_OUT_EXT = &quot;.txt&quot;;
+//  private final String PARSE_EXT = &quot;.xml&quot;;
+
+//  private final String TAB = &quot;\t&quot;;
+//  private final String MY_QUOTE_CHAR = &quot;\&quot;&quot;;
+<span class="nc" id="L836">    private final char MD_CHAR = '@';</span>
+<span class="nc" id="L837">    private final char UTT_CHAR = '*';</span>
+<span class="nc" id="L838">    private final char ANNO_CHAR = '%';</span>
+<span class="nc" id="L839">    private final char SPACE_CHAR = ' ';</span>
+<span class="nc" id="L840">    private final String HEADERLINE_END_SYMB = &quot;:&quot;;</span>
+<span class="nc" id="L841">    private final String ID_SEP = &quot;\\|&quot;;</span>
+//    private final String META_KW = &quot;##META&quot;;
+<span class="nc" id="L843">    private final String SPACE = &quot; &quot;;</span>
+//  private final String UNDERSCORE = &quot;_&quot;;
+
+<span class="nc" id="L846">    private final String SEPS = &quot;[-.,/;:_!~\\\\]&quot;;</span>
+<span class="nc" id="L847">    private final String ONE_OR_MORE_DIGITS = &quot;[0-9]+&quot;;</span>
+<span class="nc" id="L848">    private final String DIGITS_ONE_OR_TWO = &quot;[0-9]{1,2}&quot;;</span>
+<span class="nc" id="L849">    private final String OPT_DAYS = &quot;(&quot; + ONE_OR_MORE_DIGITS + &quot;)?&quot;;</span>
+<span class="nc" id="L850">    private final String OPT_SEP_DAYS = &quot;(\\.&quot; + OPT_DAYS + &quot;)?&quot;;</span>
+<span class="nc" id="L851">    private final String OPT_MONTHS = &quot;(&quot; + DIGITS_ONE_OR_TWO + OPT_SEP_DAYS + &quot;)?&quot;;</span>
+<span class="nc" id="L852">    private final String OPT_SEP_MONTHS = &quot;(;&quot;  + OPT_MONTHS + &quot;)?&quot;;</span>
+<span class="nc" id="L853">    private final String AGE_REGEX = &quot;^&quot; + ONE_OR_MORE_DIGITS + OPT_SEP_MONTHS + &quot;$&quot;;</span>
+
+<span class="nc" id="L855">    private final List&lt;String&gt; SIMPLE_HEADERNAMES = Arrays.asList(</span>
+        &quot;pid&quot;,  &quot;transcriber&quot;,  &quot;coder&quot;,  &quot;date&quot;,  &quot;location&quot;,
+        &quot;situation&quot;, &quot;number&quot;, &quot;interaction type&quot;, &quot;activities&quot;,
+        &quot;comment&quot;, &quot;bck&quot;, &quot;warning&quot;, &quot;transcription&quot;,
+        &quot;time start&quot;, &quot;time duration&quot;, &quot;tape location&quot;, &quot;room layout&quot;,
+        &quot;recording quality&quot;, &quot;number&quot;, &quot;media&quot;
+    );
+<span class="nc" id="L862">    private final List&lt;String&gt; SIMPLE_INT_HEADERNAMES = Arrays.asList(&quot;g&quot;, &quot;page&quot;);</span>
+<span class="nc" id="L863">    private final List&lt;String&gt; SIMPLE_COUNTER_HEADERS = Arrays.asList(&quot;new episode&quot;);</span>
+<span class="nc" id="L864">    private final List&lt;String&gt; SKIP_HEADER_NAMES = Arrays.asList(&quot;exceptions&quot;);</span>
+<span class="nc" id="L865">    private final List&lt;String&gt; PARTICIPANT_SPECIFIC_HEADERS = Arrays.asList(&quot;birth of&quot;, &quot;birthplace of&quot;, &quot;l1 of&quot;, &quot;age of&quot;);</span>
+<span class="nc" id="L866">    private final List&lt;String&gt; CREATED_MD_NAMES = Arrays.asList(&quot;charencoding&quot;, &quot;parsefile&quot;, &quot;speaker&quot;, &quot;origutt&quot;);</span>
+<span class="nc" id="L867">    private final List&lt;String&gt; DO_NOT_PRINT_IN_HEADERS = Arrays.asList(</span>
+            &quot;id&quot;, &quot;participants&quot;, &quot;languages&quot;, &quot;colorwords&quot;,
+            &quot;options&quot;, &quot;uttid&quot;, &quot;parsefile&quot;, &quot;speaker&quot;, &quot;origutt&quot;
+    );
+<span class="nc" id="L871">    private List&lt;String&gt; ALL_HEADERS = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L872">    private List&lt;String&gt; PRINT_IN_HEADERS = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L873">    private List&lt;Character&gt; START_CHARS_TO_CHECK = new ArrayList&lt;&gt;();</span>
+
+    {
+<span class="nc" id="L876">        ALL_HEADERS.addAll(SIMPLE_HEADERNAMES);</span>
+<span class="nc" id="L877">        ALL_HEADERS.addAll(SIMPLE_INT_HEADERNAMES);</span>
+<span class="nc" id="L878">        ALL_HEADERS.addAll(SIMPLE_COUNTER_HEADERS);</span>
+<span class="nc" id="L879">        ALL_HEADERS.addAll(CREATED_MD_NAMES);</span>
+<span class="nc" id="L880">        ALL_HEADERS.addAll(PARTICIPANT_SPECIFIC_HEADERS);</span>
+
+<span class="nc bnc" id="L882" title="All 2 branches missed.">        for (String headeratt: ALL_HEADERS) {</span>
+<span class="nc bnc" id="L883" title="All 2 branches missed.">            if (!DO_NOT_PRINT_IN_HEADERS.contains(headeratt))</span>
+<span class="nc" id="L884">                PRINT_IN_HEADERS.add(headeratt);</span>
+<span class="nc" id="L885">        }</span>
+
+<span class="nc" id="L887">        START_CHARS_TO_CHECK.add(MD_CHAR);</span>
+<span class="nc" id="L888">        START_CHARS_TO_CHECK.add(UTT_CHAR);</span>
+<span class="nc" id="L889">        START_CHARS_TO_CHECK.add(ANNO_CHAR);</span>
+<span class="nc" id="L890">        START_CHARS_TO_CHECK.add(SPACE_CHAR);</span>
+    }
+
+    private Map&lt;String, Object&gt; metadata;
+
+    private Map&lt;String, Integer&gt; counter;
+
+//    private PrintStream logfile;
+
+	private String currentFileBaseName;
+
+//    public static void main(String[] argv) throws Exception {
+//        File f = new File(&quot;D:\\werk\\mee\\chat-examples\\Adler\\adler01a.cha&quot;);
+//
+//        DocIndexerChat di = new DocIndexerChat();
+//        di.setDocumentName(f.getPath().replaceAll(&quot;\\\\&quot;, &quot;/&quot;));
+//    	di.setDocument(f, StandardCharsets.UTF_8);
+//    	di.setLog(new PrintWriter(System.out));
+//    	di.index();
+//
+////
+////        /*
+////        String hexformat = &quot;{0:#06X}&quot;;
+////        // hexformat = &quot;0x%0.4X&quot;
+////        charmapfile = open(charmapfilename, &quot;w&quot;, encoding = &quot;utf8&quot;);
+////        charmapwriter = csv.writer(charmapfile, delimiter = tab, quotechar = myquotechar, quoting = csv.QUOTE_MINIMAL, lineterminator = &quot;\n&quot;);
+////        for (el in charmap) {
+////            ordel = ord(el)
+////            therow = [el, ordel , hexformat.format(ordel), charmap[el]]
+////            charmapwriter.writerow(therow)
+////        }*/
+////
+////        // read metadata from the CHA file
+////
+////        // first read the character encoding
+////
+////        // and convert it to PaQu style plain text metadata annotations
+////
+////        // and convert it to LASSY XML meta elements and integrate with a Alpino-parsed  XML-file
+////
+////        // and convert it to FoliA
+//    }
+
+
+//--------------------------------
+
+    //class CleanChildesMetadata {
+
+    public String scoped(String str) {
+<span class="nc" id="L939">        return &quot;&lt;(([^&lt;&gt;]|\\[&lt;\\]|\\[&gt;\\])*)&gt;\\s*&quot; + str;</span>
+    }
+
+<span class="nc" id="L942">    final String EMPTY_STRING = &quot;&quot;;</span>
+
+<span class="nc" id="L944">    final int SKIP_LINES = 1;</span>
+<span class="nc" id="L945">    final int HEADER = 1;</span>
+<span class="nc" id="L946">    final int LCTR = 0;</span>
+
+    // hexformat = &quot;{0:#06X}&quot;
+    //final String hexformat = &quot;\\u{0:04X}&quot;;
+
+    // scopestr = &quot;&lt;([^&lt;&gt;]*)&gt;\\s*&quot;
+
+<span class="nc" id="L953">    final String GT_REPL = &quot;\u00A9&quot;;  // copyright sign</span>
+<span class="nc" id="L954">    final String LT_REPL = &quot;\u00AE&quot;; // Registered sign</span>
+<span class="nc" id="L955">    final Pattern GT_REPL_SCOPED = Pattern.compile(scoped(GT_REPL));</span>
+<span class="nc" id="L956">    final Pattern LT_REPL_SCOPED = Pattern.compile(scoped(LT_REPL));</span>
+<span class="nc" id="L957">    final Pattern GT_REPL_UNSCOPED = Pattern.compile(GT_REPL);</span>
+<span class="nc" id="L958">    final Pattern LT_REPL_UNSCOPED = Pattern.compile(LT_REPL);</span>
+
+<span class="nc" id="L960">    final Pattern PAUSES3 = Pattern.compile(&quot;\\(\\.\\.\\.\\)&quot;);</span>
+<span class="nc" id="L961">    final Pattern PAUSES2 = Pattern.compile(&quot;\\(\\.\\.\\)&quot;);</span>
+<span class="nc" id="L962">    final Pattern PAUSES1 = Pattern.compile(&quot;\\([0-9]*\\.[0-9]*\\)&quot;);</span>
+<span class="nc" id="L963">    final Pattern LEFT_BRACKET = Pattern.compile(&quot;\\(&quot;);</span>
+<span class="nc" id="L964">    final Pattern RIGHT_BRACKET = Pattern.compile(&quot;\\)&quot;);</span>
+<span class="nc" id="L965">    final Pattern AT_SIGN_LETTERS = Pattern.compile(&quot;@[\\w:]+&quot;);</span>
+<span class="nc" id="L966">    final Pattern WWW = Pattern.compile(&quot;www&quot;);</span>
+<span class="nc" id="L967">    final Pattern PHON_FRAG1 = Pattern.compile(&quot;&amp; = [\\w:]+&quot;);</span>
+<span class="nc" id="L968">    final Pattern PHON_FRAG2 = Pattern.compile(&quot;&amp;[\\w:]+&quot;);</span>
+<span class="nc" id="L969">    final Pattern ZERO_STR = Pattern.compile(&quot;0(\\w+)&quot;);</span>
+<span class="nc" id="L970">    final Pattern BARE_ZERO = Pattern.compile(&quot;0&quot;);</span>
+<span class="nc" id="L971">    final Pattern PLUS_DOT_DOT = Pattern.compile(&quot;\\+\\.\\.&quot;);</span>
+<span class="nc" id="L972">    final String LT_STR = &quot;\\[&lt;\\]&quot;;</span>
+<span class="nc" id="L973">    final Pattern LT_REGEX = Pattern.compile(LT_STR);</span>
+
+    // ltre1 = Pattern.compile(scoped(ltstr))
+    // ltre2 = Pattern.compile(ltstr)
+<span class="nc" id="L977">    final String DOUBLE_SLASH_STR = &quot;\\[//\\]&quot;;</span>
+<span class="nc" id="L978">    final Pattern DOUBLE_SLASH_SCOPED = Pattern.compile(scoped(DOUBLE_SLASH_STR));</span>
+<span class="nc" id="L979">    final Pattern DOUBLE_SLASH_UNSCOPED = Pattern.compile(DOUBLE_SLASH_STR);</span>
+<span class="nc" id="L980">    final Pattern EXCLAM2 = Pattern.compile(&quot;\\[!\\]&quot;);</span>
+<span class="nc" id="L981">    final Pattern EXCLAM1 = Pattern.compile(&quot;&lt;([^&gt;]*)&gt;\\s*\\[!\\]&quot;);</span>
+<span class="nc" id="L982">    final String SLASH_STR = &quot;\\[/\\]&quot;;</span>
+<span class="nc" id="L983">    final Pattern SLASH_SCOPED = Pattern.compile(scoped(SLASH_STR));</span>
+<span class="nc" id="L984">    final Pattern SLASH_UNSCOPED = Pattern.compile(SLASH_STR);</span>
+<span class="nc" id="L985">    final String GT_STR = &quot;\\[&gt;\\]&quot;;</span>
+<span class="nc" id="L986">    final Pattern GT_REGEX = Pattern.compile(GT_STR);</span>
+    // gtre1 = Pattern.compile(scoped(gtstr))
+    // gtre2 = Pattern.compile(gtstr)
+<span class="nc" id="L989">    final String Q_STR = &quot;\\[\\?\\]&quot;;</span>
+<span class="nc" id="L990">    final Pattern Q_REGEX_SCOPED = Pattern.compile(scoped(Q_STR));</span>
+<span class="nc" id="L991">    final Pattern Q_REGEX_UNSCOPED = Pattern.compile(Q_STR);</span>
+<span class="nc" id="L992">    final Pattern EQ_EXCLAM = Pattern.compile(&quot;&lt;([^&gt;]*)&gt;\\s*\\[ = ![^\\]]*\\]&quot;);</span>
+<span class="nc" id="L993">    final Pattern EQ_TEXT1 = Pattern.compile(&quot;&lt;([^&gt;]*)&gt;\\s*\\[ = [^\\]]*\\]&quot;);</span>
+<span class="nc" id="L994">    final Pattern EQ_TEXT2 = Pattern.compile(&quot;\\[ = [^\\]]*\\]&quot;);</span>
+<span class="nc" id="L995">    final Pattern COLON_REGEX = Pattern.compile(&quot;[^ ]+\\s+\\[:([^\\]]*)\\]&quot;);</span>
+<span class="nc" id="L996">    final Pattern DOUBLE_EXCLAM = Pattern.compile(&quot;\\[!!\\]&quot;);</span>
+<span class="nc" id="L997">    final Pattern PLUS3 = Pattern.compile(&quot;\\+\\/(\\/)?[\\.\\?]&quot;);</span>
+<span class="nc" id="L998">    final Pattern PLUS2 = Pattern.compile(&quot;\\+[\\.\\^&lt;,\\+\&quot;]&quot;);</span>
+<span class="nc" id="L999">    final Pattern PLUS_QUOTE = Pattern.compile(&quot;\\+(\\+\&quot;\\.|!\\?)&quot;);</span>
+    // nesting = Pattern.compile(r&quot;&lt;([^&lt;&gt;]*(&lt;[^&lt;&gt;]*&gt;(\[&gt;\]|\[&lt;\]|[^&lt;&gt;])*)+)&gt;&quot;)
+    // nesting = Pattern.compile(r&quot;&lt;(([^&lt;&gt;]|\[&lt;\]|\[&gt;\])*)&gt;&quot;)
+
+    // content = r&quot;(([^&lt;&gt;])|\[&lt;\]|\[&gt;\])*&quot;
+    // content = r&quot;(([^&lt;&gt;])|(\[&lt;\])|(\[&gt;\]))*&quot;
+    // content = r&quot;((\[&lt;\])|(\[&gt;\])|([^&lt;&gt;]))*&quot;
+    // nested = r&quot;(&lt;&quot; + content + r&quot;&gt;&quot; + content + r&quot;)+&quot;
+    // neststr = r&quot;(&lt;&quot; + content + nested + r&quot;&gt;)&quot;
+    // nesting = Pattern.compile(neststr)
+
+    public String bracket(String str) {
+<span class="nc" id="L1011">        return &quot;(&quot;+ str + &quot;)&quot;;</span>
+    }
+
+    public String regexOr(List&lt;String&gt; strList) {
+<span class="nc" id="L1015">        return bracket(StringUtils.join(strList, &quot;|&quot;));</span>
+    }
+
+    public String regexStar(String str) {
+<span class="nc" id="L1019">        return bracket(str) + &quot;*&quot;;</span>
+    }
+
+    // JN fixed(?)
+<span class="nc" id="L1023">    private final Pattern CHECK_PATTERN = Pattern.compile(&quot;[\\]\\[\\\\(\\\\)&amp;%@/ = &gt;&lt;_0^~\u2193\u2191\u2191\u2193\u21D7\u2197\u2192\u2198\u21D8\u221E\u2248\u224B\u2261\u2219\u2308\u2309\u230A\u230B\u2206\u2207\u204E\u2047\u00B0\u25C9\u2581\u2594\u263A\u222C\u03AB123456789\u00B7\u22A5\u00B7\u0001]&quot;);</span>
+
+	// + should not occur except as compund marker black+board
+<span class="nc" id="L1026">	private final Pattern PLUS_PATTERN = Pattern.compile(&quot;\\W\\+|\\+\\W&quot;);</span>
+
+	private void checkLine(String line, String newline, int lineNumber) {
+<span class="nc bnc" id="L1029" title="All 2 branches missed.">		if (log == null)</span>
+<span class="nc" id="L1030">			return;</span>
+<span class="nc bnc" id="L1031" title="All 4 branches missed.">        if (CHECK_PATTERN.matcher(newline).find() || PLUS_PATTERN.matcher(newline).find()) {</span>
+<span class="nc" id="L1032">            log(currentFileBaseName + &quot; &quot; + lineNumber + &quot; suspect character&quot;);</span>
+<span class="nc" id="L1033">            log(&quot;input = &lt;&quot; + line.substring(0, line.length() - 1) + &quot;&gt;&quot;);</span>
+<span class="nc" id="L1034">            log(&quot;output = &lt;&quot; + newline.substring(0, newline.length() - 1) + &quot;&gt;&quot;);</span>
+<span class="nc" id="L1035">            List&lt;Pair&lt;Character, String&gt;&gt; thecodes = stringToCodes(newline.substring(0, newline.length() - 1));</span>
+<span class="nc" id="L1036">            log(&quot;charcodes = &lt;&quot; + thecodes + &quot;&gt;&quot;);</span>
+        }
+<span class="nc" id="L1038">    }</span>
+
+<span class="nc" id="L1040">	private final String EMBED = &quot;(&lt;[^&lt;&gt;]*&gt;)&quot;;</span>
+<span class="nc" id="L1041">	private final String OTHER = &quot;[^&lt;&gt;]&quot;;</span>
+<span class="nc" id="L1042">	private final String EMBED_OR_OTHER = regexOr(Arrays.asList(EMBED, OTHER));</span>
+<span class="nc" id="L1043">	private final String NEST_STR = &quot;(&lt;&quot; + regexStar(OTHER) + EMBED + regexStar(EMBED_OR_OTHER)  + &quot;&gt;)&quot;;</span>
+<span class="nc" id="L1044">	private final Pattern NESTING = Pattern.compile(NEST_STR);</span>
+
+<span class="nc" id="L1046">	private final String TIMES_STR = &quot;\\[x[^\\]]*\\]&quot;;</span>
+<span class="nc" id="L1047">	private final Pattern TIMES_UNSCOPED = Pattern.compile(TIMES_STR);</span>
+<span class="nc" id="L1048">	private final Pattern TIMES_SCOPED = Pattern.compile(scoped(TIMES_STR));</span>
+<span class="nc" id="L1049">	private final Pattern INLINE_COM_SCOPED = Pattern.compile(&quot;&lt;([^&lt;&gt;]*)&gt;\\s*\\[\\% [^\\]]*\\]&quot;);</span>
+<span class="nc" id="L1050">	private final Pattern INLINE_COM_UNSCOPED = Pattern.compile(&quot;\\[\\% [^\\]]*\\]&quot;);</span>
+<span class="nc" id="L1051">	private final String TRIPLE_SLASH = &quot;\\[///\\]&quot;;</span>
+<span class="nc" id="L1052">	private final Pattern REFORMUL_UNSCOPED = Pattern.compile(TRIPLE_SLASH);</span>
+<span class="nc" id="L1053">	private final Pattern REFORMUL_SCOPED = Pattern.compile(scoped(TRIPLE_SLASH));</span>
+<span class="nc" id="L1054">	private final Pattern END_QUOTE = Pattern.compile(&quot;\\+\&quot;/\\.&quot;);</span>
+<span class="nc" id="L1055">	private final String ERROR_MARK_STR = &quot;\\[\\*\\]&quot;;</span>
+<span class="nc" id="L1056">	private final Pattern ERROR_MARK_UNSCOPED = Pattern.compile(ERROR_MARK_STR);</span>
+<span class="nc" id="L1057">	private final Pattern ERROR_MARK_SCOPED = Pattern.compile(scoped(ERROR_MARK_STR));</span>
+<span class="nc" id="L1058">	private final Pattern DEPENDENT_TIER = Pattern.compile(&quot;\\[%(act|add|gpx|int|sit|spe):[^\\]]*\\]&quot;); // JN fixed(?)</span>
+<span class="nc" id="L1059">	private final Pattern POST_CODES = Pattern.compile(&quot;\\[\\+[^]]*\\]&quot;);</span>
+<span class="nc" id="L1060">	private final Pattern PRE_CODES = Pattern.compile(&quot;\\[-[^]]*\\]&quot;);</span>
+<span class="nc" id="L1061">	private final Pattern BCH = Pattern.compile(&quot;\\[\\+\\s*bch\\]&quot;);</span>
+<span class="nc" id="L1062">	private final Pattern TRN = Pattern.compile(&quot;\\[\\+\\s*trn\\]&quot;);</span>
+<span class="nc" id="L1063">	private final Pattern SYLLABLE_PAUSE = Pattern.compile(&quot;(\\w)\\^&quot;);</span>
+<span class="nc" id="L1064">	private final Pattern COMPLEX_LOCAL_EVENT = Pattern.compile(&quot;\\[\\^[^\\]]*\\]&quot;);</span>
+<span class="nc" id="L1065">	private final Pattern CLITIC_LINK = Pattern.compile(&quot;~&quot;);</span>
+    // NOTE JN: used https://r12a.github.io/apps/conversion/ to convert unicode characters to escape sequences
+<span class="nc" id="L1067">	private final Pattern CHAT_CA_SYMS = Pattern.compile(&quot;[\u2193\u2191\u2191\u2193\u21D7\u2197\u2192\u2198\u21D8\u221E\u2248\u224B\u2261\u2219\u2308\u2309\u230A\u230B\u2206\u2207\u204E\u2047\u00B0\u25C9\u2581\u2594\u263A\u222C\u03AB\u222E\u00A7\u223E\u21BB\u1F29\u201E\u2021\u0323\u0323\u02B0\u0304\u02940]&quot;);</span>
+<span class="nc" id="L1068">	private final Pattern TIME_ALIGN = Pattern.compile(&quot;\u0015[0123456789_ ]+\u0015&quot;);</span>
+
+	private String cleanText(String str) {
+<span class="nc" id="L1071">        String result = str;</span>
+
+        // if times.search(result) {
+            // print(&quot;[x ...] found, line = {}&quot;.format(result), file = logfile)
+
+        // page references are to MacWhinney chat manual version 21 april 2015
+
+        // replace [&lt;] and [&gt;]
+
+<span class="nc" id="L1080">        result = LT_REGEX.matcher(result).replaceAll(LT_REPL);</span>
+<span class="nc" id="L1081">        result = GT_REGEX.matcher(result).replaceAll(GT_REPL);</span>
+
+<span class="nc" id="L1083">        Matcher m = NESTING.matcher(result);</span>
+<span class="nc bnc" id="L1084" title="All 2 branches missed.">        if (m.find()) {</span>
+<span class="nc" id="L1085">            int b = m.start(1) + 1;</span>
+<span class="nc" id="L1086">            int e = m.end(1) - 1;</span>
+<span class="nc" id="L1087">            String midStr = result.substring(b, e);</span>
+<span class="nc" id="L1088">            String newMidStr = cleanText(midStr);</span>
+<span class="nc" id="L1089">            String leftStr = result.substring(0, b);</span>
+<span class="nc" id="L1090">            String rightStr = result.substring(e);</span>
+<span class="nc" id="L1091">            result = leftStr + newMidStr + rightStr;</span>
+        }
+
+        // remove scoped times &lt;...&gt; [x ...] keeping the ... betwen &lt;&gt; not officially defined
+<span class="nc" id="L1095">        result = TIMES_SCOPED.matcher(result).replaceAll(&quot;$1&quot;);</span>
+
+        // remove scoped inlinecom &lt;...&gt; [% ...] keeping the ... betwen &lt;&gt; not officially defined
+<span class="nc" id="L1098">        result = INLINE_COM_SCOPED.matcher(result).replaceAll(&quot;$1&quot;);</span>
+
+        // remove pauses
+<span class="nc" id="L1101">        result = PAUSES3.matcher(result).replaceAll(SPACE);</span>
+<span class="nc" id="L1102">        result = PAUSES2.matcher(result).replaceAll(SPACE);</span>
+<span class="nc" id="L1103">        result = PAUSES1.matcher(result).replaceAll(SPACE);</span>
+
+        // remove round brackets
+<span class="nc" id="L1106">        result = LEFT_BRACKET.matcher(result).replaceAll(EMPTY_STRING);</span>
+<span class="nc" id="L1107">        result = RIGHT_BRACKET.matcher(result).replaceAll(EMPTY_STRING);</span>
+
+        // remove multiple wordmarker p. 43, 73-74
+<span class="nc" id="L1110">        result = TIMES_UNSCOPED.matcher(result).replaceAll(EMPTY_STRING);</span>
+
+        // remove @letters+:
+<span class="nc" id="L1113">        result = AT_SIGN_LETTERS.matcher(result).replaceAll(EMPTY_STRING);</span>
+
+        // remove inline comments [% ...] p70, 78, 85
+<span class="nc" id="L1116">        result = INLINE_COM_UNSCOPED.matcher(result).replaceAll(EMPTY_STRING);</span>
+
+        // remove scoped reformulation symbols [///] p 73
+<span class="nc" id="L1119">        result = REFORMUL_SCOPED.matcher(result).replaceAll(&quot;$1&quot;);</span>
+
+        // remove reformulation symbols [///] p 73
+<span class="nc" id="L1122">        result = REFORMUL_UNSCOPED.matcher(result).replaceAll(SPACE);</span>
+
+        // remover errormark1 [*] and preceding &lt;&gt;
+<span class="nc" id="L1125">        result = ERROR_MARK_SCOPED.matcher(result).replaceAll(&quot;$1 &quot;);</span>
+
+        // remover errormark2 [*]
+<span class="nc" id="L1128">        result = ERROR_MARK_UNSCOPED.matcher(result).replaceAll(EMPTY_STRING);</span>
+
+        // remove inline dependent tier [%xxx: ...]
+
+<span class="nc" id="L1132">        result = DEPENDENT_TIER.matcher(result).replaceAll(EMPTY_STRING);</span>
+
+        // remove    postcodes p. 75-76
+<span class="nc" id="L1135">        result = POST_CODES.matcher(result).replaceAll(EMPTY_STRING);</span>
+
+        // remove precodes p.75-76
+<span class="nc" id="L1138">        result = PRE_CODES.matcher(result).replaceAll(EMPTY_STRING);</span>
+
+        // remove bch p. 75-76
+<span class="nc" id="L1141">        result = BCH.matcher(result).replaceAll(EMPTY_STRING);</span>
+
+        // remove trn p.75-76
+<span class="nc" id="L1144">        result = TRN.matcher(result).replaceAll(EMPTY_STRING);</span>
+
+        // remove xxx should we do this? or something else? add xxx as a word in Alpino?
+        // no we keep this
+        //    result = result.replaceAll(r&quot;xxx&quot;, '')
+
+        // remove yyy should we do this? or something else? add xxx as a word in Alpino?
+        // we keep this too
+        //    result = result.replaceAll(r&quot;yyy&quot;, '')
+
+
+        // remove phonological fragments p. 61
+<span class="nc" id="L1156">        result = PHON_FRAG1.matcher(result).replaceAll(EMPTY_STRING);</span>
+
+
+
+        // remove phonological fragments p.61
+<span class="nc" id="L1161">        result = PHON_FRAG2.matcher(result).replaceAll(EMPTY_STRING);</span>
+
+        // remove www intentionally after phonological fragments
+<span class="nc" id="L1164">        result = WWW.matcher(result).replaceAll(EMPTY_STRING);</span>
+
+
+        // replace 0[A-z] works ok now, raw replacement string!
+<span class="nc" id="L1168">        result = ZERO_STR.matcher(result).replaceAll(&quot;$1&quot;);</span>
+
+        // delete any remaining 0's
+<span class="nc" id="L1171">        result = BARE_ZERO.matcher(result).replaceAll(SPACE);</span>
+
+        // remove underscore
+<span class="nc" id="L1174">        result = result.replaceAll(&quot;_&quot;, EMPTY_STRING);</span>
+
+        // remove +..  p. 63
+<span class="nc" id="L1177">        result = PLUS_DOT_DOT.matcher(result).replaceAll(EMPTY_STRING);</span>
+
+
+        // remove [&lt;] and preceding &lt;&gt; on purpose before [//]
+<span class="nc" id="L1181">        result = LT_REPL_SCOPED.matcher(result).replaceAll(&quot;$1 &quot;);</span>
+
+        // remove [&lt;]   on purpose before [//]
+<span class="nc" id="L1184">        result = LT_REPL_UNSCOPED.matcher(result).replaceAll(SPACE);</span>
+
+        // remove [&gt;] and preceding &lt;&gt;
+<span class="nc" id="L1187">        result = GT_REPL_SCOPED.matcher(result).replaceAll(&quot;$1 &quot;);</span>
+
+        // remove [&gt;]
+<span class="nc" id="L1190">        result = GT_REPL_UNSCOPED.matcher(result).replaceAll(SPACE);</span>
+
+
+        // remove [//] keep preceding part between &lt;&gt;, drop &lt;&gt;
+<span class="nc" id="L1194">        result = DOUBLE_SLASH_SCOPED.matcher(result).replaceAll(&quot;$1&quot;);</span>
+
+        // remove [//] keep preceding word
+<span class="nc" id="L1197">        result = DOUBLE_SLASH_UNSCOPED.matcher(result).replaceAll(EMPTY_STRING);</span>
+
+        // remove [!] and &lt;&gt; around preceding text    p.68
+<span class="nc" id="L1200">        result = EXCLAM1.matcher(result).replaceAll(&quot;$1&quot;);</span>
+
+        // remove [!] p.68
+<span class="nc" id="L1203">        result = EXCLAM2.matcher(result).replaceAll(SPACE);</span>
+
+
+        // remove [/] keep preceding part between &lt;&gt; this line and following one: crucial order
+<span class="nc" id="L1207">        result = SLASH_SCOPED.matcher(result).replaceAll(&quot;$1&quot;);</span>
+
+        // remove [/] keep the word before
+<span class="nc" id="L1210">        result = SLASH_UNSCOPED.matcher(result).replaceAll(EMPTY_STRING);</span>
+        //    result = result.replaceAll(r&quot;\[&lt;\]&quot;, '')
+
+
+        // remove [?] and preceding &lt;&gt;
+<span class="nc" id="L1215">        result = Q_REGEX_SCOPED.matcher(result).replaceAll(&quot;$1 &quot;);</span>
+
+        // remove [?]
+<span class="nc" id="L1218">        result = Q_REGEX_UNSCOPED.matcher(result).replaceAll(SPACE);</span>
+
+        // remove [=! &lt;text&gt;] and preceding &lt;&gt;
+<span class="nc" id="L1221">        result = EQ_EXCLAM.matcher(result).replaceAll(&quot;$1 &quot;);</span>
+
+        // remove [= &lt;text&gt; ] and preceding &lt;&gt;  p 68/69 explanation
+<span class="nc" id="L1224">        result = EQ_TEXT1.matcher(result).replaceAll(&quot;$1 &quot;);</span>
+
+        // remove [= &lt;text&gt;]
+<span class="nc" id="L1227">        result = EQ_TEXT2.matcher(result).replaceAll(SPACE);</span>
+
+        // replace word [: text] by text
+<span class="nc" id="L1230">        result = COLON_REGEX.matcher(result).replaceAll(&quot;$1 &quot;);</span>
+
+        // remove [!!]
+<span class="nc" id="L1233">        result = DOUBLE_EXCLAM.matcher(result).replaceAll(SPACE);</span>
+
+        // remove +&quot;/. p. 64-65
+<span class="nc" id="L1236">        result = END_QUOTE.matcher(result).replaceAll(EMPTY_STRING);</span>
+
+        // remove +/. +/? +//. +//?
+<span class="nc" id="L1239">        result = PLUS3.matcher(result).replaceAll(&quot; &quot;);</span>
+
+        // remove +.  +^ +&lt; +, ++ +&quot; (p. 64-66)
+<span class="nc" id="L1242">        result = PLUS2.matcher(result).replaceAll(&quot; &quot;);</span>
+
+        // remove +&quot;.    (p. 65)  +!? (p. 63)
+<span class="nc" id="L1245">        result = PLUS_QUOTE.matcher(result).replaceAll(&quot; &quot;);</span>
+
+        // remove silence marks (.) (..) (...) done above see pauses
+        //    result = re.sub(r&quot;\(\.(\.)?(\.)?\)&quot;, r&quot; &quot;, result)
+
+        // remove syllablepauses p. 60
+<span class="nc" id="L1251">        result = SYLLABLE_PAUSE.matcher(result).replaceAll(&quot;$1&quot;);</span>
+
+        // remove complexlocalevent p. 61
+<span class="nc" id="L1254">        result = COMPLEX_LOCAL_EVENT.matcher(result).replaceAll(SPACE);</span>
+
+        // replace clitic link ~by space
+<span class="nc" id="L1257">        result = CLITIC_LINK.matcher(result).replaceAll(SPACE);</span>
+
+        // replace chat-ca codes by space p. 86, 87
+<span class="nc" id="L1260">        result = CHAT_CA_SYMS.matcher(result).replaceAll(SPACE);</span>
+
+        // remove time alignment p. 67
+<span class="nc" id="L1263">        result = TIME_ALIGN.matcher(result).replaceAll(SPACE);</span>
+
+        // remove superfluous spaces etc. this also removes CR etc
+        //    result = result.strip()
+<span class="nc" id="L1267">        return result;</span>
+        // end function cleantext
+    }
+
+    private static List&lt;Pair&lt;Character, String&gt;&gt; stringToCodes(String str) {
+<span class="nc" id="L1272">        List&lt;Pair&lt;Character, String&gt;&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L1273" title="All 2 branches missed.">        for (int i = 0; i &lt; str.length(); i++) {</span>
+<span class="nc" id="L1274">            char curChar = str.charAt(i);</span>
+<span class="nc" id="L1275">            String curCode = Integer.toHexString(curChar); //hexformat.format(ord(str[i]));</span>
+<span class="nc" id="L1276">            result.add(new ImmutablePair&lt;&gt;(curChar, curCode));</span>
+        }
+<span class="nc" id="L1278">        return result;</span>
+    }
+    //}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

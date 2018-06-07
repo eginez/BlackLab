@@ -1,0 +1,402 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FileProcessor.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.util</a> &gt; <span class="el_source">FileProcessor.java</span></div><h1>FileProcessor.java</h1><pre class="source lang-java linenums">package nl.inl.util;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.InputStream;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
+
+/**
+ * Process (trees of) files, which may include archives
+ * that we want to recursively process as well.
+ * This class is thread-safe as long as no configuration is changed during processing.
+ */
+public class FileProcessor implements AutoCloseable {
+
+    public static interface FileHandler {
+        /**
+         * Handle a directory.
+         *
+         * Called for all processed child (and descendant if {@link FileProcessor#isRecurseSubdirs()} directories of the input file, excluding the input directory itself.
+         * NOTE: This is only called for regular directories, and not for archives or processed directories within archives.
+         * NOTE: {@link FileProcessor#pattGlob} is NOT applied to directories. So the directory names may not match the provided pattern.
+         *
+         * This function may be called in multiple threads when {@link FileProcessor#useThreads} is true.
+         *
+         * @param dir the directory
+         * @throws Exception these will be passed to {@link ErrorHandler#errorOccurred(Exception, String, File)}
+         */
+        void directory(File dir) throws Exception;
+
+        /**
+         * Handle a file stream.
+         *
+         * Called for all processed files that match the {@link FileProcessor#pattGlob}, including the input file.
+         * Not called for archives if {@link FileProcessor#isProcessArchives()} is true (though it will then be called for files within those
+         * archives).
+         *
+         * NOTE: the InputStream should be closed by the implementation.
+         *
+         * This function may be called in multiple threads when {@link FileProcessor#useThreads} is true.
+         *
+         * @param path filename, including path inside archives (if the file is within an archive)
+         * @param is
+         * @param file (optional, if known) the file from which the InputStream was built,
+         * or - if the InputStream is a file within an archive - the archive.
+         * @throws Exception these will be passed to {@link ErrorHandler#errorOccurred(Exception, String, File)}
+         */
+        void file(String path, InputStream is, File file) throws Exception;
+
+        // Regular file(File f) function is omitted on purpose.
+        // As we process regular files as well as &quot;virtual&quot; files (entries in archives and the like) in the same manner.
+        // This means in some cases there is no actual file backing up the data
+    }
+
+    /**
+     * Handles error, and decides whether to continue processing or not.
+     */
+    @FunctionalInterface
+    public static interface ErrorHandler {
+
+        /**
+         * Report an error and decide whether to continue or not.
+         *
+         * @param e the exception
+         * @param path path to the file that the error occurred in. This includes pathing in archives if the file is inside an archive.
+         * @param file (optional, if known) the file from which the InputStream was built,
+         * or - if the InputStream is a file within an archive - the archive.
+         * @return true if we should continue, false to abort
+         */
+        boolean errorOccurred(Throwable e, String path, File f);
+    }
+
+    /**
+     * Simple error handler that reports errors and can abort or continue.
+     */
+    public static class SimpleErrorHandler implements ErrorHandler {
+        private boolean continueOnError;
+
+<span class="fc" id="L85">        public SimpleErrorHandler(boolean continueOnError) {</span>
+<span class="fc" id="L86">            this.continueOnError = continueOnError;</span>
+<span class="fc" id="L87">        }</span>
+
+        @Override
+        public synchronized boolean errorOccurred(Throwable e, String path, File f) {
+<span class="nc bnc" id="L91" title="All 2 branches missed.">            System.err.println(&quot;Error processing file &quot; + (f != null ? f.toString() : path));</span>
+<span class="nc" id="L92">            e.printStackTrace(System.err);</span>
+<span class="nc" id="L93">            return continueOnError;</span>
+        }
+    }
+
+    /**
+     * Restrict the files we handle to a file glob?
+     * Note that this pattern is not applied to directories, and directories within archives.
+     * It is also not applied to the input file directly.
+     */
+    private Pattern pattGlob;
+
+    /** Process sub directories? */
+    private boolean recurseSubdirs;
+
+    /**
+     * Process archives as directories?
+     * Note that this setting is independent of recurseSubdirs; if this is true,
+     * files inside archives will be processed, even if recurseSubdirs is false.
+     */
+    private boolean processArchives;
+
+    /** Skip files like Thumbs.db (Windows) and .DS_Store (OSX)? */
+<span class="fc" id="L115">    private boolean skipOsSpecialFiles = true;</span>
+
+    /** What to do with each file */
+    private FileHandler fileHandler;
+
+    /** Decides whether or not to continue when an error occurs */
+<span class="fc" id="L121">    private ErrorHandler errorHandler = new SimpleErrorHandler(false);</span>
+
+    /** Executor used for processing files, uses {@link MainThreadExecutorService} if FileProcess was constructor with useThreads = false */
+<span class="fc" id="L124">    private ExecutorService executor = null;</span>
+
+    /**
+     * FileProcessor operates in two distinct stages:
+     * - The traversal of directories/archives, this is done on the &quot;main&quot; thread (i.e. the thread that initially called processFile/processInputStream)
+     * - Handling of all files/entries, this is usually done asynchronously by our Handler.
+     *
+     * If an exception occurs in the handling stage, we want to stop all ongoing and queued handlers,
+     * but also stop the the main thread if it's still busy traversing and creating more handlers.
+     * The problem is that the main can't directly act on exceptions thrown in handlers, as the exception is thrown asynchronously.
+     *
+     * So we need a way to signal the main thread to cease all work:
+     * - aborting all handlers/tasks is easy, we can shut down the ExcecutorService directly from the handler thread when the exception occurs.
+     * - aborting the main thread will require setting some flag and some manual checking on its part
+     * we could call Thread.interrupt() on the main thread, but this would require the handlers to keep a reference to the main thread
+     * so instead just use this flag that the main thread checks while it's performing work.
+     */
+<span class="fc" id="L141">    private volatile boolean closed = false;</span>
+
+    /**
+     * Separate from closed to allow aborting even while already closed or closing
+     * This happens when an error occurs while processing remainder of queue,
+     * it's also useful to allow aborting when closing unexpectedly takes a long time.
+     */
+<span class="fc" id="L148">    private boolean aborted = false;</span>
+
+<span class="fc" id="L150">    public FileProcessor(boolean useThreads, boolean recurseSubdirs, boolean processArchives) {</span>
+<span class="fc" id="L151">        this.recurseSubdirs = recurseSubdirs;</span>
+<span class="fc" id="L152">        this.processArchives = processArchives;</span>
+<span class="fc" id="L153">        setFileNameGlob(&quot;*&quot;);</span>
+
+        // We always use an ExecutorService to call our handlers to simplify our code
+        // When not using threads, the service is just a fancy wrapper around doing task.run() on the calling thread.
+<span class="fc bfc" id="L157" title="All 2 branches covered.">        if (useThreads) {</span>
+<span class="fc" id="L158">            executor = Executors.newFixedThreadPool(Math.max(1, Runtime.getRuntime().availableProcessors() - 1));</span>
+            // Never throw RejectedExecutionException in the main thread
+            // (this can rarely happen when the FileProcessor shut down from another thread (usually a task thread that encountered an exception?)
+            // just in between checking state and submitting)
+<span class="fc" id="L162">            ((ThreadPoolExecutor) executor).setRejectedExecutionHandler(new ThreadPoolExecutor.DiscardPolicy());</span>
+        } else {
+<span class="pc" id="L164">            executor = new MainThreadExecutorService((r, e) -&gt;  { /* swallow RejectedExecutionExceptions, same as above. */ });</span>
+        }
+<span class="fc" id="L166">    }</span>
+
+    /**
+     * Only process files matching the glob.
+     * NOTE: this pattern is NOT applied to directories.
+     *
+     * @param glob
+     */
+    public void setFileNameGlob(String glob) {
+<span class="fc" id="L175">        pattGlob = Pattern.compile(FileUtil.globToRegex(glob));</span>
+<span class="fc" id="L176">    }</span>
+
+    /**
+     * Only process files matching the pattern.
+     * NOTE: this pattern is NOT applied to directories.
+     *
+     * @param pattGlob
+     */
+    public void setFileNamePattern(Pattern pattGlob) {
+<span class="nc" id="L185">        this.pattGlob = pattGlob;</span>
+<span class="nc" id="L186">    }</span>
+
+    /**
+     * The pattern to filter files before they are processed.
+     * NOTE: this pattern is NOT applied to directories.
+     *
+     * @return the pattern
+     */
+    public Pattern getFileNamePattern() {
+<span class="fc" id="L195">        return pattGlob;</span>
+    }
+
+    public boolean isRecurseSubdirs() {
+<span class="nc" id="L199">        return recurseSubdirs;</span>
+    }
+
+    public void setRecurseSubdirs(boolean recurseSubdirs) {
+<span class="nc" id="L203">        this.recurseSubdirs = recurseSubdirs;</span>
+<span class="nc" id="L204">    }</span>
+
+    public boolean isProcessArchives() {
+<span class="fc" id="L207">        return processArchives;</span>
+    }
+
+    public void setProcessArchives(boolean processArchives) {
+<span class="nc" id="L211">        this.processArchives = processArchives;</span>
+<span class="nc" id="L212">    }</span>
+
+    public boolean isSkipOsSpecialFiles() {
+<span class="nc" id="L215">        return skipOsSpecialFiles;</span>
+    }
+
+    public void setSkipOsSpecialFiles(boolean skipOsSpecialFiles) {
+<span class="nc" id="L219">        this.skipOsSpecialFiles = skipOsSpecialFiles;</span>
+<span class="nc" id="L220">    }</span>
+
+    /**
+     * Should we skip the specified file because it is a special OS file?
+     *
+     * Skips Windows Thumbs.db file and Mac OSX .DS_Store file.
+     *
+     * @param fileName name of the file
+     * @return true if we should skip it, false otherwise
+     */
+    protected boolean skipFile(String fileName) {
+<span class="pc bpc" id="L231" title="3 of 6 branches missed.">        return skipOsSpecialFiles &amp;&amp; (fileName.equals(&quot;Thumbs.db&quot;) || fileName.equals(&quot;.DS_Store&quot;));</span>
+    }
+
+    public void setErrorHandler(ErrorHandler errorHandler) {
+<span class="fc" id="L235">        this.errorHandler = errorHandler;</span>
+<span class="fc" id="L236">    }</span>
+
+    public void setFileHandler(FileHandler fileHandler) {
+<span class="fc" id="L239">        this.fileHandler = fileHandler;</span>
+<span class="fc" id="L240">    }</span>
+
+    /**
+     * Process a file or directory.
+     *
+     * If this file is a directory, all child files will be processed, files within subdirectories will only be processed if
+     * {@link #isRecurseSubdirs()} is true.
+     * For rules on how files are processed, regarding archives etc, see {@link #processInputStream(String, InputStream, File)}.
+     *
+     * @param file file, directory or archive to process
+     * @throws FileNotFoundException
+     */
+    public void processFile(File file) throws FileNotFoundException {
+<span class="pc bpc" id="L253" title="1 of 2 branches missed.">        if (!file.exists())</span>
+<span class="nc" id="L254">            throw new FileNotFoundException(&quot;Input file or dir not found: &quot; + file);</span>
+
+<span class="fc bfc" id="L256" title="All 2 branches covered.">        if (closed)</span>
+<span class="fc" id="L257">            return;</span>
+
+<span class="fc bfc" id="L259" title="All 2 branches covered.">        if (file.isDirectory()) { // Even if recurseSubdirs is false, we should process all direct children</span>
+<span class="fc bfc" id="L260" title="All 2 branches covered.">            for (File childFile : FileUtil.listFilesSorted(file)) {</span>
+<span class="fc bfc" id="L261" title="All 2 branches covered.">                if (closed)</span>
+<span class="fc" id="L262">                    return;</span>
+
+                // Report
+<span class="fc bfc" id="L265" title="All 2 branches covered.">                if (childFile.isDirectory()) {</span>
+<span class="fc" id="L266">                    CompletableFuture.runAsync(makeRunnable(() -&gt; fileHandler.directory(childFile)), executor)</span>
+<span class="fc" id="L267">                    .exceptionally(e -&gt; reportAndAbort(e, childFile.toString(), childFile));</span>
+                }
+
+<span class="fc bfc" id="L270" title="All 4 branches covered.">                if (recurseSubdirs || !childFile.isDirectory())</span>
+<span class="fc" id="L271">                    processFile(childFile);</span>
+            }
+        } else {
+<span class="fc" id="L274">            processInputStream(file.getName(), new FileInputStream(file), file);</span>
+        }
+<span class="fc" id="L276">    }</span>
+
+    /**
+     * Process from an InputStream, which may be an archive or a regular file.
+     *
+     * Archives (.zip and .tar.gz) will only be processed if {@link #isProcessArchives()} is true.
+     * GZipped files (.gz) will be unpacked regardless.
+     * Note that all files within archives will be processed, regardless of whether they match {@link FileProcessor#pattGlob}
+     *
+     * @param path filename, optionally including path to the file or path within an archive
+     * @param is the stream
+     * @param file (optional) the file from which the InputStream was built,
+     * or - if the InputStream is a file within an archive - the archive.
+     * This is only used for reporting to FileHandler and ErrorHandler
+     */
+    public void processInputStream(String path, InputStream is, File file) {
+<span class="pc bpc" id="L292" title="1 of 2 branches missed.">        if (closed)</span>
+<span class="nc" id="L293">            return;</span>
+
+<span class="fc" id="L295">        TarGzipReader.FileHandler handler = (pathInArchive, streamInArchive) -&gt; {</span>
+<span class="fc" id="L296">            processInputStream(pathInArchive, streamInArchive, file);</span>
+<span class="fc bfc" id="L297" title="All 2 branches covered.">            return !closed; // quit processing the archive if we've received an error in the meantime</span>
+        };
+
+<span class="pc bpc" id="L300" title="2 of 6 branches missed.">        if (isProcessArchives() &amp;&amp; path.endsWith(&quot;.tar.gz&quot;) || path.endsWith(&quot;.tgz&quot;)) {</span>
+<span class="nc" id="L301">            TarGzipReader.processTarGzip(path, is, handler);</span>
+<span class="fc bfc" id="L302" title="All 4 branches covered.">        } else if (isProcessArchives() &amp;&amp; path.endsWith(&quot;.zip&quot;)) {</span>
+<span class="fc" id="L303">            TarGzipReader.ProcessZip(path, is, handler);</span>
+<span class="pc bpc" id="L304" title="1 of 2 branches missed.">        } else if (path.endsWith(&quot;.gz&quot;)) {</span>
+<span class="nc" id="L305">            TarGzipReader.processGzip(path, is, handler);</span>
+<span class="pc bpc" id="L306" title="2 of 4 branches missed.">        } else if (!skipFile(path) &amp;&amp; getFileNamePattern().matcher(path).matches()) {</span>
+<span class="fc" id="L307">            CompletableFuture.runAsync(makeRunnable(() -&gt; fileHandler.file(path, is, file)), executor)</span>
+<span class="fc" id="L308">            .exceptionally(e -&gt; reportAndAbort(e, path, file));</span>
+        }
+<span class="fc" id="L310">    }</span>
+
+    /**
+     * Callback for when handler throws an exception.
+     * Report it, and if it's irrecoverable, abort.
+     *
+     * @param t
+     * @param path
+     * @param f
+     * @return always null, has return type to enable use as exception handler in CompletableFuture
+     */
+    private synchronized Void reportAndAbort(Throwable e, String path, File f) {
+<span class="pc bpc" id="L322" title="1 of 2 branches missed.">        if (e instanceof CompletionException) // async exception</span>
+<span class="fc" id="L323">            e = e.getCause();</span>
+
+        // Only report the first fatal exception
+<span class="pc bpc" id="L326" title="1 of 4 branches missed.">        if (!aborted &amp;&amp; !errorHandler.errorOccurred(e, path, f)) {</span>
+<span class="fc" id="L327">            abort();</span>
+        }
+
+<span class="fc" id="L330">        return null;</span>
+    }
+
+    /**
+     * Like {@link FileProcessor#close()} but immediately abort all running handler tasks and cancel any pending tasks.
+     *
+     * Subsequent calls to close, processFile or processInputStream will have no effect.
+     */
+    // this function can't be synchronized on (this) or we couldn't abort from an async handler while the main thread is working/waiting on close().
+    public void abort() {
+<span class="fc" id="L340">        synchronized (this) {</span>
+<span class="pc bpc" id="L341" title="1 of 2 branches missed.">            if (aborted)</span>
+<span class="nc" id="L342">                return;</span>
+<span class="fc" id="L343">            closed = true;</span>
+<span class="fc" id="L344">            aborted = true;</span>
+<span class="pc" id="L345">        }</span>
+
+<span class="fc" id="L347">        executor.shutdownNow();</span>
+<span class="fc" id="L348">    }</span>
+
+    /**
+     * Close the executor and wait until all running and pending handler tasks have completed.
+     * Calling close() while processFile or processInputStream is in progress will cause them to skip all remaining files.
+     * Files for which a task has already been put in the queue will still be processed as normal.
+     *
+     * Subsequent calls to close, processFile or processInputStream will have no effect.
+     */
+    @Override
+    public void close() {
+<span class="fc" id="L359">        synchronized (this) {</span>
+<span class="fc bfc" id="L360" title="All 2 branches covered.">            if (closed)</span>
+<span class="fc" id="L361">                return;</span>
+<span class="fc" id="L362">            closed = true;</span>
+<span class="pc" id="L363">        }</span>
+
+        try {
+<span class="fc" id="L366">            executor.shutdown();</span>
+            // Outside the synchronized block to allow calling abort() while waiting for close() to complete
+            // This is used by tasks that threw a fatal exception
+<span class="fc" id="L369">            executor.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);</span>
+<span class="nc" id="L370">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L371">            throw new RuntimeException(&quot;Interrupted while waiting for processing threads to finish&quot;, e);</span>
+<span class="fc" id="L372">        }</span>
+<span class="fc" id="L373">    }</span>
+
+    /*
+     * Bit of boilerplate to allow using submitting tasks that throw checked exceptions with CompletableFuture.
+     * Wrap the task in a runnable that catches the checked exception and rethrows it in an unchecked manner.
+     * The exception is then caught in the future and made available (using for example CompletableFuture::completeExceptionally)
+     *
+     * see https://blog.jooq.org/2012/09/14/throw-checked-exceptions-like-runtime-exceptions-in-java/
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    private static &lt;T extends Exception&gt; void rethrowUnchecked(Exception t) throws T {
+<span class="fc" id="L384">        throw (T) t;</span>
+    }
+
+    @FunctionalInterface
+    private static interface ThrowingRunnable&lt;E extends Throwable&gt; {
+        void call() throws E;
+    }
+
+    private static &lt;E extends Exception&gt; Runnable makeRunnable(ThrowingRunnable&lt;E&gt; c) {
+<span class="fc" id="L393">        return () -&gt; {</span>
+            try {
+<span class="fc" id="L395">                c.call();</span>
+<span class="fc" id="L396">            } catch (Exception e) {</span>
+<span class="nc" id="L397">                rethrowUnchecked(e);</span>
+<span class="fc" id="L398">            }</span>
+<span class="fc" id="L399">        };</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

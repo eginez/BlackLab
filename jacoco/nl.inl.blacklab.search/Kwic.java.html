@@ -1,0 +1,278 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Kwic.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search</a> &gt; <span class="el_source">Kwic.java</span></div><h1>Kwic.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search;
+
+import java.util.AbstractList;
+import java.util.Collections;
+import java.util.List;
+
+import nl.inl.util.StringUtil;
+
+
+/**
+ * A &quot;keyword in context&quot; for a hit
+ * (left context, hit text, right context).
+ *
+ * The Hits class matches this to the Hit.
+ *
+ * This object may be converted to a Concordance object (with XML strings)
+ * by calling Kwic.toConcordance().
+ */
+public class Kwic {
+
+	DocContentsFromForwardIndex fragment;
+
+	int hitStart;
+
+	int hitEnd;
+
+	/**
+	 * Construct a Kwic object
+	 *
+	 * @param properties
+	 *            What properties are stored in what order for this Kwic (e.g. word, lemma, pos)
+	 * @param tokens the contents
+	 * @param matchStart where the match starts, in word positions
+	 * @param matchEnd where the match ends, in word positions
+	 */
+<span class="fc" id="L51">	public Kwic(List&lt;String&gt; properties, List&lt;String&gt; tokens, int matchStart, int matchEnd) {</span>
+<span class="fc" id="L52">		fragment = new DocContentsFromForwardIndex(properties, tokens);</span>
+<span class="fc" id="L53">		this.hitStart = matchStart;</span>
+<span class="fc" id="L54">		this.hitEnd = matchEnd;</span>
+<span class="fc" id="L55">	}</span>
+
+	/**
+	 * Construct a Kwic object
+	 *
+	 * @param fragment the content fragment to make the Kwic from
+	 * @param matchStart where the match starts, in word positions
+	 * @param matchEnd where the match ends, in word positions
+	 */
+<span class="nc" id="L64">	public Kwic(DocContentsFromForwardIndex fragment, int matchStart, int matchEnd) {</span>
+<span class="nc" id="L65">		this.fragment = fragment;</span>
+<span class="nc" id="L66">		this.hitStart = matchStart;</span>
+<span class="nc" id="L67">		this.hitEnd = matchEnd;</span>
+<span class="nc" id="L68">	}</span>
+
+	public List&lt;String&gt; getLeft() {
+<span class="fc" id="L71">		return Collections.unmodifiableList(fragment.tokens.subList(0, hitStart * fragment.properties.size()));</span>
+	}
+
+	public List&lt;String&gt; getMatch() {
+<span class="fc" id="L75">		return Collections.unmodifiableList(fragment.tokens.subList(hitStart * fragment.properties.size(), hitEnd * fragment.properties.size()));</span>
+	}
+
+	public List&lt;String&gt; getRight() {
+<span class="fc" id="L79">		return Collections.unmodifiableList(fragment.tokens.subList(hitEnd * fragment.properties.size(), fragment.tokens.size()));</span>
+	}
+
+	/**
+	 * Get all the properties of all the tokens in the hit's context fragment.
+	 * @return the token properties
+	 */
+	public List&lt;String&gt; getTokens() {
+<span class="nc" id="L87">		return fragment.getTokens();</span>
+	}
+
+	/**
+	 * Get all values for a single property for all the tokens in the
+	 * hit's context fragment.
+	 *
+	 * @param property the property to get
+	 * @return the values of this property for all tokens
+	 */
+	public List&lt;String&gt; getTokens(String property) {
+<span class="nc" id="L98">		return fragment.getTokens(property);</span>
+	}
+
+	/**
+	 * Get the context of a specific property from the complete
+	 * context list.
+	 *
+	 * @param allContext the complete context list of all properties
+	 * @param property the property to get the context for
+	 * @param start first word position to get the property context for
+	 * @param end word position after the last to get the property context for
+	 * @return the context for this property
+	 */
+	private List&lt;String&gt; getSinglePropertyContext(String property, int start, int end) {
+<span class="fc" id="L112">		final int nProp = fragment.properties.size();</span>
+<span class="fc" id="L113">		final int size = end - start;</span>
+<span class="fc" id="L114">		final int propIndex = fragment.properties.indexOf(property);</span>
+<span class="fc" id="L115">		final int startIndex = start * nProp + propIndex;</span>
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">		if (propIndex == -1)</span>
+<span class="nc" id="L117">			return null;</span>
+<span class="fc" id="L118">		return new AbstractList&lt;String&gt;() {</span>
+			@Override
+			public String get(int index) {
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">				if (index &gt;= size)</span>
+<span class="nc" id="L122">					throw new IndexOutOfBoundsException();</span>
+<span class="fc" id="L123">				return fragment.tokens.get(startIndex + nProp * index);</span>
+			}
+
+			@Override
+			public int size() {
+<span class="fc" id="L128">				return size;</span>
+			}
+		};
+	}
+
+	/**
+	 * Get the left context of a specific property
+	 * @param property the property to get the context for
+	 * @return the context
+	 */
+	public List&lt;String&gt; getLeft(String property) {
+<span class="fc" id="L139">		return getSinglePropertyContext(property, 0, hitStart);</span>
+	}
+
+	/**
+	 * Get the match context of a specific property
+	 * @param property the property to get the context for
+	 * @return the context
+	 */
+	public List&lt;String&gt; getMatch(String property) {
+<span class="fc" id="L148">		return getSinglePropertyContext(property, hitStart, hitEnd);</span>
+	}
+
+
+	/**
+	 * Get the right context of a specific property
+	 * @param property the property to get the context for
+	 * @return the context
+	 */
+	public List&lt;String&gt; getRight(String property) {
+<span class="fc" id="L158">		return getSinglePropertyContext(property, hitEnd, fragment.tokens.size() / fragment.properties.size());</span>
+	}
+
+	/**
+	 * Convert this Kwic object to a Concordance object.
+	 *
+	 * This produces XML consisting of &amp;lt;w&amp;gt; tags. The words
+	 * are the text content of the tags. The punctuation is between the tags.
+	 * The other properties are attributes of the tags.
+	 *
+	 * @return the Concordance object
+	 */
+	public Concordance toConcordance() {
+<span class="fc" id="L171">		return toConcordance(true);</span>
+	}
+
+	/**
+	 * Convert this Kwic object to a Concordance object.
+	 *
+	 * This may either consist of only words and punctuation, or include the XML
+	 * tags containing the other properties as well, depending on the parameter.
+	 *
+	 * @param produceXml if true, produces XML. If false, produces human-readable text.
+	 * @return the Concordance object
+	 */
+	public Concordance toConcordance(boolean produceXml) {
+<span class="fc" id="L184">		String[] conc = new String[3];</span>
+<span class="fc" id="L185">		List&lt;String&gt; match = getMatch();</span>
+<span class="pc bpc" id="L186" title="1 of 2 branches missed.">		String addPunctAfter = !match.isEmpty() ? match.get(0) : &quot;&quot;;</span>
+<span class="fc" id="L187">		conc[0] = xmlString(getLeft(), addPunctAfter, true, produceXml);</span>
+<span class="fc" id="L188">		conc[1] = xmlString(match, null, true, produceXml);</span>
+<span class="fc" id="L189">		conc[2] = xmlString(getRight(), null, false, produceXml);</span>
+<span class="fc" id="L190">		return new Concordance(conc);</span>
+	}
+
+	/**
+	 * Convert a context List to an XML string (used for converting to a Concordance object)
+	 *
+	 * @param context the context List to convert
+	 * @param addPunctAfter if not null, this is appended at the end of the string.
+	 * @param leavePunctBefore if true, no punctuation is added before the first word.
+	 * @param produceXml if true, produces XML with word tags. If false, produces human-readable text.
+	 * @return the XML string
+	 */
+	private String xmlString(List&lt;String&gt; context, String addPunctAfter, boolean leavePunctBefore, boolean produceXml) {
+<span class="fc" id="L203">		int valuesPerWord = fragment.properties.size();</span>
+<span class="fc" id="L204">		int numberOfWords = context.size() / valuesPerWord;</span>
+<span class="fc" id="L205">		StringBuilder b = new StringBuilder();</span>
+<span class="fc bfc" id="L206" title="All 2 branches covered.">		for (int i = 0; i &lt; numberOfWords; i++) {</span>
+<span class="fc" id="L207">			int vIndex = i * valuesPerWord;</span>
+<span class="fc" id="L208">			int j = 0;</span>
+<span class="fc bfc" id="L209" title="All 4 branches covered.">			if (i &gt; 0 || !leavePunctBefore) {</span>
+<span class="pc bpc" id="L210" title="1 of 2 branches missed.">				if (produceXml)</span>
+<span class="fc" id="L211">					b.append(StringUtil.escapeXmlChars(context.get(vIndex)));</span>
+				else
+<span class="nc" id="L213">					b.append(context.get(vIndex));</span>
+			}
+<span class="pc bpc" id="L215" title="1 of 2 branches missed.">			if (produceXml) {</span>
+<span class="fc" id="L216">				b.append(&quot;&lt;w&quot;);</span>
+<span class="fc bfc" id="L217" title="All 2 branches covered.">				for (int k = 1; k &lt; valuesPerWord - 1; k++) {</span>
+<span class="fc" id="L218">					String name = fragment.properties.get(k);</span>
+<span class="fc" id="L219">					String value = context.get(vIndex + 1 + j);</span>
+<span class="fc" id="L220">					b.append(&quot; &quot;).append(name).append(&quot;=\&quot;&quot;).append(StringUtil.escapeXmlChars(value)).append(&quot;\&quot;&quot;);</span>
+<span class="fc" id="L221">					j++;</span>
+				}
+<span class="fc" id="L223">				b.append(&quot;&gt;&quot;);</span>
+			} else {
+				// We're skipping the other properties besides word and punct. Advance j.
+<span class="nc bnc" id="L226" title="All 2 branches missed.">				if (valuesPerWord &gt; 2)</span>
+<span class="nc" id="L227">					j += valuesPerWord - 2;</span>
+			}
+<span class="pc bpc" id="L229" title="1 of 2 branches missed.">			if (produceXml)</span>
+<span class="fc" id="L230">				b.append(StringUtil.escapeXmlChars(context.get(vIndex + 1 + j))).append(&quot;&lt;/w&gt;&quot;);</span>
+			else
+<span class="nc" id="L232">				b.append(context.get(vIndex + 1 + j));</span>
+		}
+<span class="fc bfc" id="L234" title="All 2 branches covered.">		if (addPunctAfter != null)</span>
+<span class="fc" id="L235">			b.append(addPunctAfter);</span>
+<span class="fc" id="L236">		return b.toString();</span>
+	}
+
+	/**
+	 * Get the names of the properties in the order they occur in the context array.
+	 * @return the property names
+	 */
+	public List&lt;String&gt; getProperties() {
+<span class="nc" id="L244">		return fragment.getProperties();</span>
+	}
+
+	/**
+	 * Return the index of the token after the last hit token
+	 * in the context fragment.
+	 * @return the hit end index
+	 */
+	public int getHitEnd() {
+<span class="nc" id="L253">		return hitEnd;</span>
+	}
+
+	/**
+	 * Return the index of the first hit token in the context fragment.
+	 * @return the hit start index
+	 */
+	public int getHitStart() {
+<span class="nc" id="L261">		return hitStart;</span>
+	}
+
+	public String getFullXml() {
+<span class="fc" id="L265">		return fragment.getXml();</span>
+	}
+
+	public DocContentsFromForwardIndex getDocContents() {
+<span class="nc" id="L269">		return fragment;</span>
+	}
+
+	@Override
+	public String toString() {
+<span class="nc" id="L274">		return toConcordance().toString();</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

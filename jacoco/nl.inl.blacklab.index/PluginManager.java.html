@@ -1,0 +1,218 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PluginManager.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.index</a> &gt; <span class="el_source">PluginManager.java</span></div><h1>PluginManager.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.index;
+
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Optional;
+import java.util.ServiceConfigurationError;
+import java.util.ServiceLoader;
+import java.util.concurrent.CompletableFuture;
+import java.util.regex.Pattern;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.NullNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
+import nl.inl.blacklab.index.config.YamlJsonReader;
+import nl.inl.blacklab.indexers.preprocess.ConvertPlugin;
+import nl.inl.blacklab.indexers.preprocess.Plugin;
+import nl.inl.blacklab.indexers.preprocess.Plugin.PluginException;
+import nl.inl.blacklab.indexers.preprocess.TagPlugin;
+
+/**
+ * Responsible for loading file conversion and tagging plugins.
+ * &lt;p&gt;
+ * It will attempt to load all conversion and tagging plugins (according to the {@link ServiceLoader} system) and
+ * initialize them with their respective settings from the main blacklab config.
+ * &lt;p&gt;
+ * A jar that wishes to register a plugin must contain a file named &quot;nl.inl.blacklab.indexers.preprocess.(Tag|Covert)Plugin&quot; inside
+ * &quot;META-INF/services/&quot;, containing the qualified classNames of the implementations they contain.
+ */
+public class PluginManager {
+    private static class PluginData&lt;T extends Plugin&gt; {
+        public boolean initialized;
+        public PluginException initializationException;
+
+        public final T plugin;
+        public final Optional&lt;ObjectNode&gt; config;
+
+<span class="nc" id="L42">        public PluginData(T plugin, Optional&lt;ObjectNode&gt; config) {</span>
+<span class="nc" id="L43">            this.config = config;</span>
+<span class="nc" id="L44">            this.plugin = plugin;</span>
+<span class="nc" id="L45">        }</span>
+    }
+
+<span class="nc" id="L48">    private static final Logger logger = LogManager.getLogger(PluginManager.class);</span>
+
+    /** a pluginId may only contain a-z, A-Z, 0-9, and _ */
+<span class="nc" id="L51">    private static final Pattern PLUGINID_PATTERN = Pattern.compile(&quot;[\\w]+&quot;);</span>
+
+    /** Delay initialization of plugins until they are first used. Useful for development */
+    private static final String PROP_DELAY_INITIALIZATION = &quot;delayInitialization&quot;;
+
+    /** Is the plugin system itself initialized */
+<span class="nc" id="L57">    private static boolean isInitialized = false;</span>
+
+<span class="nc" id="L59">    private static Map&lt;String, PluginData&lt;ConvertPlugin&gt;&gt; convertPlugins = new HashMap&lt;&gt;();</span>
+<span class="nc" id="L60">    private static Map&lt;String, PluginData&lt;TagPlugin&gt;&gt; tagPlugins = new HashMap&lt;&gt;();</span>
+
+    /*
+     * Nothing to do; initialization happens when the blacklab config is loaded.
+     * The blacklab Config is automatically loaded when the first Searcher is opened, or earlier by a user library.
+     * So plugin formats should always be visible by the time they're needed.
+     * (except when trying to query available formats before opening a searcher or loading a config...this is an edge case)
+     */
+<span class="nc" id="L68">    private PluginManager() {}</span>
+
+    /**
+     * Attempts to load and initialize all plugin classes on the classpath, passing the values in the config to the matching plugin.
+     *
+     * @param pluginConfig the plugin configurations collection object. The format for this object is
+     *
+     *        &lt;pre&gt;
+     * {
+     *   &quot;pluginId&quot;: {
+     *     // arbitrary plugin config here
+     *   },
+     *
+     *   &quot;anotherPluginId&quot;: { ... },
+     *   ...
+     * }
+     *        &lt;/pre&gt;
+     */
+    public static void initPlugins(ObjectNode pluginConfig) {
+<span class="nc bnc" id="L87" title="All 2 branches missed.">        if (isInitialized)</span>
+<span class="nc" id="L88">            throw new IllegalStateException(&quot;PluginManager already initialized&quot;);</span>
+<span class="nc" id="L89">        isInitialized = true;</span>
+
+<span class="nc" id="L91">        logger.info(&quot;Initializing plugin system&quot;);</span>
+
+<span class="nc" id="L93">        JsonNode delayNode = pluginConfig.get(PROP_DELAY_INITIALIZATION);</span>
+<span class="nc bnc" id="L94" title="All 6 branches missed.">        boolean delayInitialization = (delayNode != null &amp;&amp; !(delayNode instanceof NullNode) &amp;&amp; delayNode.asBoolean());</span>
+
+        // First load all plugins, so we have the full list of plugins available.
+<span class="nc" id="L97">        convertPlugins = loadPlugins(ConvertPlugin.class, pluginConfig);</span>
+<span class="nc" id="L98">        tagPlugins = loadPlugins(TagPlugin.class, pluginConfig);</span>
+
+
+        // Some plugins take a LONG time to init, if we block, we block the loading of the config
+        // Which in turn blocks the whole of blacklab(-server), so don't do that
+<span class="nc bnc" id="L103" title="All 2 branches missed.">        if (!delayInitialization) {</span>
+<span class="nc" id="L104">            CompletableFuture.runAsync(() -&gt; {</span>
+                // only now they're all located, initialize them
+<span class="nc" id="L106">                logger.info(&quot;Config setting &quot; + PROP_DELAY_INITIALIZATION + &quot; is false, initializing plugins...&quot;);</span>
+<span class="nc" id="L107">                initializePlugins(convertPlugins);</span>
+<span class="nc" id="L108">                initializePlugins(tagPlugins);</span>
+<span class="nc" id="L109">                logger.info(&quot;Finished Initializing plugin system&quot;);</span>
+<span class="nc" id="L110">            });</span>
+        } else {
+<span class="nc" id="L112">            logger.info(&quot;Config setting &quot; + PROP_DELAY_INITIALIZATION + &quot; is true, plugins will be initialized on first use.&quot;);</span>
+<span class="nc" id="L113">            logger.info(&quot;Finished Initializing plugin system&quot;);</span>
+        }
+<span class="nc" id="L115">    }</span>
+
+    private static &lt;T extends Plugin&gt; Map&lt;String, PluginData&lt;T&gt;&gt; loadPlugins(Class&lt;T&gt; pluginClass, ObjectNode pluginConfig) {
+<span class="nc" id="L118">        Map&lt;String, PluginData&lt;T&gt;&gt; plugins = new HashMap&lt;&gt;();</span>
+
+<span class="nc" id="L120">        Iterator&lt;T&gt; it = ServiceLoader.load(pluginClass).iterator();</span>
+<span class="nc bnc" id="L121" title="All 2 branches missed.">        while (it.hasNext()) {</span>
+<span class="nc" id="L122">            String id = null;</span>
+
+            try {
+<span class="nc" id="L125">                T plugin = it.next();</span>
+<span class="nc" id="L126">                id = plugin.getId();</span>
+<span class="nc bnc" id="L127" title="All 2 branches missed.">                if (!PLUGINID_PATTERN.matcher(id).matches()) {</span>
+<span class="nc" id="L128">                    logger.warn(&quot;Plugin id &quot; + id + &quot; (class &quot; + plugin.getClass().getCanonicalName() +</span>
+                        &quot;) is not a valid id; ignoring plugin.&quot;);
+<span class="nc" id="L130">                    continue;</span>
+                }
+
+<span class="nc" id="L133">                Optional&lt;ObjectNode&gt; config = Optional.ofNullable(pluginConfig.get(plugin.getId())) // get key + optional value</span>
+<span class="nc bnc" id="L134" title="All 2 branches missed.">                    .filter(n -&gt; !(n instanceof NullNode)) // if value</span>
+<span class="nc" id="L135">                    .map(n -&gt; YamlJsonReader.obj(n, plugin.getId())); // get value</span>
+
+<span class="nc" id="L137">                PluginData&lt;T&gt; data = new PluginData&lt;&gt;(plugin, config);</span>
+<span class="nc" id="L138">                plugins.put(id, data);</span>
+<span class="nc" id="L139">            } catch (ServiceConfigurationError e) {</span>
+<span class="nc" id="L140">                logger.error(&quot;Plugin failed to load: &quot; + e.getMessage(), e);</span>
+<span class="nc" id="L141">            } catch (Exception e) {</span>
+<span class="nc bnc" id="L142" title="All 2 branches missed.">                logger.error(&quot;Plugin &quot; + (id == null ? &quot;(unknown)&quot; : id) + &quot; failed to load: &quot; + e.getMessage(), e);</span>
+<span class="nc" id="L143">            }</span>
+<span class="nc" id="L144">        }</span>
+
+<span class="nc" id="L146">        return plugins;</span>
+    }
+
+    public static Optional&lt;ConvertPlugin&gt; getConverter(String convertPluginId) throws PluginException {
+<span class="nc bnc" id="L150" title="All 2 branches missed.">        if (!isInitialized)</span>
+<span class="nc" id="L151">            throw new UnsupportedOperationException(&quot;Plugin system is not initialized, place a top-level key \&quot;plugins\&quot; with per-plugin configuration in your blacklab config to use plugins.&quot;);</span>
+
+<span class="nc" id="L153">        Optional&lt;PluginData&lt;ConvertPlugin&gt;&gt; data = Optional.ofNullable(convertPlugins.get(convertPluginId));</span>
+<span class="nc bnc" id="L154" title="All 2 branches missed.">        if (data.isPresent())</span>
+<span class="nc" id="L155">            initializePlugin(data.get());</span>
+
+<span class="nc" id="L157">        return data.map(d -&gt; d.plugin);</span>
+    }
+
+    public static Optional&lt;TagPlugin&gt; getTagger(String tagPluginId) throws PluginException {
+<span class="nc bnc" id="L161" title="All 2 branches missed.">        if (!isInitialized)</span>
+<span class="nc" id="L162">            throw new UnsupportedOperationException(&quot;Plugin system is not initialized, place a top-level key \&quot;plugins\&quot; with per-plugin configuration in your blacklab config to use plugins.&quot;);</span>
+
+<span class="nc" id="L164">        Optional&lt;PluginData&lt;TagPlugin&gt;&gt; data = Optional.ofNullable(tagPlugins.get(tagPluginId));</span>
+<span class="nc bnc" id="L165" title="All 2 branches missed.">        if (data.isPresent())</span>
+<span class="nc" id="L166">            initializePlugin(data.get());</span>
+
+<span class="nc" id="L168">        return data.map(d -&gt; d.plugin);</span>
+    }
+
+    /**
+     * Initialize the plugin, if it exists and is currently uninitialized.
+     * Previously encountered errors are rethrown.
+     * If am error is encountered, it is stored in the plugin data and rethrown.
+     *
+     * @param data plugin data
+     * @throws PluginException when the plugin fails to initialize, care should be taken by the caller to remove it from the list of plugins when this occurs.
+     */
+    private static void initializePlugin(PluginData&lt;?&gt; data) throws PluginException {
+<span class="nc" id="L180">        synchronized (data.plugin) {</span>
+<span class="nc bnc" id="L181" title="All 2 branches missed.">            if (data.initializationException != null)</span>
+<span class="nc" id="L182">                throw data.initializationException;</span>
+<span class="nc bnc" id="L183" title="All 2 branches missed.">            if (data.initialized)</span>
+<span class="nc" id="L184">                return;</span>
+
+            try {
+<span class="nc" id="L187">                logger.debug(&quot;Initializing plugin &quot; + data.plugin.getDisplayName());</span>
+<span class="nc" id="L188">                data.plugin.init(data.config);</span>
+<span class="nc" id="L189">                logger.debug(&quot;Initialized plugin &quot; + data.plugin.getDisplayName());</span>
+<span class="nc" id="L190">            } catch (PluginException e) {</span>
+<span class="nc" id="L191">                data.initializationException = e;</span>
+<span class="nc" id="L192">                throw e;</span>
+<span class="nc" id="L193">            } catch (Exception e) {</span>
+<span class="nc" id="L194">                data.initializationException = new PluginException(&quot;Error during initialization.&quot;, e);</span>
+<span class="nc" id="L195">                throw data.initializationException;</span>
+            } finally {
+<span class="nc" id="L197">                data.initialized = true;</span>
+<span class="nc" id="L198">            }</span>
+<span class="nc" id="L199">        }</span>
+<span class="nc" id="L200">    }</span>
+
+    /**
+     * Used to initialize all plugins in one go when {@link #PROP_DELAY_INITIALIZATION} is false.
+     *
+     * @param plugins
+     */
+    private static &lt;T extends Plugin&gt; void initializePlugins(Map&lt;String, PluginData&lt;T&gt;&gt; plugins) {
+<span class="nc" id="L208">        plugins.values().forEach(pd -&gt; {</span>
+            try {
+<span class="nc" id="L210">                initializePlugin(pd);</span>
+<span class="nc" id="L211">            } catch (PluginException e) {</span>
+                // exception already cached in plugindata, no need to throw.
+<span class="nc" id="L213">                logger.error(&quot;Plugin &quot; + pd.plugin.getId() + &quot; failed to initialize: &quot; + e.getMessage(), e);</span>
+<span class="nc" id="L214">            }</span>
+<span class="nc" id="L215">        });</span>
+<span class="nc" id="L216">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

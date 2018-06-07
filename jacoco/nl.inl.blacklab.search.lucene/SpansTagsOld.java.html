@@ -1,0 +1,280 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SpansTagsOld.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">SpansTagsOld.java</span></div><h1>SpansTagsOld.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.lucene;
+
+import java.io.IOException;
+
+import org.apache.lucene.search.spans.SpanCollector;
+import org.eclipse.collections.api.iterator.IntIterator;
+import org.eclipse.collections.impl.list.mutable.primitive.IntArrayList;
+
+import nl.inl.blacklab.search.Span;
+
+/**
+ * Gets spans for a certain XML element.
+ * @deprecated used for old indices that soon won't be supported anymore
+ */
+@Deprecated
+class SpansTagsOld extends BLSpans {
+	private static final int ARRAYLIST_REALLOC_THRESHOLD = 1000;
+
+<span class="fc" id="L34">	static SpanComparatorStartPoint cmpStartPoint = new SpanComparatorStartPoint();</span>
+
+	/** The two sets of hits to combine */
+<span class="fc" id="L37">	private SpansInBucketsPerDocument[] spans = new SpansInBucketsPerDocument[2];</span>
+
+	/** Do the Spans objects still point to valid hits? */
+<span class="fc" id="L40">	private int currentDoc[] = new int[2];</span>
+
+	/** The current hit (index into starts and ends lists) */
+<span class="fc" id="L43">	private int currentHit = -1;</span>
+
+	/** Starts of hits in current document */
+<span class="fc" id="L46">	private IntArrayList starts = new IntArrayList();</span>
+
+	/** Ends of hits in current document */
+<span class="fc" id="L49">	private IntArrayList ends = new IntArrayList();</span>
+
+	/**
+	 * Construct SpansTagsOld.
+	 *
+	 * startTags and endTags should be startpoint-sorted,
+	 * which they always are by default.
+	 *
+	 * @param startTags start tags
+	 * @param endTags end tags
+	 */
+<span class="fc" id="L60">	public SpansTagsOld(BLSpans startTags, BLSpans endTags) {</span>
+<span class="fc" id="L61">		BLSpans[] origSpans = { startTags, endTags };</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">		for (int i = 0; i &lt; 2; i++) {</span>
+<span class="fc" id="L63">			spans[i] = new SpansInBucketsPerDocument(origSpans[i]);</span>
+		}
+<span class="fc" id="L65">		currentDoc[0] = currentDoc[1] = -1;</span>
+<span class="fc" id="L66">	}</span>
+
+	@Override
+	public int docID() {
+<span class="fc" id="L70">		return spans[0].docID();</span>
+	}
+
+	@Override
+	public int startPosition() {
+<span class="fc bfc" id="L75" title="All 2 branches covered.">		if (currentHit &lt; 0)</span>
+<span class="fc" id="L76">			return -1;</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">		if (currentHit &gt;= starts.size())</span>
+<span class="fc" id="L78">			return NO_MORE_POSITIONS;</span>
+<span class="fc" id="L79">		return starts.get(currentHit);</span>
+	}
+
+	@Override
+	public int endPosition() {
+<span class="fc bfc" id="L84" title="All 2 branches covered.">		if (currentHit &lt; 0)</span>
+<span class="fc" id="L85">			return -1;</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">		if (currentHit &gt;= starts.size())</span>
+<span class="fc" id="L87">			return NO_MORE_POSITIONS;</span>
+<span class="fc" id="L88">		return ends.get(currentHit);</span>
+	}
+
+	@Override
+	public int nextDoc() throws IOException {
+		// Hit list in current document exhausted. Are there more documents to do?
+<span class="pc bpc" id="L94" title="2 of 4 branches missed.">		if (currentDoc[0] == NO_MORE_DOCS || currentDoc[1] == NO_MORE_DOCS)</span>
+<span class="nc" id="L95">			return NO_MORE_DOCS;</span>
+
+		// Move to the next document
+<span class="fc" id="L98">		currentDoc[0] = spans[0].nextDoc();</span>
+<span class="fc" id="L99">		currentDoc[1] = spans[1].nextDoc();</span>
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">		if (currentDoc[0] != currentDoc[1])</span>
+<span class="nc" id="L101">			throw new RuntimeException(&quot;Error, start and end tags not in synch&quot;);</span>
+<span class="pc bpc" id="L102" title="1 of 4 branches missed.">		if (currentDoc[0] == NO_MORE_DOCS || currentDoc[1] == NO_MORE_DOCS)</span>
+<span class="fc" id="L103">			return NO_MORE_DOCS;</span>
+<span class="fc" id="L104">		gatherHits();</span>
+<span class="fc" id="L105">		return currentDoc[0];</span>
+	}
+
+	@Override
+	public int nextStartPosition() throws IOException {
+		// Do we have more hits in the list?
+<span class="fc" id="L111">		currentHit++;</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">		if (currentHit &lt; starts.size()) {</span>
+			// Yep, we're at the next hit in the list.
+<span class="fc" id="L114">			return starts.get(currentHit);</span>
+		}
+<span class="fc" id="L116">		return NO_MORE_POSITIONS;</span>
+	}
+
+	private void gatherHits() throws IOException {
+		// Put the start and end tag positions in one list (ends negative)
+		// (Note that we add 2 to the tag position to avoid the problem of x == -x for x == 0;
+		//  below we subtract it again)
+		// The list will be sorted by tag position.
+<span class="fc" id="L124">		IntArrayList startsAndEnds = new IntArrayList();</span>
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">		if (spans[0].nextBucket() == SpansInBuckets.NO_MORE_BUCKETS ||</span>
+<span class="pc bpc" id="L126" title="1 of 2 branches missed.">			spans[1].nextBucket() == SpansInBuckets.NO_MORE_BUCKETS) {</span>
+<span class="nc" id="L127">			throw new RuntimeException(&quot;Both spans must have exactly one bucket per document&quot;);</span>
+		}
+<span class="fc" id="L129">		int startIndex = 0, endIndex = 0;</span>
+<span class="fc" id="L130">		boolean startDone = false, endDone = false;</span>
+<span class="fc" id="L131">		int startBucketSize = spans[0].bucketSize();</span>
+<span class="fc" id="L132">		int endBucketSize = spans[1].bucketSize();</span>
+<span class="fc bfc" id="L133" title="All 4 branches covered.">		while(!startDone || !endDone) {</span>
+			// Which comes first, the current start tag or end tag?
+<span class="pc bpc" id="L135" title="1 of 2 branches missed.">			int endTagPos = endDone ? -1 : spans[1].startPosition(endIndex);</span>
+<span class="fc" id="L136">			boolean addEndTag = false;</span>
+<span class="fc" id="L137">			int startTagPos = -1;</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">			if (startDone)</span>
+<span class="fc" id="L139">				addEndTag = true;</span>
+			else {
+<span class="fc" id="L141">				startTagPos = spans[0].startPosition(startIndex);</span>
+<span class="pc bpc" id="L142" title="1 of 4 branches missed.">				if (!endDone &amp;&amp; startTagPos &gt;= endTagPos)</span>
+<span class="fc" id="L143">					addEndTag = true;</span>
+			}
+<span class="fc bfc" id="L145" title="All 2 branches covered.">			if (addEndTag) {</span>
+				// Add end tag
+				// +2 to avoid 0/-0 problem; -1 because endtag is attached to next token, but this
+				// is inconvenient for this process, we want it attached to the previous token now.
+<span class="fc" id="L149">				startsAndEnds.add(- (endTagPos + 2 - 1));</span>
+<span class="fc" id="L150">				endIndex++;</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">				if (endIndex &gt;= endBucketSize)</span>
+<span class="fc" id="L152">					endDone = true;</span>
+			} else {
+				// Add start tag
+<span class="fc" id="L155">				startsAndEnds.add(startTagPos + 2);</span>
+<span class="fc" id="L156">				startIndex++;</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">				if (startIndex &gt;= startBucketSize)</span>
+<span class="fc" id="L158">					startDone = true;</span>
+			}
+<span class="fc" id="L160">		}</span>
+
+		// Go through the list of all tags, keep track of unmatched open tags and finding matches
+<span class="fc" id="L163">		IntArrayList unmatchedOpenTagIndices = new IntArrayList();</span>
+<span class="fc" id="L164">		IntArrayList emptyElementIndices = new IntArrayList(); // empty elements between tokens need special attention (see below)</span>
+
+		// Don't always just call .clear() because the application could
+		// keep holding on to too much memory after encountering one really
+		// large document!
+<span class="pc bpc" id="L169" title="1 of 2 branches missed.">		if (starts.size() &lt; ARRAYLIST_REALLOC_THRESHOLD) {</span>
+			// Not a huge amount of memory, so don't reallocate
+<span class="fc" id="L171">			starts.clear();</span>
+<span class="fc" id="L172">			ends.clear();</span>
+		} else {
+			// Reallocate in this case to avoid holding on to a lot of memory
+<span class="nc" id="L175">			starts = new IntArrayList();</span>
+<span class="nc" id="L176">			ends = new IntArrayList();</span>
+		}
+
+<span class="fc" id="L179">		currentHit = -1; // before first hit</span>
+<span class="fc" id="L180">		IntIterator it = startsAndEnds.intIterator();</span>
+<span class="fc bfc" id="L181" title="All 2 branches covered.">		while (it.hasNext()) {</span>
+<span class="fc" id="L182">			int tag = it.next();</span>
+<span class="fc bfc" id="L183" title="All 2 branches covered.">			if (tag &gt; 0) {</span>
+<span class="fc" id="L184">				int startPositionToStore = tag - 2;  // subtract 2 again to get original position (see above)</span>
+<span class="fc bfc" id="L185" title="All 2 branches covered.">				if (!emptyElementIndices.isEmpty()) {</span>
+					// We have an unmatched close tag, probably an empty element between tokens (see below).
+					// Is this the corresponding start tag?
+<span class="fc" id="L188">					int index = emptyElementIndices.removeAtIndex(emptyElementIndices.size() - 1);</span>
+<span class="pc bpc" id="L189" title="1 of 2 branches missed.">					if (startPositionToStore == ends.get(index)) {</span>
+						// Yes. Fill in start position.
+<span class="fc" id="L191">						starts.set(index, startPositionToStore);</span>
+					} else {
+<span class="nc" id="L193">						throw new RuntimeException(&quot;Unmatched close tag&quot;);</span>
+					}
+<span class="fc" id="L195">				} else {</span>
+					// Open tag. As yet unmatched. Add to starts list, reserve space in ends list, add the index to the stack.
+<span class="fc" id="L197">					starts.add(startPositionToStore);</span>
+<span class="fc" id="L198">					ends.add(-1); // &quot;to be filled in later&quot;</span>
+<span class="fc" id="L199">					unmatchedOpenTagIndices.add(ends.size() - 1); // index to fill in when end tag found</span>
+				}
+<span class="fc" id="L201">			} else {</span>
+				// Close tag. Are there unmatched open tags?
+<span class="fc" id="L203">				int endPositionToStore = -tag - 2 + 1; // subtract 2 and add 1 to let it point to the next token again (see above)</span>
+<span class="fc bfc" id="L204" title="All 2 branches covered.">				if (unmatchedOpenTagIndices.isEmpty()) {</span>
+					// No. This must be an empty element between two tokens. Because we don't know the
+					// relative order of tags between tokens (this information is not in the index),
+					// our sort messes this up.
+					// Add placeholder at this position and fix it when we find the open tag.
+<span class="fc" id="L209">					starts.add(-1); // &quot;to be filled in later&quot;</span>
+<span class="fc" id="L210">					ends.add(endPositionToStore);</span>
+<span class="fc" id="L211">					emptyElementIndices.add(ends.size() - 1); // index to fill in when end tag found</span>
+				} else {
+					// Yes. Match it to the most recently added unmatched open tag.
+<span class="fc" id="L214">					int index = unmatchedOpenTagIndices.removeAtIndex(unmatchedOpenTagIndices.size() - 1);</span>
+<span class="fc" id="L215">					ends.set(index, endPositionToStore);</span>
+				}
+			}
+<span class="fc" id="L218">		}</span>
+<span class="pc bpc" id="L219" title="1 of 2 branches missed.">		if (!unmatchedOpenTagIndices.isEmpty()) {</span>
+<span class="nc" id="L220">			throw new RuntimeException(&quot;Unmatched open tags left for document&quot;);</span>
+		}
+<span class="pc bpc" id="L222" title="1 of 2 branches missed.">		if (!emptyElementIndices.isEmpty()) {</span>
+<span class="nc" id="L223">			throw new RuntimeException(&quot;Unmatched close tag left for document&quot;);</span>
+		}
+<span class="fc" id="L225">	}</span>
+
+	/**
+	 * Skip to the specified document (or the first document after it containing hits)
+	 *
+	 * @param doc
+	 *            the doc number to skip to (or past)
+	 * @return true if we're still pointing to a valid hit, false if we're done
+	 * @throws IOException
+	 */
+	@Override
+	public int advance(int doc) throws IOException {
+		// Skip both
+<span class="fc" id="L238">		currentDoc[0] = spans[0].advance(doc);</span>
+<span class="fc" id="L239">		currentDoc[1] = spans[1].advance(doc);</span>
+<span class="pc bpc" id="L240" title="1 of 2 branches missed.">		if (currentDoc[0] != currentDoc[1])</span>
+<span class="nc" id="L241">			throw new RuntimeException(&quot;Error, start and end tags not in synch&quot;);</span>
+<span class="pc bpc" id="L242" title="2 of 4 branches missed.">		if (currentDoc[0] == NO_MORE_DOCS || currentDoc[1] == NO_MORE_DOCS)</span>
+<span class="nc" id="L243">			return NO_MORE_DOCS;</span>
+<span class="fc" id="L244">		gatherHits();</span>
+<span class="fc" id="L245">		return currentDoc[0];</span>
+	}
+
+	@Override
+	public String toString() {
+<span class="nc" id="L250">		return &quot;SpansTags(&quot; + spans[0] + &quot;, &quot; + spans[1] + &quot;)&quot;;</span>
+	}
+
+	@Override
+	public void passHitQueryContextToClauses(HitQueryContext context) {
+<span class="nc" id="L255">		spans[0].setHitQueryContext(context);</span>
+<span class="nc" id="L256">		spans[1].setHitQueryContext(context);</span>
+<span class="nc" id="L257">	}</span>
+
+	@Override
+	public void getCapturedGroups(Span[] capturedGroups) {
+		// Cannot capture groups within the tag part of queries
+<span class="nc" id="L262">	}</span>
+
+	@Override
+	public int width() {
+<span class="nc" id="L266">		return 0;</span>
+	}
+
+	@Override
+	public void collect(SpanCollector collector) throws IOException {
+		// nothing to collect
+<span class="nc" id="L272">	}</span>
+
+	@Override
+	public float positionsCost() {
+<span class="nc" id="L276">		return 0;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

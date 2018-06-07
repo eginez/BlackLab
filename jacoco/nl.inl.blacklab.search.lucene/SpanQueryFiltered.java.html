@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SpanQueryFiltered.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">SpanQueryFiltered.java</span></div><h1>SpanQueryFiltered.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.lucene;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.index.TermContext;
+import org.apache.lucene.search.Filter;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.MatchNoDocsQuery;
+import org.apache.lucene.search.MultiTermQuery;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.QueryWrapperFilter;
+import org.apache.lucene.search.TermQuery;
+import org.apache.lucene.search.Weight;
+
+/**
+ * Filters a SpanQuery.
+ */
+@SuppressWarnings(&quot;deprecation&quot;)
+public class SpanQueryFiltered extends BLSpanQueryAbstract {
+
+	private Query filter;
+
+	/**
+	 * Filter a SpanQuery.
+	 *
+	 * @param source the query to filter
+	 * @param filter the filter query
+	 * @deprecated supply a Query as a filter instead of the deprecated Filter class
+	 */
+	@Deprecated
+	public SpanQueryFiltered(BLSpanQuery source, Filter filter) {
+<span class="nc" id="L53">		super(source);</span>
+<span class="nc bnc" id="L54" title="All 2 branches missed.">		if (!(filter instanceof QueryWrapperFilter)) {</span>
+<span class="nc" id="L55">			throw new UnsupportedOperationException(&quot;Filter must be a QueryWrapperFilter!&quot;);</span>
+		}
+<span class="nc" id="L57">		this.filter = ((QueryWrapperFilter) filter).getQuery();</span>
+<span class="nc" id="L58">	}</span>
+
+	/**
+	 * Filter a SpanQuery.
+	 *
+	 * @param source the query to filter
+	 * @param filter the filter query
+	 */
+	public SpanQueryFiltered(BLSpanQuery source, Query filter) {
+<span class="fc" id="L67">		super(source);</span>
+<span class="fc" id="L68">		this.filter = filter;</span>
+<span class="fc" id="L69">	}</span>
+
+	@Override
+	public BLSpanQuery rewrite(IndexReader reader) throws IOException {
+<span class="fc" id="L73">		List&lt;BLSpanQuery&gt; rewritten = rewriteClauses(reader);</span>
+<span class="fc" id="L74">		Query rewrittenFilter = filter.rewrite(reader);</span>
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">		if (rewrittenFilter instanceof MultiTermQuery) {</span>
+            // Wrap it so it is rewritten to a BooleanQuery and we avoid the
+            // &quot;doesn't implement createWeight&quot; problem.
+<span class="nc" id="L78">		    rewrittenFilter = new BLSpanMultiTermQueryWrapper&lt;&gt;((MultiTermQuery)rewrittenFilter).rewrite(reader);</span>
+		}
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">		return rewritten == null ? this : new SpanQueryFiltered(rewritten.get(0), rewrittenFilter);</span>
+	}
+
+	@Override
+	public boolean matchesEmptySequence() {
+<span class="nc" id="L85">		return clauses.get(0).matchesEmptySequence();</span>
+	}
+
+	@Override
+	public BLSpanQuery noEmpty() {
+<span class="nc" id="L90">		return new SpanQueryFiltered(clauses.get(0).noEmpty(), filter);</span>
+	}
+
+	@Override
+	public boolean hitsAllSameLength() {
+<span class="nc" id="L95">		return clauses.get(0).hitsAllSameLength();</span>
+	}
+
+	@Override
+	public int hitsLengthMin() {
+<span class="nc" id="L100">		return clauses.get(0).hitsLengthMin();</span>
+	}
+
+	@Override
+	public int hitsLengthMax() {
+<span class="nc" id="L105">		return clauses.get(0).hitsLengthMax();</span>
+	}
+
+	@Override
+	public boolean hitsStartPointSorted() {
+<span class="fc" id="L110">		return true;</span>
+	}
+
+	@Override
+	public boolean hitsEndPointSorted() {
+<span class="nc" id="L115">		return clauses.get(0).hitsEndPointSorted();</span>
+	}
+
+	@Override
+	public boolean hitsHaveUniqueStart() {
+<span class="nc" id="L120">		return clauses.get(0).hitsHaveUniqueStart();</span>
+	}
+
+	@Override
+	public boolean hitsHaveUniqueEnd() {
+<span class="nc" id="L125">		return clauses.get(0).hitsHaveUniqueEnd();</span>
+	}
+
+	@Override
+	public boolean hitsAreUnique() {
+<span class="fc" id="L130">		return clauses.get(0).hitsAreUnique();</span>
+	}
+
+	@Override
+	public BLSpanWeight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
+<span class="fc" id="L135">		BLSpanWeight weight = clauses.get(0).createWeight(searcher, needsScores);</span>
+<span class="fc" id="L136">        Query rewrite = filter.rewrite(searcher.getIndexReader());</span>
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">        if (rewrite instanceof MultiTermQuery) {</span>
+            // Wrap it so it is rewritten to a BooleanQuery and we avoid the
+            // &quot;doesn't implement createWeight&quot; problem.
+<span class="nc" id="L140">            rewrite = new BLSpanMultiTermQueryWrapper&lt;&gt;((MultiTermQuery)rewrite).rewrite(searcher.getIndexReader());</span>
+        }
+<span class="pc bpc" id="L142" title="1 of 2 branches missed.">        if (rewrite instanceof MatchNoDocsQuery)</span>
+<span class="nc" id="L143">            rewrite = new TermQuery(new Term(&quot;_nonexistentfield_&quot;, &quot;_nonexistentvalue_&quot;)); // HACK. This &quot;fixes&quot; the 'Query does not implement createWeight issue'</span>
+<span class="fc" id="L144">        Weight filterWeight = rewrite.createWeight(searcher, false);</span>
+<span class="pc bpc" id="L145" title="1 of 2 branches missed.">		return new SpanWeightFiltered(weight, filterWeight, searcher, needsScores ? getTermContexts(weight) : null);</span>
+	}
+
+	class SpanWeightFiltered extends BLSpanWeight {
+
+		final BLSpanWeight weight;
+
+		final Weight filterWeight;
+
+<span class="fc" id="L154">		public SpanWeightFiltered(BLSpanWeight weight, Weight filterWeight, IndexSearcher searcher, Map&lt;Term, TermContext&gt; terms) throws IOException {</span>
+<span class="fc" id="L155">			super(SpanQueryFiltered.this, searcher, terms);</span>
+<span class="fc" id="L156">			this.weight = weight;</span>
+<span class="fc" id="L157">			this.filterWeight = filterWeight;</span>
+<span class="fc" id="L158">		}</span>
+
+		@Override
+		public void extractTerms(Set&lt;Term&gt; terms) {
+<span class="fc" id="L162">			weight.extractTerms(terms);</span>
+<span class="fc" id="L163">		}</span>
+
+		@Override
+		public void extractTermContexts(Map&lt;Term, TermContext&gt; contexts) {
+<span class="nc" id="L167">			weight.extractTermContexts(contexts);</span>
+<span class="nc" id="L168">		}</span>
+
+		@Override
+		public BLSpans getSpans(final LeafReaderContext context, Postings requiredPostings) throws IOException {
+<span class="fc" id="L172">			BLSpans result = weight.getSpans(context, requiredPostings);</span>
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">			if (result == null)</span>
+<span class="nc" id="L174">				return null;</span>
+<span class="fc" id="L175">			return new SpansFiltered(result, filterWeight.scorer(context));</span>
+		}
+
+	}
+
+	@Override
+	public String toString(String field) {
+<span class="nc" id="L182">		return &quot;FILTER(&quot; + clausesToString(field) + &quot;, &quot; + filter + &quot;)&quot;;</span>
+	}
+
+	@Override
+	public long reverseMatchingCost(IndexReader reader) {
+<span class="nc" id="L187">		return clauses.get(0).reverseMatchingCost(reader);</span>
+	}
+
+	@Override
+	public int forwardMatchingCost() {
+<span class="nc" id="L192">		return clauses.get(0).forwardMatchingCost();</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

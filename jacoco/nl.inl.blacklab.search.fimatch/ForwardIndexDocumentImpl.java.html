@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ForwardIndexDocumentImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.fimatch</a> &gt; <span class="el_source">ForwardIndexDocumentImpl.java</span></div><h1>ForwardIndexDocumentImpl.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.search.fimatch;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import org.apache.lucene.index.LeafReader;
+
+import nl.inl.blacklab.search.fimatch.ForwardIndexAccessor.ForwardIndexAccessorLeafReader;
+
+/** Source of tokens for the forward index matching process. */
+class ForwardIndexDocumentImpl extends ForwardIndexDocument {
+
+	/** Default size for our chunks */
+	private static final int CHUNK_SIZE = 10;
+
+	/** Where to get our forward indices and forward index ids (fiids) */
+	private ForwardIndexAccessorLeafReader fiAccessor;
+
+	/** Lucene document id of the document we're looking at*/
+	private int docId;
+
+	/** Number of tokens in document. */
+	private int docLengthTokens;
+
+	/** Chunks of the document from the forward index, for each of the properties. */
+<span class="fc" id="L26">	private List&lt;List&lt;int[]&gt;&gt; allPropChunks = new ArrayList&lt;&gt;();</span>
+
+<span class="fc" id="L28">	public ForwardIndexDocumentImpl(ForwardIndexAccessorLeafReader fiAccessor, int docId, LeafReader reader) {</span>
+<span class="fc" id="L29">		this.fiAccessor = fiAccessor;</span>
+<span class="fc" id="L30">		this.docId = docId;</span>
+<span class="fc" id="L31">		this.docLengthTokens = fiAccessor.getDocLength(docId);</span>
+
+		// Create empty lists of chunks for each property
+<span class="fc bfc" id="L34" title="All 2 branches covered.">		for (int i = 0; i &lt; fiAccessor.getNumberOfProperties(); i++) {</span>
+<span class="fc" id="L35">			allPropChunks.add(new ArrayList&lt;int[]&gt;());</span>
+		}
+<span class="fc" id="L37">	}</span>
+
+	@Override
+	public int getToken(int propIndex, int pos) {
+<span class="fc bfc" id="L41" title="All 4 branches covered.">		if (pos &lt; 0 || pos &gt;= docLengthTokens)</span>
+<span class="fc" id="L42">			return -1;</span>
+
+		// Get the list of chunks for the property we're interested in,
+		// and the forward index object to get more.
+<span class="fc" id="L46">		List&lt;int[]&gt; chunks = allPropChunks.get(propIndex);</span>
+
+		// Where can our token be found?
+<span class="fc" id="L49">		int whichChunk = pos / CHUNK_SIZE;</span>
+<span class="fc" id="L50">		int posWithinChunk = pos % CHUNK_SIZE;</span>
+
+		// Make sure we have the chunk we need:
+		// First, make sure the list is long enough.
+		// (we fill with nulls to avoid fetching chunks we don't need)
+<span class="fc bfc" id="L55" title="All 2 branches covered.">		while (chunks.size() &lt;= whichChunk)</span>
+<span class="fc" id="L56">			chunks.add(null);</span>
+		// Now, see if we have the chunk we want, and fetch it if not
+<span class="fc" id="L58">		int[] chunk = chunks.get(whichChunk);</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">		if (chunk == null) {</span>
+<span class="fc" id="L60">			chunk = fetchChunk(propIndex, whichChunk);</span>
+<span class="fc" id="L61">			chunks.set(whichChunk, chunk);</span>
+		}
+
+<span class="fc" id="L64">		return chunk[posWithinChunk];</span>
+
+	}
+
+	/**
+	 * Fetch a chunk from the forward index for the specified property.
+	 * @param propIndex which property we want a forward index chunk for
+	 * @param number the chunk number to fetch
+	 * @return the chunk
+	 */
+	protected int[] fetchChunk(int propIndex, int number) {
+<span class="fc" id="L75">		int start = number * CHUNK_SIZE;</span>
+<span class="fc" id="L76">		int end = start + CHUNK_SIZE;</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">		if (end &gt; docLengthTokens) {</span>
+<span class="fc" id="L78">			end = docLengthTokens;</span>
+		}
+<span class="fc" id="L80">		return fiAccessor.getChunk(propIndex, docId, start, end);</span>
+	}
+
+	@Override
+	public String getTermString(int propIndex, int termId) {
+<span class="fc" id="L85">		return fiAccessor.getTermString(propIndex, termId);</span>
+	}
+
+	@Override
+	public boolean termsEqual(int propIndex, int[] termId, boolean caseSensitive, boolean diacSensitive) {
+<span class="fc" id="L90">		return fiAccessor.termsEqual(propIndex, termId, caseSensitive, diacSensitive);</span>
+	}
+
+	@Override
+	public boolean validPos(int pos) {
+<span class="nc bnc" id="L95" title="All 4 branches missed.">		return pos &gt;= 0 &amp;&amp; pos &lt; docLengthTokens;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

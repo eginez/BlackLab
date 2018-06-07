@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ThreadPriority.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.util</a> &gt; <span class="el_source">ThreadPriority.java</span></div><h1>ThreadPriority.java</h1><pre class="source lang-java linenums">package nl.inl.util;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import nl.inl.blacklab.search.Prioritizable;
+
+/** Allows us to lower thread priority and/or pause thread.
+ *
+ * The thread must cooperate by calling behave() regularly.
+ * We don't use Java's own thread priority system because
+ * it's not particularly portable / practical to use (differences
+ * in priority between OS'es, needs root on Linux, etc.)
+ */
+public class ThreadPriority implements Prioritizable {
+
+	/**
+	 * The different priorities a thread can have in our system.
+	 */
+<span class="pc" id="L20">	public enum Level {</span>
+<span class="fc" id="L21">		PAUSED,</span>
+<span class="fc" id="L22">		RUNNING_LOW_PRIO,</span>
+<span class="fc" id="L23">		RUNNING</span>
+	}
+
+<span class="fc" id="L26">	protected static final Logger logger = LogManager.getLogger(ThreadPriority.class);</span>
+
+	/** Do we want to enable this functionality? (default: false) */
+<span class="fc" id="L29">	private static boolean enabled = false;</span>
+
+	/** @param enabled Do we want to enable this functionality? (default: false) */
+	public static void setEnabled(boolean enabled) {
+<span class="nc" id="L33">		ThreadPriority.enabled = enabled;</span>
+<span class="nc" id="L34">	}</span>
+
+	/** The thread we're running in. */
+	Thread currentThread;
+
+	/** What's the intended priority level? */
+<span class="fc" id="L40">	private Level level = Level.RUNNING;</span>
+
+	/**
+	 * Create a ThreadEtiquette object.
+	 */
+<span class="fc" id="L45">	public ThreadPriority() {</span>
+<span class="fc" id="L46">		reset();</span>
+<span class="fc" id="L47">	}</span>
+
+	@Override
+	public void setPriorityLevel(Level level) {
+<span class="nc" id="L51">		this.level = level;</span>
+<span class="nc" id="L52">	}</span>
+
+	@Override
+	public Level getPriorityLevel() {
+<span class="nc" id="L56">		return level;</span>
+	}
+
+	public void reset() {
+<span class="fc" id="L60">		currentThread = Thread.currentThread();</span>
+<span class="fc" id="L61">	}</span>
+
+	/**
+	 * Make sure our thread is behaving like a respectable citizen.
+	 *
+	 * That means: if it's taking long, it should sleep from time to time;
+	 * if it's taking too long, it should be interrupted.
+	 *
+	 * @throws InterruptedException if operation was taking too long,
+	 *   or the thread was interrupted from elsewhere
+	 */
+	public void behave() throws InterruptedException {
+
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">		if (!enabled)</span>
+<span class="fc" id="L75">			return;</span>
+
+<span class="nc bnc" id="L77" title="All 2 branches missed.">		if (currentThread.isInterrupted()) {</span>
+<span class="nc" id="L78">			logger.debug(&quot;Thread was interrupted, throw exception&quot;);</span>
+<span class="nc" id="L79">			throw new InterruptedException(&quot;Operation aborted&quot;);</span>
+		}
+
+<span class="nc bnc" id="L82" title="All 2 branches missed.">		while (level != Level.RUNNING) {</span>
+<span class="nc" id="L83">			Thread.sleep(100);</span>
+		}
+<span class="nc" id="L85">	}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

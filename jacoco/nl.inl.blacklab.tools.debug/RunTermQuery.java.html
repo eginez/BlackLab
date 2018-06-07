@@ -1,0 +1,252 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RunTermQuery.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.tools.debug</a> &gt; <span class="el_source">RunTermQuery.java</span></div><h1>RunTermQuery.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.tools.debug;
+
+import java.io.IOException;
+import java.nio.file.Paths;
+import java.util.BitSet;
+
+import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReader;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.PostingsEnum;
+import org.apache.lucene.index.SlowCompositeReaderWrapper;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.index.TermsEnum;
+import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.Scorer;
+import org.apache.lucene.search.SimpleCollector;
+import org.apache.lucene.search.TermQuery;
+import org.apache.lucene.search.spans.SpanQuery;
+import org.apache.lucene.search.spans.SpanTermQuery;
+import org.apache.lucene.search.spans.SpanWeight;
+import org.apache.lucene.search.spans.SpanWeight.Postings;
+import org.apache.lucene.search.spans.Spans;
+import org.apache.lucene.store.FSDirectory;
+
+import nl.inl.util.LuceneUtil;
+import nl.inl.util.StringUtil;
+
+<span class="nc" id="L31">public class RunTermQuery {</span>
+
+<span class="nc" id="L33">	static int matchingDoc = -1;</span>
+
+<span class="nc" id="L35">	static int matchPosition = -1;</span>
+
+<span class="nc" id="L37">	static boolean docsFound = false;</span>
+
+	public static void main(String[] args) throws IOException {
+<span class="nc" id="L40">		String word = &quot;koekenbakker&quot;;</span>
+<span class="nc" id="L41">		String fieldName = &quot;contents%word@s&quot;;</span>
+<span class="nc bnc" id="L42" title="All 2 branches missed.">		if (args.length &gt;= 1)</span>
+<span class="nc" id="L43">			word = args[0];</span>
+<span class="nc bnc" id="L44" title="All 2 branches missed.">		if (args.length &gt;= 2)</span>
+<span class="nc" id="L45">			fieldName = args[1];</span>
+
+		// Open the index
+<span class="nc" id="L48">		IndexReader reader = null;</span>
+		try {
+<span class="nc" id="L50">			reader = DirectoryReader.open(FSDirectory.open(Paths.get(&quot;.&quot;)));</span>
+<span class="nc" id="L51">		} catch (Exception e) {</span>
+<span class="nc" id="L52">			System.err.println(&quot;Error opening index; is the current directory a Lucene index?&quot;);</span>
+<span class="nc" id="L53">			usage();</span>
+<span class="nc" id="L54">			System.exit(1);</span>
+<span class="nc" id="L55">		}</span>
+
+<span class="nc" id="L57">		Term term = new Term(fieldName, word);</span>
+<span class="nc" id="L58">		System.out.println(&quot;TERM: &quot; + term.text());</span>
+
+<span class="nc" id="L60">		System.out.println(&quot;  Total frequency: &quot; + term.text() + &quot;: &quot; + reader.totalTermFreq(term) + &quot;\n&quot;);</span>
+
+<span class="nc" id="L62">		doQuery(term, reader);</span>
+<span class="nc" id="L63">		doSpanQuery(term, reader);</span>
+<span class="nc bnc" id="L64" title="All 2 branches missed.">		if (matchingDoc != -1)</span>
+<span class="nc" id="L65">			doTermVector(matchingDoc, term, reader);</span>
+
+<span class="nc bnc" id="L67" title="All 2 branches missed.">		if (matchPosition != -1)</span>
+<span class="nc" id="L68">			doSnippet(matchingDoc, matchPosition, term, reader);</span>
+<span class="nc" id="L69">	}</span>
+
+	private static void doSnippet(int docId, int position, Term term,
+			IndexReader reader) {
+
+<span class="nc" id="L74">		System.out.println(&quot;\nSNIPPET&quot;);</span>
+
+<span class="nc" id="L76">		int first = position - 10;</span>
+<span class="nc bnc" id="L77" title="All 2 branches missed.">		if (first &lt; 0)</span>
+<span class="nc" id="L78">			first = 0;</span>
+<span class="nc" id="L79">		int number = 20;</span>
+<span class="nc" id="L80">		String[] words = LuceneUtil.getWordsFromTermVector(reader, docId, term.field(), first, first + number, true);</span>
+
+		// Print result
+<span class="nc" id="L83">		int i = 0;</span>
+<span class="nc" id="L84">		StringBuilder b = new StringBuilder();</span>
+<span class="nc bnc" id="L85" title="All 2 branches missed.">		for (String word: words) {</span>
+<span class="nc bnc" id="L86" title="All 2 branches missed.">			if (word == null)</span>
+<span class="nc" id="L87">				word = &quot;[MISSING]&quot;;</span>
+<span class="nc" id="L88">			b.append(i + first).append(&quot;:&quot;).append(word).append(&quot; &quot;);</span>
+<span class="nc" id="L89">			i++;</span>
+		}
+<span class="nc" id="L91">		System.out.println(StringUtil.wrap(b.toString(), 80));</span>
+<span class="nc" id="L92">	}</span>
+
+	private static void doTermVector(int doc, Term term, IndexReader reader) {
+<span class="nc" id="L95">		System.out.println(&quot;\nTERM VECTOR FOR DOC &quot; + doc);</span>
+<span class="nc" id="L96">		String luceneName = term.field();</span>
+<span class="nc" id="L97">		String word = term.text();</span>
+		try {
+<span class="nc" id="L99">			org.apache.lucene.index.Terms terms = reader.getTermVector(doc, luceneName);</span>
+<span class="nc bnc" id="L100" title="All 2 branches missed.">			if (terms == null) {</span>
+<span class="nc" id="L101">				System.out.println(&quot;Field &quot; + luceneName + &quot; has no Terms&quot;);</span>
+<span class="nc" id="L102">				return;</span>
+			}
+<span class="nc" id="L104">			System.out.println(</span>
+<span class="nc" id="L105">				&quot;  Doc count:           &quot; + terms.getDocCount() + &quot;\n&quot; +</span>
+<span class="nc" id="L106">				&quot;  Sum doc freq:        &quot; + terms.getSumDocFreq() + &quot;\n&quot; +</span>
+<span class="nc" id="L107">				&quot;  Sum total term freq: &quot; + terms.getSumDocFreq() + &quot;\n&quot; +</span>
+<span class="nc" id="L108">				&quot;  Has offsets:         &quot; + terms.hasOffsets() + &quot;\n&quot; +</span>
+<span class="nc" id="L109">				&quot;  Has payloads:        &quot; + terms.hasPayloads() + &quot;\n&quot; +</span>
+<span class="nc" id="L110">				&quot;  Has positions:       &quot; + terms.hasPositions() + &quot;\n&quot;);</span>
+
+<span class="nc" id="L112">			TermsEnum termsEnum = terms.iterator();</span>
+<span class="nc bnc" id="L113" title="All 2 branches missed.">			if (!termsEnum.seekExact(term.bytes())) {</span>
+<span class="nc" id="L114">				System.out.println(&quot;Term &quot; + word + &quot; not found.&quot;);</span>
+<span class="nc" id="L115">				return;</span>
+			}
+
+<span class="nc" id="L118">			System.out.println(&quot;\n&quot; +</span>
+<span class="nc" id="L119">				&quot;  TERM '&quot; + termsEnum.term().utf8ToString() + &quot;':\n&quot; +</span>
+<span class="nc" id="L120">				&quot;    Doc freq:        &quot; + termsEnum.docFreq() + &quot;\n&quot; +</span>
+<span class="nc" id="L121">				&quot;    Ord:             &quot; + termsEnum.ord() + &quot;\n&quot; +</span>
+<span class="nc" id="L122">				&quot;    Total term freq: &quot; + termsEnum.totalTermFreq() + &quot;\n&quot;);</span>
+
+<span class="nc bnc" id="L124" title="All 2 branches missed.">			if (terms.hasPositions()) {</span>
+				// Verzamel concordantiewoorden uit term vector
+<span class="nc" id="L126">				PostingsEnum docPosEnum = termsEnum.postings(null, PostingsEnum.POSITIONS);</span>
+<span class="nc" id="L127">				System.out.println(&quot;    POSITIONS:&quot;);</span>
+<span class="nc bnc" id="L128" title="All 2 branches missed.">				while (docPosEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {</span>
+
+<span class="nc" id="L130">					System.out.println(</span>
+<span class="nc" id="L131">							&quot;      Doc id: &quot; + docPosEnum.docID() + &quot;\n&quot; +</span>
+<span class="nc" id="L132">							&quot;      Freq:   &quot; + docPosEnum.freq() + &quot;\n&quot;);</span>
+
+<span class="nc bnc" id="L134" title="All 2 branches missed.">					for (int i = 0; i &lt; docPosEnum.freq(); i++)  {</span>
+<span class="nc" id="L135">						int position = docPosEnum.nextPosition();</span>
+<span class="nc" id="L136">						int start = docPosEnum.startOffset();</span>
+<span class="nc bnc" id="L137" title="All 2 branches missed.">						if (start &gt;= 0) {</span>
+							// Character offsets stored
+<span class="nc" id="L139">							int end = docPosEnum.startOffset();</span>
+<span class="nc" id="L140">							System.out.println(&quot;      &quot; + position + &quot; (offsets: &quot; + start + &quot;-&quot; + end + &quot;)&quot;);</span>
+<span class="nc" id="L141">						} else {</span>
+							// No character offsets stored
+<span class="nc" id="L143">							System.out.println(&quot;      &quot; + position);</span>
+						}
+<span class="nc bnc" id="L145" title="All 2 branches missed.">						if (matchPosition &lt; 0)</span>
+<span class="nc" id="L146">							matchPosition = position;</span>
+					}
+				}
+<span class="nc" id="L149">			} else {</span>
+				// No positions
+<span class="nc" id="L151">				PostingsEnum postingsEnum = termsEnum.postings(null, PostingsEnum.FREQS);</span>
+<span class="nc" id="L152">				System.out.println(&quot;\n    DOCS:&quot;);</span>
+<span class="nc bnc" id="L153" title="All 2 branches missed.">				while (postingsEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {</span>
+<span class="nc" id="L154">					System.out.println(</span>
+<span class="nc" id="L155">							&quot;      Doc id: &quot; + postingsEnum.docID() + &quot;\n&quot; +</span>
+<span class="nc" id="L156">							&quot;      Freq:   &quot; + postingsEnum.freq() + &quot;\n&quot;);</span>
+				}
+			}
+<span class="nc" id="L159">		} catch (Exception e) {</span>
+<span class="nc" id="L160">			throw new RuntimeException(e);</span>
+<span class="nc" id="L161">		}</span>
+<span class="nc" id="L162">	}</span>
+
+	private static void doQuery(Term term, IndexReader reader) throws IOException {
+<span class="nc" id="L165">		Query query = new TermQuery(term);</span>
+<span class="nc" id="L166">		query = query.rewrite(reader);</span>
+<span class="nc" id="L167">		System.out.println(&quot;REGULAR QUERY&quot;);</span>
+
+<span class="nc" id="L169">		IndexSearcher searcher = new IndexSearcher(reader);</span>
+<span class="nc" id="L170">		final BitSet bits = new BitSet(reader.maxDoc());</span>
+<span class="nc" id="L171">		docsFound = false;</span>
+<span class="nc" id="L172">		searcher.search(query, new SimpleCollector() {</span>
+			private int docBase;
+
+			@Override
+			public void setScorer(Scorer scorer) {
+				// ignore scorer
+<span class="nc" id="L178">			}</span>
+
+			@Override
+			protected void doSetNextReader(LeafReaderContext context)
+					throws IOException {
+<span class="nc" id="L183">				docBase = context.docBase;</span>
+<span class="nc" id="L184">				super.doSetNextReader(context);</span>
+<span class="nc" id="L185">			}</span>
+
+			@Override
+			public void collect(int doc) {
+<span class="nc" id="L189">				bits.set(doc + docBase);</span>
+<span class="nc" id="L190">				System.out.println(String.format(&quot;  doc %7d&quot;, doc + docBase));</span>
+<span class="nc" id="L191">				matchingDoc = doc + docBase;</span>
+<span class="nc" id="L192">				docsFound = true;</span>
+<span class="nc" id="L193">			}</span>
+
+			@Override
+			public boolean needsScores() {
+<span class="nc" id="L197">				return false;</span>
+			}
+		});
+<span class="nc bnc" id="L200" title="All 2 branches missed.">		if (!docsFound)</span>
+<span class="nc" id="L201">			System.out.println(&quot;  (no matching docs)&quot;);</span>
+<span class="nc" id="L202">		System.out.println(&quot;&quot;);</span>
+<span class="nc" id="L203">	}</span>
+
+	private static void doSpanQuery(Term term, IndexReader reader) throws IOException {
+<span class="nc" id="L206">		IndexSearcher searcher = new IndexSearcher(reader);</span>
+
+<span class="nc" id="L208">		SpanQuery spanQuery = new SpanTermQuery(term);</span>
+<span class="nc" id="L209">		spanQuery = (SpanQuery) spanQuery.rewrite(reader);</span>
+
+<span class="nc" id="L211">		System.out.println(&quot;SPANQUERY&quot;);</span>
+
+<span class="nc" id="L213">		System.out.println(&quot;USING LEAVES:&quot;);</span>
+<span class="nc" id="L214">		boolean hitsFound = false;</span>
+<span class="nc" id="L215">		SpanWeight weight = spanQuery.createWeight(searcher, false);</span>
+<span class="nc bnc" id="L216" title="All 2 branches missed.">		for (LeafReaderContext arc: reader.leaves()) {</span>
+<span class="nc" id="L217">			Spans spans = weight.getSpans(arc, Postings.OFFSETS);</span>
+<span class="nc bnc" id="L218" title="All 4 branches missed.">			while(spans != null &amp;&amp; spans.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {</span>
+<span class="nc bnc" id="L219" title="All 2 branches missed.">				while (spans.nextStartPosition() != Spans.NO_MORE_POSITIONS) {</span>
+<span class="nc" id="L220">					int doc = arc.docBase + spans.docID();</span>
+<span class="nc" id="L221">					System.out.println(String.format(&quot;  doc %7d, pos %4d-%4d&quot;, doc, spans.startPosition(), spans.endPosition()));</span>
+<span class="nc" id="L222">					hitsFound = true;</span>
+<span class="nc" id="L223">				}</span>
+			}
+<span class="nc" id="L225">		}</span>
+<span class="nc bnc" id="L226" title="All 2 branches missed.">		if (!hitsFound)</span>
+<span class="nc" id="L227">			System.out.println(&quot;  (no hits)&quot;);</span>
+<span class="nc" id="L228">		System.out.println(&quot;&quot;);</span>
+
+<span class="nc" id="L230">		System.out.println(&quot;USING SLOWCOMPOSITEREADERWRAPPER:&quot;);</span>
+<span class="nc" id="L231">		LeafReader scrw = SlowCompositeReaderWrapper.wrap(reader);</span>
+<span class="nc" id="L232">		Spans spans = weight.getSpans(scrw.getContext(), Postings.OFFSETS);</span>
+<span class="nc" id="L233">		hitsFound = false;</span>
+<span class="nc bnc" id="L234" title="All 4 branches missed.">		while(spans != null &amp;&amp; spans.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {</span>
+<span class="nc bnc" id="L235" title="All 2 branches missed.">			while(spans.nextStartPosition() != Spans.NO_MORE_POSITIONS) {</span>
+<span class="nc" id="L236">				System.out.println(String.format(&quot;  doc %7d, pos %4d-%4d&quot;, spans.docID(), spans.startPosition(), spans.endPosition()));</span>
+<span class="nc" id="L237">				hitsFound = true;</span>
+			}
+		}
+<span class="nc bnc" id="L240" title="All 2 branches missed.">		if (!hitsFound)</span>
+<span class="nc" id="L241">			System.out.println(&quot;  (no hits)&quot;);</span>
+<span class="nc" id="L242">		System.out.println(&quot;&quot;);</span>
+<span class="nc" id="L243">	}</span>
+
+	private static void usage() {
+<span class="nc" id="L246">		System.out</span>
+<span class="nc" id="L247">				.println(&quot;\nThis tool searches for a term and prints index information for this term.\n&quot;);</span>
+<span class="nc" id="L248">		System.out.println(&quot;  RunTermQuery &lt;term&gt; [fieldName]&quot;);</span>
+<span class="nc" id="L249">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

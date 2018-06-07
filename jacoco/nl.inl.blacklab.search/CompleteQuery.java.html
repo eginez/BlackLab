@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CompleteQuery.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search</a> &gt; <span class="el_source">CompleteQuery.java</span></div><h1>CompleteQuery.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.search;
+
+
+
+import org.apache.lucene.search.BooleanClause.Occur;
+import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.Query;
+
+/**
+ * Represents a combination of a contents query (a TextPattern) and a
+ * metadata &quot;filter query&quot; (a regular Lucene Query).
+ *
+ * This kind of query is produced by parsing SRU CQL, for example.
+ */
+public class CompleteQuery {
+
+	/** The query to find a structure in the contents */
+	private TextPattern contentsQuery;
+
+	/** The query that determines what documents to search for the structure */
+	private Query filterQuery;
+
+	/** Get the query to find a structure in the contents
+	 * @return the structural contents query */
+	public TextPattern getContentsQuery() {
+<span class="nc" id="L26">		return contentsQuery;</span>
+	}
+
+	/** Get the query that determines what documents to search for the structure
+	 * @return the metadata filter query */
+	public Query getFilterQuery() {
+<span class="nc" id="L32">		return filterQuery;</span>
+	}
+
+<span class="nc" id="L35">	public CompleteQuery(TextPattern contentsQuery, Query filterQuery) {</span>
+<span class="nc" id="L36">		this.contentsQuery = contentsQuery;</span>
+<span class="nc" id="L37">		this.filterQuery = filterQuery;</span>
+<span class="nc" id="L38">	}</span>
+
+	/**
+	 * Combine this query with another query using the and operator.
+	 *
+	 * NOTE: contents queries will be combined using token-level and,
+	 * filter queries will be combined using BooleanQuery (so, at the
+	 * document level).
+	 *
+	 * @param other the query to combine this query with
+	 * @return the resulting query
+	 */
+	public CompleteQuery and(CompleteQuery other) {
+		TextPattern a, b, c;
+		Query d, e, f;
+
+<span class="nc" id="L54">		a = contentsQuery;</span>
+<span class="nc" id="L55">		b = other.contentsQuery;</span>
+<span class="nc bnc" id="L56" title="All 4 branches missed.">		if (a != null &amp;&amp; b != null)</span>
+<span class="nc" id="L57">			c = new TextPatternAndNot(a, b); // NOTE: token-level and!</span>
+		else
+<span class="nc bnc" id="L59" title="All 2 branches missed.">			c = a == null ? b : a;</span>
+
+<span class="nc" id="L61">		d = filterQuery;</span>
+<span class="nc" id="L62">		e = other.filterQuery;</span>
+<span class="nc bnc" id="L63" title="All 4 branches missed.">		if (d != null &amp;&amp; e != null) {</span>
+<span class="nc" id="L64">			BooleanQuery.Builder bb = new BooleanQuery.Builder();</span>
+<span class="nc" id="L65">			bb.add(d, Occur.MUST);</span>
+<span class="nc" id="L66">			bb.add(e, Occur.MUST);</span>
+<span class="nc" id="L67">			f = bb.build();</span>
+<span class="nc" id="L68">		}</span>
+		else
+<span class="nc bnc" id="L70" title="All 2 branches missed.">			f = d == null ? e : d;</span>
+
+<span class="nc" id="L72">		return new CompleteQuery(c, f);</span>
+	}
+
+	/**
+	 * Combine this query with another query using the or operator.
+	 *
+	 * NOTE: you can combine two content queries or two filter queries,
+	 * or both, but you can't combine one content query and one filter query.
+	 *
+	 * @param other the query to combine this query with
+	 * @return the resulting query
+	 */
+	public CompleteQuery or(CompleteQuery other) {
+		TextPattern a, b, c;
+		Query d, e, f;
+
+<span class="nc" id="L88">		a = contentsQuery;</span>
+<span class="nc" id="L89">		b = other.contentsQuery;</span>
+<span class="nc" id="L90">		d = filterQuery;</span>
+<span class="nc" id="L91">		e = other.filterQuery;</span>
+
+<span class="nc bnc" id="L93" title="All 12 branches missed.">		if ( (a == null) != (b == null) ||</span>
+			 (d == null) != (e == null)) {
+<span class="nc" id="L95">			throw new UnsupportedOperationException(&quot;or can only be used to combine contents clauses or metadata clauses; you can't combine the two with eachother with or&quot;);</span>
+		}
+
+<span class="nc bnc" id="L98" title="All 4 branches missed.">		if (a != null &amp;&amp; b != null)</span>
+<span class="nc" id="L99">			c = new TextPatternOr(a, b);</span>
+		else
+<span class="nc bnc" id="L101" title="All 2 branches missed.">			c = a == null ? b : a;</span>
+
+<span class="nc bnc" id="L103" title="All 4 branches missed.">		if (d != null &amp;&amp; e != null) {</span>
+<span class="nc" id="L104">			BooleanQuery.Builder bb = new BooleanQuery.Builder();</span>
+<span class="nc" id="L105">			bb.add(d, Occur.SHOULD);</span>
+<span class="nc" id="L106">			bb.add(e, Occur.SHOULD);</span>
+<span class="nc" id="L107">			f = bb.build();</span>
+<span class="nc" id="L108">		}</span>
+		else
+<span class="nc bnc" id="L110" title="All 2 branches missed.">			f = d == null ? e : d;</span>
+
+<span class="nc" id="L112">		return new CompleteQuery(c, f);</span>
+	}
+
+	/**
+	 * Combine this query with another query using the and-not operator.
+	 *
+	 * NOTE: contents queries will be combined using token-level and-not,
+	 * filter queries will be combined using BooleanQuery (so, at the document
+	 * level).
+	 *
+	 * @param other the query to combine this query with
+	 * @return the resulting query
+	 */
+	public CompleteQuery not(CompleteQuery other) {
+		TextPattern a, b, c;
+		Query d, e, f;
+
+<span class="nc" id="L129">		a = contentsQuery;</span>
+<span class="nc" id="L130">		b = other.contentsQuery;</span>
+<span class="nc bnc" id="L131" title="All 4 branches missed.">		if (a != null &amp;&amp; b != null)</span>
+<span class="nc" id="L132">			c = new TextPatternAndNot(a, new TextPatternNot(b));</span>
+		else
+<span class="nc bnc" id="L134" title="All 2 branches missed.">			c = a == null ? new TextPatternNot(b) : a;</span>
+
+<span class="nc" id="L136">		d = filterQuery;</span>
+<span class="nc" id="L137">		e = other.filterQuery;</span>
+<span class="nc bnc" id="L138" title="All 4 branches missed.">		if (d != null &amp;&amp; e != null) {</span>
+<span class="nc" id="L139">			BooleanQuery.Builder bb = new BooleanQuery.Builder();</span>
+<span class="nc" id="L140">			bb.add(d, Occur.MUST);</span>
+<span class="nc" id="L141">			bb.add(e, Occur.MUST_NOT);</span>
+<span class="nc" id="L142">			f = bb.build();</span>
+<span class="nc" id="L143">		}</span>
+		else {
+<span class="nc bnc" id="L145" title="All 4 branches missed.">			if (e != null &amp;&amp; d == null)</span>
+<span class="nc" id="L146">				throw new UnsupportedOperationException(&quot;Cannot have not without positive clause first!&quot;);</span>
+<span class="nc" id="L147">			f = d;</span>
+		}
+
+<span class="nc" id="L150">		return new CompleteQuery(c, f);</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

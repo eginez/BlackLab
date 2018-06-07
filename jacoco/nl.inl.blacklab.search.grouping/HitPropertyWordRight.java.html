@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HitPropertyWordRight.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.grouping</a> &gt; <span class="el_source">HitPropertyWordRight.java</span></div><h1>HitPropertyWordRight.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.grouping;
+
+import java.util.Arrays;
+import java.util.List;
+
+import nl.inl.blacklab.forwardindex.Terms;
+import nl.inl.blacklab.index.complex.ComplexFieldUtil;
+import nl.inl.blacklab.search.Hits;
+import nl.inl.blacklab.search.Searcher;
+
+/**
+ * A hit property for grouping on the context of the hit. Requires HitConcordances as input (so we
+ * have the hit text available).
+ */
+public class HitPropertyWordRight extends HitProperty {
+
+	private String luceneFieldName;
+
+	private String propName;
+
+	private Terms terms;
+
+	private boolean sensitive;
+
+	private Searcher searcher;
+
+	public HitPropertyWordRight(Hits hits, String field, String property) {
+<span class="nc" id="L43">		this(hits, field, property, hits.getSearcher().isDefaultSearchCaseSensitive());</span>
+<span class="nc" id="L44">	}</span>
+
+	public HitPropertyWordRight(Hits hits, String field) {
+<span class="nc" id="L47">		this(hits, field, null, hits.getSearcher().isDefaultSearchCaseSensitive());</span>
+<span class="nc" id="L48">	}</span>
+
+	public HitPropertyWordRight(Hits hits) {
+<span class="nc" id="L51">		this(hits, hits.getSearcher().getMainContentsFieldName(), hits.getSearcher().isDefaultSearchCaseSensitive());</span>
+<span class="nc" id="L52">	}</span>
+
+	public HitPropertyWordRight(Hits hits, String field, String property, boolean sensitive) {
+<span class="nc" id="L55">		super(hits);</span>
+<span class="nc" id="L56">		this.searcher = hits.getSearcher();</span>
+<span class="nc bnc" id="L57" title="All 4 branches missed.">		if (property == null || property.length() == 0) {</span>
+<span class="nc" id="L58">			this.luceneFieldName = ComplexFieldUtil.mainPropertyField(searcher.getIndexStructure(), field);</span>
+<span class="nc" id="L59">			this.propName = ComplexFieldUtil.getDefaultMainPropName();</span>
+		} else {
+<span class="nc" id="L61">			this.luceneFieldName = ComplexFieldUtil.propertyField(field, property);</span>
+<span class="nc" id="L62">			this.propName = property;</span>
+		}
+<span class="nc" id="L64">		this.terms = searcher.getTerms(luceneFieldName);</span>
+<span class="nc" id="L65">		this.sensitive = sensitive;</span>
+<span class="nc" id="L66">	}</span>
+
+	public HitPropertyWordRight(Hits hits, String field, boolean sensitive) {
+<span class="nc" id="L69">		this(hits, field, null, sensitive);</span>
+<span class="nc" id="L70">	}</span>
+
+	public HitPropertyWordRight(Hits hits, boolean sensitive) {
+<span class="nc" id="L73">		this(hits, hits.getSearcher().getMainContentsFieldName(), sensitive);</span>
+<span class="nc" id="L74">	}</span>
+
+	@Override
+	public HitPropValueContextWord get(int hitNumber) {
+<span class="nc" id="L78">		int[] context = hits.getHitContext(hitNumber);</span>
+<span class="nc" id="L79">		int contextRightStart = context[Hits.CONTEXTS_RIGHT_START_INDEX];</span>
+<span class="nc" id="L80">		int contextLength = context[Hits.CONTEXTS_LENGTH_INDEX];</span>
+
+<span class="nc bnc" id="L82" title="All 2 branches missed.">		if (contextLength &lt;= contextRightStart)</span>
+<span class="nc" id="L83">			return new HitPropValueContextWord(hits, propName, -1, sensitive);</span>
+<span class="nc" id="L84">		int contextStart = contextLength * contextIndices.get(0) + Hits.CONTEXTS_NUMBER_OF_BOOKKEEPING_INTS;</span>
+<span class="nc" id="L85">		return new HitPropValueContextWord(hits, propName, context[contextStart + contextRightStart], sensitive);</span>
+	}
+
+	@Override
+	public int compare(Object i, Object j) {
+<span class="nc" id="L90">		int[] ca = hits.getHitContext((Integer)i);</span>
+<span class="nc" id="L91">		int caRightStart = ca[Hits.CONTEXTS_RIGHT_START_INDEX];</span>
+<span class="nc" id="L92">		int caLength = ca[Hits.CONTEXTS_LENGTH_INDEX];</span>
+<span class="nc" id="L93">		int[] cb = hits.getHitContext((Integer)j);</span>
+<span class="nc" id="L94">		int cbRightStart = cb[Hits.CONTEXTS_RIGHT_START_INDEX];</span>
+<span class="nc" id="L95">		int cbLength = cb[Hits.CONTEXTS_LENGTH_INDEX];</span>
+
+<span class="nc bnc" id="L97" title="All 2 branches missed.">		if (caLength &lt;= caRightStart)</span>
+<span class="nc bnc" id="L98" title="All 4 branches missed.">			return cbLength &lt;= cbRightStart ? 0 : (reverse ? 1 : -1);</span>
+<span class="nc bnc" id="L99" title="All 2 branches missed.">		if (cbLength &lt;= cbRightStart)</span>
+<span class="nc bnc" id="L100" title="All 2 branches missed.">			return reverse ? -1 : 1;</span>
+		// Compare one word to the right of the hit
+<span class="nc" id="L102">		int contextIndex = contextIndices.get(0);</span>
+<span class="nc" id="L103">		int cmp = terms.compareSortPosition(</span>
+				ca[contextIndex * caLength + caRightStart + Hits.CONTEXTS_NUMBER_OF_BOOKKEEPING_INTS],
+				cb[contextIndex * cbLength + cbRightStart + Hits.CONTEXTS_NUMBER_OF_BOOKKEEPING_INTS],
+				sensitive);
+<span class="nc bnc" id="L107" title="All 2 branches missed.">		return reverse ? -cmp : cmp;</span>
+	}
+
+	@Override
+	public List&lt;String&gt; needsContext() {
+<span class="nc" id="L112">		return Arrays.asList(luceneFieldName);</span>
+	}
+
+	@Override
+	public String getName() {
+<span class="nc" id="L117">		return &quot;word right&quot;;</span>
+	}
+
+	@Override
+	public List&lt;String&gt; getPropNames() {
+<span class="nc" id="L122">		return Arrays.asList(&quot;word right: &quot; + propName);</span>
+	}
+
+	@Override
+	public String serialize() {
+<span class="nc" id="L127">		String[] parts = ComplexFieldUtil.getNameComponents(luceneFieldName);</span>
+<span class="nc bnc" id="L128" title="All 2 branches missed.">		String thePropName = parts.length &gt; 1 ? parts[1] : &quot;&quot;;</span>
+<span class="nc bnc" id="L129" title="All 2 branches missed.">		return serializeReverse() + PropValSerializeUtil.combineParts(&quot;wordright&quot;, thePropName, sensitive ? &quot;s&quot; : &quot;i&quot;);</span>
+	}
+
+	public static HitPropertyWordRight deserialize(Hits hits, String info) {
+<span class="nc" id="L133">		String[] parts = PropValSerializeUtil.splitParts(info);</span>
+<span class="nc" id="L134">		String fieldName = hits.settings().concordanceField();</span>
+<span class="nc" id="L135">		String propName = parts[0];</span>
+<span class="nc bnc" id="L136" title="All 2 branches missed.">		if (propName.length() == 0)</span>
+<span class="nc" id="L137">			propName = ComplexFieldUtil.getDefaultMainPropName();</span>
+<span class="nc bnc" id="L138" title="All 2 branches missed.">		boolean sensitive = parts.length &gt; 1 ? parts[1].equalsIgnoreCase(&quot;s&quot;) : true;</span>
+<span class="nc bnc" id="L139" title="All 4 branches missed.">		if (fieldName == null || fieldName.length() == 0)</span>
+<span class="nc" id="L140">			return new HitPropertyWordRight(hits, sensitive);</span>
+<span class="nc" id="L141">		return new HitPropertyWordRight(hits, fieldName, propName, sensitive);</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

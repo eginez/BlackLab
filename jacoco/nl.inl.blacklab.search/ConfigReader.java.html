@@ -1,0 +1,324 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ConfigReader.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search</a> &gt; <span class="el_source">ConfigReader.java</span></div><h1>ConfigReader.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.search;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.Reader;
+import java.text.Collator;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map.Entry;
+
+import org.apache.commons.io.FilenameUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
+import nl.inl.blacklab.index.PluginManager;
+import nl.inl.blacklab.index.DownloadCache;
+import nl.inl.blacklab.index.ZipHandleManager;
+import nl.inl.blacklab.index.config.YamlJsonReader;
+import nl.inl.util.FileUtil;
+import nl.inl.util.Json;
+
+/**
+ * Reads blacklab.yaml/.json file from one of the config dirs.
+ *
+ * This file contains general BlackLab settings that apply to multiple
+ * applications, i.e. IndexTool, QueryTool, BlackLab Server, and
+ * other applications that use BlackLab.
+ *
+ * Config dirs are, in search order: $BLACKLAB_CONFIG_DIR/, $HOME/.blacklab/
+ * or /etc/blacklab/.
+ */
+<span class="nc" id="L42">public class ConfigReader extends YamlJsonReader {</span>
+
+<span class="fc" id="L44">	private static final Logger logger = LogManager.getLogger(ConfigReader.class);</span>
+
+	/** Cache for getConfigDirs() */
+    private static List&lt;File&gt; configDirs;
+    
+    /** Cache of root node of config file */
+    private static JsonNode blacklabConfig;
+    
+    /** Do we wish to forego looking for a config file on the filesystem? Useful for testing. */
+<span class="fc" id="L53">    private static boolean ignoreConfigFile = false;</span>
+
+    /**
+     * Do we wish to forego looking for a config file on the filesystem? Useful for repeatable testing.
+     * @param ignoreConfigFile if true, no config file will be loaded, so all setting will be at their default
+     */
+    public static void setIgnoreConfigFile(boolean ignoreConfigFile) {
+<span class="fc" id="L60">        ConfigReader.ignoreConfigFile = ignoreConfigFile;</span>
+<span class="fc" id="L61">    }</span>
+
+    /**
+     * Load the global blacklab configuration.
+     * This file configures several global settings, as well as providing default settings for any new {@link Searcher} constructed hereafter.
+     *
+     * If no explicit config file has been set by the time when the first Searcher is opened, BlackLab automatically attempts to find and load a
+     * configuration file in a number of preset locations (see {@link ConfigReader#getDefaultConfigDirs()}).
+     *
+     * Attempting to set another configuration when one is already loaded will throw an UnsupportedOperationException.
+     *
+     * @param file
+     * @throws FileNotFoundException
+     * @throws IOException
+     */
+    public static void setConfigFile(File file) throws FileNotFoundException, IOException {
+<span class="pc bpc" id="L77" title="1 of 2 branches missed.">        if (ignoreConfigFile) // useful for repeatable testing</span>
+<span class="fc" id="L78">            return;</span>
+        
+<span class="nc bnc" id="L80" title="All 4 branches missed.">    	if (file == null || !file.canRead())</span>
+<span class="nc" id="L81">    		throw new FileNotFoundException(&quot;Configuration file &quot; + file + &quot; is unreadable.&quot;);</span>
+
+<span class="nc bnc" id="L83" title="All 2 branches missed.">    	if (!FilenameUtils.isExtension(file.getName(), Arrays.asList(&quot;yaml&quot;, &quot;yml&quot;, &quot;json&quot;)))</span>
+<span class="nc" id="L84">    		throw new IllegalArgumentException(&quot;Configuration file &quot; + file + &quot; is of an unsupported type.&quot;);</span>
+
+<span class="nc bnc" id="L86" title="All 2 branches missed.">    	if (blacklabConfig != null)</span>
+<span class="nc" id="L87">    		throw new UnsupportedOperationException(&quot;Cannot load configuration file &quot; + file + &quot; - another configuration file has already been loaded.&quot;);</span>
+
+<span class="nc" id="L89">		boolean isJson = file.getName().endsWith(&quot;.json&quot;);</span>
+<span class="nc" id="L90">		try (BufferedReader reader = FileUtil.openForReading(file)) {</span>
+<span class="nc" id="L91">			setConfigFile(reader, isJson);</span>
+<span class="nc bnc" id="L92" title="All 8 branches missed.">		}</span>
+<span class="nc" id="L93">    }</span>
+
+    /**
+     * See {@link ConfigReader#setConfigFile(File)}.
+     *
+     * The reader must be closed by the user.
+     *
+     * @param reader
+     * @param isJson
+     * @throws JsonProcessingException
+     * @throws IOException
+     */
+    public static void setConfigFile(Reader reader, boolean isJson) throws JsonProcessingException, IOException{
+<span class="nc bnc" id="L106" title="All 2 branches missed.">        if (ignoreConfigFile) // useful for repeatable testing</span>
+<span class="nc" id="L107">            return;</span>
+        
+<span class="nc bnc" id="L109" title="All 2 branches missed.">    	if (blacklabConfig != null)</span>
+<span class="nc" id="L110">    		throw new UnsupportedOperationException(&quot;Cannot load configuration file - another configuration file has already been loaded.&quot;);</span>
+
+<span class="nc bnc" id="L112" title="All 2 branches missed.">    	ObjectMapper mapper = isJson ? Json.getJsonObjectMapper() : Json.getYamlObjectMapper();</span>
+
+<span class="nc" id="L114">    	logger.debug(&quot;Reading global BlackLab config&quot;);</span>
+<span class="nc" id="L115">    	JsonNode parsedConfig = mapper.readTree(reader);</span>
+
+<span class="nc" id="L117">	    readGlobalSettings(parsedConfig);</span>
+
+<span class="nc" id="L119">	    blacklabConfig = parsedConfig;</span>
+<span class="nc" id="L120">    }</span>
+
+
+    public static void loadDefaultConfig() {
+<span class="pc bpc" id="L124" title="1 of 2 branches missed.">    	if (blacklabConfig != null)</span>
+<span class="nc" id="L125">    		return;</span>
+
+		try {
+<span class="fc" id="L128">			File file = FileUtil.findFile(getDefaultConfigDirs(), &quot;blacklab&quot;, Arrays.asList(&quot;yaml&quot;, &quot;yml&quot;, &quot;json&quot;));</span>
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">			if (file != null)</span>
+<span class="fc" id="L130">				setConfigFile(file);</span>
+<span class="nc" id="L131">		} catch (IOException e) {</span>
+<span class="nc" id="L132">			logger.warn(&quot;Could not load default blacklab configuration file: &quot; + e.getMessage());</span>
+<span class="fc" id="L133">		}</span>
+<span class="fc" id="L134">    }</span>
+
+    /**
+     * Get the global blacklab configuration file.
+     * Null will be returned if no config has been set and no default configuration has been loaded yet.
+     * Will not load the default configuration.
+     *
+     * @return the loaded configuration file, or null if no config has been loaded yet.
+     */
+    public static JsonNode getConfigFile() {
+<span class="nc" id="L144">    	return blacklabConfig;</span>
+    }
+
+    /**
+     * Configure the searcher according to the blacklab configuration file.
+     *
+     * @param searcher
+     * @throws IOException
+     */
+    public static void applyConfig(Searcher searcher) throws IOException {
+<span class="pc bpc" id="L154" title="1 of 2 branches missed.">    	if (blacklabConfig == null)</span>
+<span class="fc" id="L155">    		loadDefaultConfig();</span>
+
+<span class="pc bpc" id="L157" title="1 of 2 branches missed.">    	if (blacklabConfig != null) {</span>
+<span class="nc" id="L158">	        readSearcherSettings(blacklabConfig, searcher);</span>
+    	}
+<span class="fc" id="L160">    }</span>
+
+    private static void readSearcherSettings(JsonNode root, Searcher searcher) {
+<span class="nc" id="L163">        obj(root, &quot;root node&quot;);</span>
+<span class="nc" id="L164">        Iterator&lt;Entry&lt;String, JsonNode&gt;&gt; it = root.fields();</span>
+
+<span class="nc bnc" id="L166" title="All 2 branches missed.">        while (it.hasNext()) {</span>
+<span class="nc" id="L167">            Entry&lt;String, JsonNode&gt; e = it.next();</span>
+<span class="nc bnc" id="L168" title="All 16 branches missed.">            switch (e.getKey()) {</span>
+<span class="nc" id="L169">            case &quot;search&quot;: readSearch(obj(e), searcher); break;</span>
+            case &quot;plugins&quot;:
+            case &quot;indexing&quot;:
+            case &quot;debug&quot;:
+<span class="nc" id="L173">            	break;</span>
+            default:
+<span class="nc" id="L175">                throw new IllegalArgumentException(&quot;Unknown top-level key &quot; + e.getKey());</span>
+            }
+<span class="nc" id="L177">        }</span>
+<span class="nc" id="L178">    }</span>
+
+    private static void readSearch(ObjectNode obj, Searcher searcher) {
+<span class="nc" id="L181">        HitsSettings hitsSett = searcher.hitsSettings();</span>
+<span class="nc" id="L182">        Iterator&lt;Entry&lt;String, JsonNode&gt;&gt; it = obj.fields();</span>
+<span class="nc bnc" id="L183" title="All 2 branches missed.">        while (it.hasNext()) {</span>
+<span class="nc" id="L184">            Entry&lt;String, JsonNode&gt; e = it.next();</span>
+<span class="nc bnc" id="L185" title="All 18 branches missed.">            switch (e.getKey()) {</span>
+<span class="nc" id="L186">            case &quot;collator&quot;: readCollator(e, searcher); break;</span>
+<span class="nc" id="L187">            case &quot;contextSize&quot;: hitsSett.setContextSize(integer(e)); break;</span>
+<span class="nc" id="L188">            case &quot;maxHitsToRetrieve&quot;: hitsSett.setMaxHitsToRetrieve(integer(e)); break;</span>
+<span class="nc" id="L189">            case &quot;maxHitsToCount&quot;: hitsSett.setMaxHitsToCount(integer(e)); break;</span>
+            default:
+<span class="nc" id="L191">                throw new IllegalArgumentException(&quot;Unknown key &quot; + e.getKey() + &quot; in search section&quot;);</span>
+            }
+<span class="nc" id="L193">        }</span>
+<span class="nc" id="L194">    }</span>
+
+    private static void readCollator(Entry&lt;String, JsonNode&gt; e, Searcher searcher) {
+        Collator collator;
+<span class="nc bnc" id="L198" title="All 2 branches missed.">        if (e.getValue() instanceof ObjectNode) {</span>
+<span class="nc" id="L199">            Iterator&lt;Entry&lt;String, JsonNode&gt;&gt; it = obj(e).fields();</span>
+<span class="nc" id="L200">            String language = null, country = null, variant = null;</span>
+<span class="nc bnc" id="L201" title="All 2 branches missed.">            while (it.hasNext()) {</span>
+<span class="nc" id="L202">                Entry&lt;String, JsonNode&gt; e2 = it.next();</span>
+<span class="nc bnc" id="L203" title="All 14 branches missed.">                switch (e2.getKey()) {</span>
+<span class="nc" id="L204">                case &quot;language&quot;: language = str(e2); break;</span>
+<span class="nc" id="L205">                case &quot;country&quot;: country = str(e2); break;</span>
+<span class="nc" id="L206">                case &quot;variant&quot;: variant = str(e2); break;</span>
+                default:
+<span class="nc" id="L208">                    throw new IllegalArgumentException(&quot;Unknown key &quot; + e.getKey() + &quot; in collator (must have language, can have country and variant)&quot;);</span>
+                }
+<span class="nc" id="L210">            }</span>
+<span class="nc bnc" id="L211" title="All 6 branches missed.">            if (language == null || country == null &amp;&amp; variant != null)</span>
+<span class="nc" id="L212">                throw new IllegalArgumentException(&quot;Collator must have language, language+country or language+country+variant&quot;);</span>
+<span class="nc bnc" id="L213" title="All 2 branches missed.">            if (country == null)</span>
+<span class="nc" id="L214">                collator = Collator.getInstance(new Locale(language));</span>
+<span class="nc bnc" id="L215" title="All 2 branches missed.">            else if (variant == null)</span>
+<span class="nc" id="L216">                collator = Collator.getInstance(new Locale(language, country));</span>
+            else
+<span class="nc" id="L218">                collator = Collator.getInstance(new Locale(language, country, variant));</span>
+<span class="nc" id="L219">        } else {</span>
+<span class="nc" id="L220">            collator = Collator.getInstance(new Locale(str(e)));</span>
+        }
+<span class="nc" id="L222">        searcher.setCollator(collator);</span>
+<span class="nc" id="L223">    }</span>
+
+    private static void readGlobalSettings(JsonNode root) {
+<span class="nc" id="L226">    	obj(root, &quot;root node&quot;);</span>
+<span class="nc" id="L227">        Iterator&lt;Entry&lt;String, JsonNode&gt;&gt; it = root.fields();</span>
+<span class="nc bnc" id="L228" title="All 2 branches missed.">        while (it.hasNext()) {</span>
+<span class="nc" id="L229">            Entry&lt;String, JsonNode&gt; e = it.next();</span>
+<span class="nc bnc" id="L230" title="All 18 branches missed.">            switch (e.getKey()) {</span>
+<span class="nc" id="L231">            case &quot;indexing&quot;: readIndexing(obj(e)); break;</span>
+<span class="nc" id="L232">            case &quot;plugins&quot;: PluginManager.initPlugins(obj(e)); break;</span>
+<span class="nc" id="L233">            case &quot;debug&quot;: readDebug(obj(e)); break;</span>
+            case &quot;search&quot;:
+<span class="nc" id="L235">            	break;</span>
+            default:
+<span class="nc" id="L237">                throw new IllegalArgumentException(&quot;Unknown top-level key &quot; + e.getKey());</span>
+            }
+<span class="nc" id="L239">        }</span>
+<span class="nc" id="L240">    }</span>
+
+    private static void readDebug(ObjectNode obj) {
+<span class="nc" id="L243">        Iterator&lt;Entry&lt;String, JsonNode&gt;&gt; it = obj.fields();</span>
+<span class="nc bnc" id="L244" title="All 2 branches missed.">        while (it.hasNext()) {</span>
+<span class="nc" id="L245">            Entry&lt;String, JsonNode&gt; e = it.next();</span>
+<span class="nc bnc" id="L246" title="All 6 branches missed.">            switch (e.getKey()) {</span>
+<span class="nc" id="L247">            case &quot;trace&quot;: readTrace(obj(e)); break;</span>
+            default:
+<span class="nc" id="L249">                throw new IllegalArgumentException(&quot;Unknown key &quot; + e.getKey() + &quot; in debug section&quot;);</span>
+            }
+<span class="nc" id="L251">        }</span>
+<span class="nc" id="L252">    }</span>
+
+    private static void readTrace(ObjectNode obj) {
+<span class="nc" id="L255">        Iterator&lt;Entry&lt;String, JsonNode&gt;&gt; it = obj.fields();</span>
+<span class="nc bnc" id="L256" title="All 2 branches missed.">        while (it.hasNext()) {</span>
+<span class="nc" id="L257">            Entry&lt;String, JsonNode&gt; e = it.next();</span>
+<span class="nc bnc" id="L258" title="All 14 branches missed.">            switch (e.getKey()) {</span>
+<span class="nc" id="L259">            case &quot;indexOpening&quot;: Searcher.setTraceIndexOpening(bool(e)); break;</span>
+<span class="nc" id="L260">            case &quot;optimization&quot;: Searcher.setTraceOptimization(bool(e)); break;</span>
+<span class="nc" id="L261">            case &quot;queryExecution&quot;: Searcher.setTraceQueryExecution(bool(e)); break;</span>
+            default:
+<span class="nc" id="L263">                throw new IllegalArgumentException(&quot;Unknown key &quot; + e.getKey() + &quot; in trace section&quot;);</span>
+            }
+<span class="nc" id="L265">        }</span>
+<span class="nc" id="L266">    }</span>
+
+    public static void readIndexing(ObjectNode indexing) {
+<span class="nc" id="L269">        Iterator&lt;Entry&lt;String, JsonNode&gt;&gt; it = indexing.fields();</span>
+<span class="nc bnc" id="L270" title="All 2 branches missed.">        while (it.hasNext()) {</span>
+<span class="nc" id="L271">            Entry&lt;String, JsonNode&gt; e = it.next();</span>
+<span class="nc bnc" id="L272" title="All 22 branches missed.">            switch (e.getKey()) {</span>
+<span class="nc" id="L273">            case &quot;downloadAllowed&quot;: DownloadCache.setDownloadAllowed(bool(e)); break;</span>
+<span class="nc" id="L274">            case &quot;downloadCacheMaxFileSizeMegs&quot;: DownloadCache.setMaxFileSizeMegs(integer(e)); break;</span>
+<span class="nc" id="L275">            case &quot;downloadCacheDir&quot;: DownloadCache.setDir(new File(str(e))); break;</span>
+<span class="nc" id="L276">            case &quot;downloadCacheSizeMegs&quot;: DownloadCache.setSizeMegs(integer(e)); break;</span>
+<span class="nc" id="L277">            case &quot;zipFilesMaxOpen&quot;: ZipHandleManager.setMaxOpen(integer(e)); break;</span>
+            default:
+<span class="nc" id="L279">                throw new IllegalArgumentException(&quot;Unknown key &quot; + e.getKey() + &quot; in indexing section&quot;);</span>
+            }
+<span class="nc" id="L281">        }</span>
+<span class="nc" id="L282">    }</span>
+
+	/**
+	 * Return a list of directories that should be searched for BlackLab-related configuration files.
+	 *
+	 * May be used by applications to locate BlackLab-related configuration, such as
+	 * input format definition files or other configuration files. IndexTool and BlackLab Server use
+	 * this.
+	 *
+	 * The directories returned are (in decreasing priority):
+	 * - $BLACKLAB_CONFIG_DIR (if env. var. is defined)
+	 * - $HOME/.blacklab
+	 * - /etc/blacklab
+	 * - /vol1/etc/blacklab (legacy, will be removed)
+	 * - /tmp (legacy, will be removed)
+	 *
+	 * A convenient method to use with this is {@link FileUtil#findFile(List, String, List)}.
+	 *
+	 * @return list of directories to search in decreasing order of priority
+	 */
+    public static List&lt;File&gt; getDefaultConfigDirs() {
+<span class="fc bfc" id="L303" title="All 2 branches covered.">        if (configDirs == null) {</span>
+<span class="fc" id="L304">            configDirs = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L305">            String strConfigDir = System.getenv(&quot;BLACKLAB_CONFIG_DIR&quot;);</span>
+<span class="pc bpc" id="L306" title="3 of 4 branches missed.">            if (strConfigDir != null &amp;&amp; strConfigDir.length() &gt; 0) {</span>
+<span class="nc" id="L307">                File configDir = new File(strConfigDir);</span>
+<span class="nc bnc" id="L308" title="All 2 branches missed.">                if (configDir.exists()) {</span>
+<span class="nc bnc" id="L309" title="All 2 branches missed.">                    if (!configDir.canRead())</span>
+<span class="nc" id="L310">                        logger.warn(&quot;BLACKLAB_CONFIG_DIR points to a unreadable directory: &quot; + strConfigDir);</span>
+<span class="nc" id="L311">                    configDirs.add(configDir);</span>
+                } else {
+<span class="nc" id="L313">                    logger.warn(&quot;BLACKLAB_CONFIG_DIR points to a non-existent directory: &quot; + strConfigDir);</span>
+                }
+            }
+<span class="fc" id="L316">            configDirs.add(new File(System.getProperty(&quot;user.home&quot;), &quot;.blacklab&quot;));</span>
+<span class="fc" id="L317">            configDirs.add(new File(&quot;/etc/blacklab&quot;));</span>
+<span class="fc" id="L318">            configDirs.add(new File(&quot;/vol1/etc/blacklab&quot;)); // TODO: remove, INT-specific</span>
+<span class="fc" id="L319">            configDirs.add(new File(System.getProperty(&quot;java.io.tmpdir&quot;)));</span>
+        }
+<span class="fc" id="L321">        return new ArrayList&lt;&gt;(configDirs);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

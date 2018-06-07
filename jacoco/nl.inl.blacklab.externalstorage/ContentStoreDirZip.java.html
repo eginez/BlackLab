@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ContentStoreDirZip.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.externalstorage</a> &gt; <span class="el_source">ContentStoreDirZip.java</span></div><h1>ContentStoreDirZip.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.externalstorage;
+
+import java.io.File;
+import java.util.Arrays;
+import java.util.zip.DataFormatException;
+import java.util.zip.Deflater;
+import java.util.zip.Inflater;
+
+import nl.inl.util.SimpleResourcePool;
+
+/**
+ * Variant of ContentStoreDirUtf8 that also compresses each block using GZIP. Achieves around 4x
+ * compression of XML data, depending on block size
+ */
+public class ContentStoreDirZip extends ContentStoreDirUtf8 {
+
+	SimpleResourcePool&lt;Deflater&gt; compresserPool;
+
+	SimpleResourcePool&lt;Inflater&gt; decompresserPool;
+
+	SimpleResourcePool&lt;byte[]&gt; zipbufPool;
+
+	/**
+	 * @param dir content store dir
+	 */
+	public ContentStoreDirZip(File dir) {
+<span class="fc" id="L42">		this(dir, false);</span>
+<span class="fc" id="L43">	}</span>
+
+	/**
+	 * @param dir content store dir
+	 * @param create if true, create a new content store
+	 */
+	public ContentStoreDirZip(File dir, boolean create) {
+<span class="fc" id="L50">		super(dir, create);</span>
+<span class="fc" id="L51">		int POOL_SIZE = 10;</span>
+<span class="fc" id="L52">		compresserPool = new SimpleResourcePool&lt;Deflater&gt;(POOL_SIZE){</span>
+			@Override
+			public Deflater createResource() {
+<span class="fc" id="L55">				return new Deflater();</span>
+			}
+
+			@Override
+			public void destroyResource(Deflater resource) {
+<span class="fc" id="L60">				resource.end();</span>
+<span class="fc" id="L61">			}</span>
+		};
+<span class="fc" id="L63">		decompresserPool = new SimpleResourcePool&lt;Inflater&gt;(POOL_SIZE){</span>
+			@Override
+			public Inflater createResource() {
+<span class="fc" id="L66">				return new Inflater();</span>
+			}
+
+			@Override
+			public void destroyResource(Inflater resource) {
+<span class="fc" id="L71">				resource.end();</span>
+<span class="fc" id="L72">			}</span>
+		};
+<span class="fc" id="L74">		zipbufPool = new SimpleResourcePool&lt;byte[]&gt;(POOL_SIZE){</span>
+			@Override
+			public byte[] createResource() {
+<span class="fc" id="L77">				return new byte[newEntryBlockSizeCharacters * 3];</span>
+			}
+		};
+<span class="fc" id="L80">	}</span>
+
+	@Override
+	public void close() {
+<span class="fc" id="L84">		compresserPool.close();</span>
+<span class="fc" id="L85">		decompresserPool.close();</span>
+<span class="fc" id="L86">		zipbufPool.close();</span>
+<span class="fc" id="L87">		super.close();</span>
+<span class="fc" id="L88">	}</span>
+
+	@Override
+	protected void setStoreType() {
+<span class="nc" id="L92">		setStoreType(&quot;utf8zip&quot;, &quot;1&quot;);</span>
+<span class="nc" id="L93">	}</span>
+
+	private void zipBufferSizeChanged() {
+<span class="fc" id="L96">		zipbufPool.clear();</span>
+<span class="fc" id="L97">	}</span>
+
+	@Override
+	public void setBlockSizeCharacters(int size) {
+<span class="fc" id="L101">		super.setBlockSizeCharacters(size);</span>
+<span class="fc" id="L102">		zipBufferSizeChanged();</span>
+<span class="fc" id="L103">	}</span>
+
+	@Override
+	protected byte[] encodeBlock(String block) {
+<span class="fc" id="L107">		byte[] encoded = super.encodeBlock(block);</span>
+<span class="fc" id="L108">		Deflater compresser = compresserPool.acquire();</span>
+<span class="fc" id="L109">		byte[] zipbuf = zipbufPool.acquire();</span>
+		try {
+<span class="fc" id="L111">			compresser.reset();</span>
+<span class="fc" id="L112">			compresser.setInput(encoded);</span>
+<span class="fc" id="L113">			compresser.finish();</span>
+<span class="fc" id="L114">			int compressedDataLength = compresser.deflate(zipbuf);</span>
+<span class="pc bpc" id="L115" title="1 of 2 branches missed.">			if (compressedDataLength &lt;= 0) {</span>
+<span class="nc" id="L116">				throw new RuntimeException(&quot;Error, deflate returned &quot; + compressedDataLength);</span>
+			}
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">			if (compressedDataLength == zipbuf.length) {</span>
+<span class="nc" id="L119">				throw new RuntimeException(&quot;Error, deflate returned size of zipbuf, this indicates insufficient space&quot;);</span>
+			}
+<span class="fc" id="L121">			return Arrays.copyOfRange(zipbuf, 0, compressedDataLength);</span>
+		} finally {
+<span class="pc" id="L123">			compresserPool.release(compresser);</span>
+<span class="pc" id="L124">			zipbufPool.release(zipbuf);</span>
+<span class="nc" id="L125">		}</span>
+	}
+
+	@Override
+	protected String decodeBlock(byte[] buf, int offset, int length) {
+		try {
+			// unzip block
+<span class="fc" id="L132">			Inflater decompresser = decompresserPool.acquire();</span>
+<span class="fc" id="L133">			byte[] zipbuf = zipbufPool.acquire();</span>
+			try {
+<span class="fc" id="L135">				decompresser.reset();</span>
+<span class="fc" id="L136">				decompresser.setInput(buf, offset, length);</span>
+<span class="fc" id="L137">				int resultLength = decompresser.inflate(zipbuf);</span>
+<span class="pc bpc" id="L138" title="1 of 2 branches missed.">				if (resultLength &lt;= 0) {</span>
+<span class="nc" id="L139">					throw new RuntimeException(&quot;Error, inflate returned &quot; + resultLength);</span>
+				}
+<span class="pc bpc" id="L141" title="1 of 2 branches missed.">				if (!decompresser.finished()) {</span>
+					// This shouldn't happen because our max block size prevents it
+<span class="nc" id="L143">					throw new RuntimeException(&quot;Unzip buffer size insufficient&quot;);</span>
+				}
+<span class="fc" id="L145">				return super.decodeBlock(zipbuf, 0, resultLength);</span>
+			} finally {
+<span class="pc" id="L147">				decompresserPool.release(decompresser);</span>
+<span class="pc" id="L148">				zipbufPool.release(zipbuf);</span>
+<span class="nc" id="L149">			}</span>
+<span class="nc" id="L150">		} catch (DataFormatException e) {</span>
+<span class="nc" id="L151">			throw new RuntimeException(e);</span>
+		}
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

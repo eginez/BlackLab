@@ -1,0 +1,574 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>XmlHighlighter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.highlight</a> &gt; <span class="el_source">XmlHighlighter.java</span></div><h1>XmlHighlighter.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.highlight;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import nl.inl.util.StringUtil;
+
+/**
+ * Performs highlighting of the contents of XML elements that we found hits in.
+ *
+ * NOTE: this class is not threadsafe. Use a separate instance per thread.
+ */
+<span class="fc" id="L31">public class XmlHighlighter {</span>
+	/**
+	 * How to deal with non-well-formed snippets: by e.g. adding
+	 * an open tag at the beginning for an unmatched closing tag,
+	 * or by removing the unmatched closing tag.
+	 */
+<span class="pc" id="L37">	public enum UnbalancedTagsStrategy {</span>
+<span class="fc" id="L38">		ADD_TAG,</span>
+<span class="fc" id="L39">		REMOVE_TAG</span>
+	}
+
+<span class="pc" id="L42">	enum TagType {</span>
+<span class="fc" id="L43">		EXISTING_TAG,       // an existing tag</span>
+<span class="fc" id="L44">		HIGHLIGHT_START,    // insert &lt;hl&gt; tag here</span>
+<span class="fc" id="L45">		HIGHLIGHT_END,      // insert &lt;/hl&gt; tag here</span>
+<span class="fc" id="L46">		FIX_START,          // insert start tag here to fix well-formedness</span>
+<span class="fc" id="L47">		FIX_END,            // insert end tag here to fix well-formedness</span>
+<span class="fc" id="L48">		REMOVE_EXISTING_TAG // remove an unbalanced tag to fix well-formedness</span>
+	}
+
+	/**
+	 * Helper class for highlighting: stores a span in the original content, be it a place to insert
+	 * a highlight tag, or an existing tag in the original XML.
+	 */
+	static class TagLocation implements Comparable&lt;TagLocation&gt; {
+		/** Counter for assigning unique id to objectNum */
+<span class="fc" id="L57">		public static long n = 0;</span>
+
+		/**
+		 * Whether this is an existing tag from the original content, a start highlight tag to be
+		 * added, or an end highlight tag to be added.
+		 */
+		TagType type;
+
+		/** Start position of tag in original content */
+		int start;
+
+		/**
+		 * End position of tag in original content. NOTE: this only differs from start if type ==
+		 * EXISTING_TAG. Highlight tags are not in the original content, so there start always
+		 * equals end.
+		 */
+		int end;
+
+		/**
+		 * Start position of matching tag (the close to this open tag, or vice versa) in original content.
+		 * A negative value indicates that this tag was unmatched (which might happen if we're highlighting snippets
+		 * of a document).
+		 */
+		int matchingTagStart;
+
+		/**
+		 * Unique id for each tag; used as a tie-breaker so sorting is always the same, and end tags
+		 * always follow their start tags
+		 */
+		public long objectNum;
+
+		/**
+		 * For FIX_START/END tags, indicate the tag name to use when insert.
+		 * For other types, not used.
+		 */
+		String name;
+
+<span class="fc" id="L94">		public TagLocation(TagType type, int start, int end) {</span>
+<span class="fc" id="L95">			this.type = type;</span>
+<span class="fc" id="L96">			this.start = start;</span>
+<span class="fc" id="L97">			this.end = end;</span>
+<span class="fc" id="L98">			matchingTagStart = -1; // unmatched tag (until we find its match)</span>
+<span class="fc" id="L99">			objectNum = n;</span>
+<span class="fc" id="L100">			n++;</span>
+<span class="fc" id="L101">		}</span>
+
+		@Override
+		public int compareTo(TagLocation o) {
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">			if (this == o)</span>
+<span class="nc" id="L106">				return 0;</span>
+<span class="fc" id="L107">			int a = start, b = o.start;</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">			if (a == b) {</span>
+<span class="fc" id="L109">				a = end;</span>
+<span class="fc" id="L110">				b = o.end;</span>
+<span class="pc bpc" id="L111" title="1 of 2 branches missed.">				if (a == b) {</span>
+					// use the objectNum as a tie breaker so sort is always the same,
+					// and end tags always follow their start tags
+<span class="nc" id="L114">					return (int) (objectNum - o.objectNum);</span>
+				}
+			}
+<span class="fc" id="L117">			return a - b;</span>
+		}
+
+		@Override
+		public String toString() {
+<span class="nc" id="L122">			return type + &quot;@&quot; + start;</span>
+		}
+
+	}
+
+	/**
+	 * The XML tag to add to the content to signal where highlighting should start.
+	 */
+	private static final String startHighlightTag = &quot;&lt;hl&gt;&quot;;
+
+	/**
+	 * The XML tag to add to the content to signal where highlighting should end.
+	 */
+	private static final String endHighlightTag = &quot;&lt;/hl&gt;&quot;;
+
+	/**
+	 * When cutting a fragment, this is the number of characters of overshoot allowed when trying to
+	 * cut at a word boundary.
+	 */
+	private static final int OVERSHOOT_ALLOWED = 10;
+
+	/** How deep are we inside highlighting tags? */
+	private int inHighlightTag;
+
+	/** Where the highlighted content is built - therefore, this class is not threadsafe! */
+	StringBuilder b;
+
+	/** Remove empty &lt;hl&gt;&lt;/hl&gt; tags after highlighting? */
+<span class="fc" id="L150">	private boolean removeEmptyHlTags = true;</span>
+
+	/** How to fix well-formedness problems? If true, we remove the unbalanced tags;
+	 *  if false (the default) we add extra tags at the start or end to rebalance it. */
+<span class="fc" id="L154">	private UnbalancedTagsStrategy unbalancedTagsStrategy = UnbalancedTagsStrategy.ADD_TAG;</span>
+
+	/** The outer (usually, only) highlight tag we're inside of, or null if we're not highlighting. */
+<span class="fc" id="L157">	private TagLocation outerHighlightTag = null;</span>
+
+	/**
+	 * Given XML content and a sorted list of existing tags and highlight tags to be added, add the
+	 * tags to the content so the well-formedness of the XML is not affected.
+	 *
+	 * Also offers the option of cutting the content to a number of characters (with possibly a
+	 * small overshoot, because it will try to cut at a word boundary), ignoring tags and
+	 * maintaining well-formedness.
+	 *
+	 * @param xmlContent
+	 *            the XML content to highlight
+	 * @param tags
+	 *            the existing tags and highlight tags to add. This list must be sorted!
+	 * @param stopAfterChars
+	 *            after how many characters of text content to cut this fragment.
+	 *            -1 = no cutting.
+	 * @param offset
+	 * @return the highlighted XML content.
+	 */
+	private String highlightInternal(String xmlContent, List&lt;TagLocation&gt; tags, int stopAfterChars) {
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">		if (stopAfterChars &lt; 0)</span>
+<span class="fc" id="L179">			stopAfterChars = xmlContent.length();</span>
+<span class="fc" id="L180">		int positionInContent = 0;</span>
+<span class="fc" id="L181">		b = new StringBuilder();</span>
+<span class="fc" id="L182">		inHighlightTag = 0;</span>
+<span class="fc" id="L183">		int visibleCharsAdded = 0;</span>
+<span class="fc" id="L184">		boolean addVisibleChars = true; // keep adding text content until we reach the preferred length</span>
+<span class="fc" id="L185">		boolean wasCut = false;</span>
+<span class="fc bfc" id="L186" title="All 2 branches covered.">		for (TagLocation tag : tags) {</span>
+<span class="pc bpc" id="L187" title="1 of 2 branches missed.">			if (tag.start &lt; positionInContent) {</span>
+<span class="nc" id="L188">				System.out.println(&quot;ERROR IN HIGHLIGHTING&quot;);</span>
+				// NOTE: before, this used to happen very occasionally. Probably fixed now,
+				// but just in case it's not, let's avoid a nasty exception.
+<span class="nc" id="L191">				continue; // skip tag</span>
+			}
+<span class="pc bpc" id="L193" title="1 of 2 branches missed.">			if (addVisibleChars) {</span>
+<span class="fc" id="L194">				String visibleChars = xmlContent.substring(positionInContent, tag.start);</span>
+<span class="pc bpc" id="L195" title="1 of 2 branches missed.">				if (visibleCharsAdded + visibleChars.length() &gt;= stopAfterChars) {</span>
+<span class="nc" id="L196">					visibleChars = StringUtil.abbreviate(visibleChars, stopAfterChars</span>
+							- visibleCharsAdded, OVERSHOOT_ALLOWED, false);
+<span class="nc bnc" id="L198" title="All 2 branches missed.">					if (visibleChars.length() &lt; tag.start - positionInContent)</span>
+<span class="nc" id="L199">						wasCut = true;</span>
+<span class="nc" id="L200">					addVisibleChars = false;</span>
+				}
+<span class="fc" id="L202">				b.append(visibleChars);</span>
+<span class="fc" id="L203">				visibleCharsAdded += visibleChars.length();</span>
+<span class="fc" id="L204">			} else {</span>
+<span class="nc bnc" id="L205" title="All 2 branches missed.">				if (positionInContent &lt; tag.start) {</span>
+<span class="nc" id="L206">					wasCut = true;</span>
+				}
+			}
+<span class="fc" id="L209">			processTag(xmlContent, tag);</span>
+<span class="fc" id="L210">			positionInContent = tag.end;</span>
+<span class="fc" id="L211">		}</span>
+<span class="fc" id="L212">		b.append(xmlContent.substring(positionInContent));</span>
+<span class="pc bpc" id="L213" title="1 of 2 branches missed.">		final String optionalEllipsis = wasCut ? &quot;...&quot; : &quot;&quot;;</span>
+<span class="fc" id="L214">		return b.toString().trim() + optionalEllipsis;</span>
+	}
+
+	/**
+	 * Decide what to do based on the tag type.
+	 *
+	 * @param xmlContent
+	 *            the content we're highlighting
+	 * @param tag
+	 *            the existing tag or highlight tag to add
+	 */
+	private void processTag(String xmlContent, TagLocation tag) {
+<span class="pc bfc" id="L226" title="All 6 branches covered.">		switch (tag.type) {</span>
+		case HIGHLIGHT_START:
+<span class="fc" id="L228">			startHighlight(tag);</span>
+<span class="fc" id="L229">			break;</span>
+		case EXISTING_TAG:
+<span class="fc" id="L231">			existingTag(tag, xmlContent.substring(tag.start, tag.end));</span>
+<span class="fc" id="L232">			break;</span>
+		case HIGHLIGHT_END:
+<span class="fc" id="L234">			endHighlight();</span>
+<span class="fc" id="L235">			break;</span>
+		case FIX_START:
+<span class="fc" id="L237">			existingTag(tag, &quot;&lt;&quot; + tag.name + &quot;&gt;&quot;);</span>
+<span class="fc" id="L238">			break;</span>
+		case FIX_END:
+<span class="fc" id="L240">			existingTag(tag, &quot;&lt;/&quot; + tag.name + &quot;&gt;&quot;);</span>
+<span class="fc" id="L241">			break;</span>
+		case REMOVE_EXISTING_TAG:
+			// Simply don't add the tag
+			break;
+		}
+<span class="fc" id="L246">	}</span>
+
+	/** Add highlight tag if not already added; increment depth
+	 * @param tag where the tag occurs */
+	private void startHighlight(TagLocation tag) {
+<span class="pc bpc" id="L251" title="1 of 2 branches missed.">		if (inHighlightTag == 0) {</span>
+<span class="fc" id="L252">			b.append(startHighlightTag);</span>
+<span class="fc" id="L253">			outerHighlightTag  = tag;</span>
+		}
+<span class="fc" id="L255">		inHighlightTag++;</span>
+<span class="fc" id="L256">	}</span>
+
+	/** Decrement depth; End highlight if we're at level 0 */
+	private void endHighlight() {
+<span class="fc" id="L260">		inHighlightTag--;</span>
+<span class="pc bpc" id="L261" title="1 of 2 branches missed.">		if (inHighlightTag == 0) {</span>
+<span class="fc" id="L262">			b.append(endHighlightTag);</span>
+<span class="fc" id="L263">			outerHighlightTag = null;</span>
+		}
+<span class="fc" id="L265">	}</span>
+
+	/**
+	 * We encountered a tag in the content. If we're inside a highlight tag, ends the current
+	 * highlight, add the existing tag and restart the highlighting.
+	 * @param tag where the tag occurs
+	 * @param str
+	 *            the existing tag encountered.
+	 */
+	private void existingTag(TagLocation tag, String str) {
+<span class="fc" id="L275">		boolean suspendHighlighting = false;</span>
+
+<span class="fc bfc" id="L277" title="All 2 branches covered.">		if (inHighlightTag &gt; 0) {</span>
+			// We should possibly suspend highlighting for this tag to maintain well-formedness.
+			// Check the current (outer) highlighting span and see if our matching tag is inside or outside this highlighting span.
+<span class="fc bfc" id="L280" title="All 4 branches covered.">			if (outerHighlightTag.start &gt; tag.matchingTagStart || outerHighlightTag.matchingTagStart &lt;= tag.matchingTagStart) {</span>
+				// Matching tag is outside the highlighting span; highlighting must be suspended to maintain well-formedness.
+<span class="fc" id="L282">				suspendHighlighting = true;</span>
+			}
+		}
+
+<span class="fc bfc" id="L286" title="All 2 branches covered.">		if (suspendHighlighting)</span>
+<span class="fc" id="L287">			b.append(endHighlightTag);</span>
+<span class="fc" id="L288">		b.append(str);</span>
+<span class="fc bfc" id="L289" title="All 2 branches covered.">		if (suspendHighlighting)</span>
+<span class="fc" id="L290">			b.append(startHighlightTag);</span>
+<span class="fc" id="L291">	}</span>
+
+	/**
+	 * The start and end character position of a hit, used for highlighting the content.
+	 */
+	public static class HitCharSpan {
+		private int startChar, endChar;
+
+		public int getStartChar() {
+<span class="fc" id="L300">			return startChar;</span>
+		}
+
+		public int getEndChar() {
+<span class="fc" id="L304">			return endChar;</span>
+		}
+
+<span class="fc" id="L307">		public HitCharSpan(int startChar, int endChar) {</span>
+<span class="fc" id="L308">			this.startChar = startChar;</span>
+<span class="fc" id="L309">			this.endChar = endChar;</span>
+<span class="fc" id="L310">		}</span>
+	}
+
+	private static void addHitPositionsToTagList(List&lt;TagLocation&gt; tags, List&lt;HitCharSpan&gt; hitSpans, int offset, int length) {
+<span class="fc bfc" id="L314" title="All 2 branches covered.">		for (HitCharSpan hit : hitSpans) {</span>
+<span class="fc" id="L315">			final int a = hit.getStartChar() - offset;</span>
+<span class="pc bpc" id="L316" title="1 of 2 branches missed.">			if (a &lt; 0)</span>
+<span class="nc" id="L317">				continue; // outside highlighting range, or non-highlighting element (e.g. searching for example date range)</span>
+<span class="fc" id="L318">			final int b = hit.getEndChar() - offset;</span>
+<span class="pc bpc" id="L319" title="1 of 2 branches missed.">			if (b &gt; length)</span>
+<span class="nc" id="L320">				continue; // outside highlighting range</span>
+<span class="fc" id="L321">			TagLocation start = new TagLocation(TagType.HIGHLIGHT_START, a, a);</span>
+<span class="fc" id="L322">			start.matchingTagStart = b;</span>
+<span class="fc" id="L323">			tags.add(start);</span>
+<span class="fc" id="L324">			TagLocation end = new TagLocation(TagType.HIGHLIGHT_END, b, b);</span>
+<span class="fc" id="L325">			end.matchingTagStart = a;</span>
+<span class="fc" id="L326">			tags.add(end);</span>
+<span class="fc" id="L327">		}</span>
+<span class="fc" id="L328">	}</span>
+
+	/**
+	 * Given XML content, make a list of tag locations in this content.
+	 *
+	 * Note that the XML content is assumed to be (part of) a well-formed XML
+	 * document. This way we can highlight a whole document or part of a document.
+	 * It's therefore okay if we encounter close tags at the start that we haven't
+	 * seen an open tag for, or open tags at the end that we'll never see a close tag
+	 * for, but if there are other tag errors (e.g. hierarchy errors such as &amp;lt;i&amp;gt;&amp;lt;b&amp;gt;&amp;lt;/i&amp;gt;&amp;lt;/b&amp;gt;)
+	 * the behaviour of the highlighter is undefined.
+	 *
+	 * @param elementContent
+	 *            the XML content
+	 * @return the list of tag locations, each with type EXISTING_TAG.
+	 */
+	private List&lt;TagLocation&gt; makeTagList(String elementContent) {
+<span class="fc" id="L345">		List&lt;TagLocation&gt; tags = new ArrayList&lt;&gt;();</span>
+
+		// Regex for finding all XML tags.
+		// Group 1 indicates if this is an open or close tag
+		// Group 2 is the tag name
+<span class="fc" id="L350">		Pattern xmlTags = Pattern.compile(&quot;&lt;(?![!\\?])\\s*(/?)\\s*([^&gt;\\s]+)(\\s+[^&gt;]*)?&gt;&quot;);</span>
+
+<span class="fc" id="L352">		Matcher m = xmlTags.matcher(elementContent);</span>
+<span class="fc" id="L353">		List&lt;TagLocation&gt; openTagStack = new ArrayList&lt;&gt;(); // keep track of open tags</span>
+<span class="fc" id="L354">		int fixStartTagObjectNum = -1; // when adding start tags to fix well-formedness, number backwards (for correct sorting)</span>
+<span class="fc bfc" id="L355" title="All 2 branches covered.">		while (m.find()) {</span>
+<span class="fc" id="L356">			TagLocation tagLocation = new TagLocation(TagType.EXISTING_TAG, m.start(), m.end());</span>
+
+			// Keep track of open tags, so we know if the tags are matched
+<span class="fc bfc" id="L359" title="All 2 branches covered.">			boolean isOpenTag = m.group(1).length() == 0;</span>
+<span class="fc bfc" id="L360" title="All 4 branches covered.">			boolean isSelfClosing = isOpenTag &amp;&amp; isSelfClosing(m.group());</span>
+<span class="fc bfc" id="L361" title="All 2 branches covered.">			if (isOpenTag) {</span>
+<span class="fc bfc" id="L362" title="All 2 branches covered.">				if (!isSelfClosing) {</span>
+					// Open tag. Add to the stack.
+<span class="fc" id="L364">					openTagStack.add(tagLocation);</span>
+<span class="fc" id="L365">					tagLocation.name = m.group(2); // remember in case there's no close tag</span>
+				} else {
+					// Self-closing tag. Don't add to stack, link to self
+<span class="fc" id="L368">					tagLocation.matchingTagStart = tagLocation.start;</span>
+				}
+			} else {
+				// Close tag. Did we encounter a matching open tag?
+<span class="fc" id="L372">				TagLocation openTag = null;</span>
+<span class="fc bfc" id="L373" title="All 2 branches covered.">				if (!openTagStack.isEmpty()) {</span>
+					// Yes, this tag is matched. Find matching tag and link them.
+<span class="fc" id="L375">					openTag = openTagStack.remove(openTagStack.size() - 1);</span>
+<span class="fc" id="L376">					openTag.name = null; // no longer necessary to remember tag name</span>
+				} else {
+					// Unmatched closing tag.
+<span class="fc bfc" id="L379" title="All 2 branches covered.">					if (unbalancedTagsStrategy == UnbalancedTagsStrategy.REMOVE_TAG) {</span>
+						// Remove it.
+<span class="fc" id="L381">						tagLocation.type = TagType.REMOVE_EXISTING_TAG;</span>
+					} else {
+						// Insert a dummy open tag at the start
+						// of the content to maintain well-formedness
+<span class="fc" id="L385">						openTag = new TagLocation(TagType.FIX_START, 0, 0);</span>
+<span class="fc" id="L386">						openTag.name = m.group(2); // we need to know what tag to insert</span>
+<span class="fc" id="L387">						openTag.objectNum = fixStartTagObjectNum; // to fix sorting</span>
+<span class="fc" id="L388">						fixStartTagObjectNum--;</span>
+<span class="fc" id="L389">						tags.add(openTag);</span>
+					}
+				}
+<span class="fc bfc" id="L392" title="All 2 branches covered.">				if (openTag != null) {</span>
+					// Link the matching tags together
+<span class="fc" id="L394">					openTag.matchingTagStart = tagLocation.start;</span>
+<span class="fc" id="L395">					tagLocation.matchingTagStart = openTag.start;</span>
+				}
+			}
+
+			// Add tag to the tag list
+<span class="fc" id="L400">			tags.add(tagLocation);</span>
+<span class="fc" id="L401">		}</span>
+		// Close any tags still open, in the correct order (for well-formedness)
+<span class="fc bfc" id="L403" title="All 2 branches covered.">		for (int i = openTagStack.size() - 1; i &gt;= 0; i--) {</span>
+<span class="fc bfc" id="L404" title="All 2 branches covered.">			if (unbalancedTagsStrategy == UnbalancedTagsStrategy.REMOVE_TAG) {</span>
+				// Remove the unbalanced tag
+<span class="fc" id="L406">				openTagStack.get(i).type = TagType.REMOVE_EXISTING_TAG;</span>
+			} else {
+				// Add a close tag at the end to fix the unbalanced tag
+<span class="fc" id="L409">				TagLocation tagLocation = new TagLocation(TagType.FIX_END, elementContent.length(), elementContent.length());</span>
+<span class="fc" id="L410">				tagLocation.name = openTagStack.get(i).name; // we remembered this for this case</span>
+<span class="fc" id="L411">				tags.add(tagLocation);</span>
+			}
+		}
+<span class="fc" id="L414">		return tags;</span>
+	}
+
+	/**
+	 * Determines if a tag is a self-closing tag (ends with &quot;/&amp;gt;&quot;)
+	 * @param tag the tag
+	 * @return true iff it is self-closing
+	 */
+	private static boolean isSelfClosing(String tag) {
+		// Start at the second to last character (skip the '&gt;') and look for slash.
+<span class="pc bpc" id="L424" title="1 of 2 branches missed.">		for (int i = tag.length() - 2; i &gt;= 0; i--) {</span>
+<span class="fc bfc" id="L425" title="All 3 branches covered.">			switch(tag.charAt(i)) {</span>
+			case '/':
+				// Yes, self-closing tag
+<span class="fc" id="L428">				return true;</span>
+			case ' ': case '\t': case '\n': case '\r':
+				// Whitespace; continue
+<span class="fc" id="L431">				break;</span>
+			default:
+				// We found an attribute or the tag name before encountering a slash, so it's not self-closing.
+<span class="fc" id="L434">				return false;</span>
+			}
+		}
+<span class="nc" id="L437">		return false;</span>
+	}
+
+	/**
+	 * Highlight a string containing XML tags. The result is still well-formed XML.
+	 *
+	 * @param elementContent
+	 *            the string to highlight
+	 * @param hits
+	 *            where the highlighting tags should go
+	 * @return the highlighted string
+	 */
+	public String highlight(String elementContent, List&lt;HitCharSpan&gt; hits) {
+<span class="fc" id="L450">		return highlight(elementContent, hits, 0);</span>
+	}
+
+	/**
+	 * Highlight part of an XML document.
+	 *
+	 * You cut the XML yourself and supply the part you wish to highlight,
+	 * along with the offset of where you cut (so we know where the highlight
+	 * tags should go).
+	 *
+	 * Missing tags at the beginning or end of the part will be corrected.
+	 * As long as you cut at tag boundaries (i.e. not within a tag), the result
+	 * of this method will still be well-formed XML.
+	 *
+	 * @param partialContent the (partial) XML to cut and highlight.
+	 * @param hits the hits to use for highlighting, or null for no highlighting
+	 * @param offset position of the first character in the string (i.e. what to subtract
+	 *   from Hit positions to highlight)
+	 * @return the highlighted (part of the) XML string
+	 */
+	public String highlight(String partialContent, List&lt;HitCharSpan&gt; hits, int offset) {
+
+		// Find all tags in the content and put their positions in a list
+<span class="fc" id="L473">		List&lt;TagLocation&gt; tags = makeTagList(partialContent);</span>
+
+		// 2. Put the positions of our hits in the same list and sort it
+<span class="fc bfc" id="L476" title="All 2 branches covered.">		if (hits != null)</span>
+<span class="fc" id="L477">			addHitPositionsToTagList(tags, hits, offset, partialContent.length());</span>
+<span class="fc" id="L478">		Collections.sort(tags);</span>
+
+		// Add all the highlight tags in the list into the content,
+		// taking care to mainting well-formedness around existing tags
+<span class="fc" id="L482">		String highlighted = highlightInternal(partialContent, tags, -1);</span>
+
+<span class="pc bpc" id="L484" title="1 of 2 branches missed.">		if (removeEmptyHlTags) {</span>
+			// Because of the way the highlighting (and maintaining of well-formedness) occurs,
+			// empty highlight tags may have arisen. Remove these.
+<span class="nc" id="L487">			highlighted = highlighted.replaceAll(startHighlightTag + &quot;(\\s*)&quot; + endHighlightTag,</span>
+					&quot;$1&quot;);
+		}
+
+<span class="fc" id="L491">		return highlighted;</span>
+	}
+
+	/**
+	 * Cut a string after a specified number of non-tag characters, preferably at a word boundary,
+	 * keeping all tags after the cut intact. The result is still well-formed XML.
+	 *
+	 * You might use this to show the first few lines of an XML document on the results page.
+	 *
+	 * @param elementContent
+	 *            the string to cut
+	 * @param stopAfterChars
+	 *            after how many non-tag characters we should stop (-1 for no limit)
+	 * @return the cut string
+	 */
+	public String cutAroundTags(String elementContent, int stopAfterChars) {
+		// Find all tags in the content and put their positions in a list
+<span class="nc" id="L508">		List&lt;TagLocation&gt; tags = makeTagList(elementContent);</span>
+<span class="nc" id="L509">		Collections.sort(tags);</span>
+
+		// Add all the highlight tags in the list into the content,
+		// taking care to mainting well-formedness around existing tags
+<span class="nc" id="L513">		return highlightInternal(elementContent, tags, stopAfterChars);</span>
+	}
+
+	public static void main(String[] args) {
+<span class="nc" id="L517">		XmlHighlighter h = new XmlHighlighter();</span>
+<span class="nc" id="L518">		String xml = &quot;&lt;zin&gt;&lt;lidwoord&gt;The&lt;/lidwoord&gt; &lt;adjectief&gt;quick&lt;/adjectief&gt; &lt;adjectief&gt;brown&lt;/adjectief&gt; &lt;substantief&gt;fox&lt;/substantief&gt;&lt;/zin&gt;&quot;;</span>
+<span class="nc" id="L519">		List&lt;HitCharSpan&gt; hitSpans = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L520">		hitSpans.add(new HitCharSpan(41, 46));</span>
+<span class="nc" id="L521">		hitSpans.add(new HitCharSpan(101, 124));</span>
+<span class="nc" id="L522">		String result = h.highlight(xml, hitSpans, 0);</span>
+<span class="nc" id="L523">		System.out.println(result);</span>
+<span class="nc" id="L524">	}</span>
+
+	/**
+	 * Set whether or not to remove empty &lt;hl&gt;&lt;/hl&gt; tags
+	 * at the end of highlighting (which can form due to
+	 * the process).
+	 *
+	 * @param c true iff empty hl tags should be removed
+	 */
+	public void setRemoveEmptyHlTags(boolean c) {
+<span class="fc" id="L534">		removeEmptyHlTags = c;</span>
+<span class="fc" id="L535">	}</span>
+
+	/**
+	 * Make a cut XML fragment well-formed.
+	 *
+	 * The only requirement is that tags are intact (i.e.
+	 * xmlFragment doesn't start with &quot;able cellpadding='3'&gt;&quot;
+	 * or end with &quot;&lt;/bod&quot;.
+	 *
+	 * The fragment is made well-formed by adding open tags to
+	 * the beginning or close tags to the end. It is therefore
+	 * not a generic way of making any non-well-formed document
+	 * well-formed, it just works for cutting out part of a
+	 * well-formed document.
+	 *
+	 * @param xmlFragment
+	 * @return a well-formed fragment
+	 */
+	public String makeWellFormed(String xmlFragment) {
+<span class="fc" id="L554">		return highlight(xmlFragment, null, 0);</span>
+	}
+
+	/**
+	 * Get how well-formedness problems are fixed
+	 * @return the strategy we're using now.
+	 */
+	public UnbalancedTagsStrategy getUnbalancedTagsStrategy() {
+<span class="nc" id="L562">		return unbalancedTagsStrategy;</span>
+	}
+
+	/**
+	 * Set how to fix well-formedness problems.
+	 * @param strategy what to do when encountering unbalanced tags.
+	 */
+	public void setUnbalancedTagsStrategy(UnbalancedTagsStrategy strategy) {
+<span class="fc" id="L570">		this.unbalancedTagsStrategy = strategy;</span>
+<span class="fc" id="L571">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

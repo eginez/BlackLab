@@ -1,0 +1,286 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DocIndexerXml.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.index</a> &gt; <span class="el_source">DocIndexerXml.java</span></div><h1>DocIndexerXml.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.index;
+
+import java.io.IOException;
+import java.io.Reader;
+import java.util.HashMap;
+import java.util.Map;
+
+import javax.xml.parsers.SAXParser;
+import javax.xml.parsers.SAXParserFactory;
+
+import org.xml.sax.Attributes;
+import org.xml.sax.InputSource;
+import org.xml.sax.Locator;
+import org.xml.sax.SAXException;
+import org.xml.sax.helpers.DefaultHandler;
+
+/**
+ * Abstract base class for a DocIndexer processing XML files.
+ * @deprecated use DocIndexerXmlHandlers instead; see project site for a guide
+ */
+@Deprecated
+public abstract class DocIndexerXml extends DocIndexerAbstract {
+<span class="nc" id="L38">	class SaxParseHandler extends DefaultHandler {</span>
+		/** to keep track of the position within the document */
+		protected Locator locator;
+
+		@Override
+		public void setDocumentLocator(Locator locator) {
+<span class="nc" id="L44">			this.locator = locator;</span>
+<span class="nc" id="L45">		}</span>
+
+		@Override
+		public void characters(char[] buffer, int start, int length) throws SAXException {
+<span class="nc" id="L49">			super.characters(buffer, start, length);</span>
+<span class="nc" id="L50">			DocIndexerXml.this.characters(buffer, start, length);</span>
+<span class="nc" id="L51">		}</span>
+
+		@Override
+		public void endElement(String uri, String localName, String qName) throws SAXException {
+<span class="nc" id="L55">			super.endElement(uri, localName, qName);</span>
+<span class="nc" id="L56">			DocIndexerXml.this.endElement(uri, localName, qName);</span>
+<span class="nc" id="L57">		}</span>
+
+		@Override
+		public void startElement(String uri, String localName, String qName, Attributes attributes)
+				throws SAXException {
+<span class="nc" id="L62">			super.startElement(uri, localName, qName, attributes);</span>
+<span class="nc" id="L63">			DocIndexerXml.this.startElement(uri, localName, qName, attributes);</span>
+<span class="nc" id="L64">		}</span>
+
+		@Override
+		public void processingInstruction(String target, String data) throws SAXException {
+<span class="nc" id="L68">			super.processingInstruction(target, data);</span>
+<span class="nc" id="L69">			DocIndexerXml.this.processingInstruction(target, data);</span>
+<span class="nc" id="L70">		}</span>
+
+		@Override
+		public void startPrefixMapping(String prefix, String uri) throws SAXException {
+<span class="nc" id="L74">			super.startPrefixMapping(prefix, uri);</span>
+<span class="nc" id="L75">			DocIndexerXml.this.startPrefixMapping(prefix, uri);</span>
+<span class="nc" id="L76">		}</span>
+
+		@Override
+		public void endPrefixMapping(String prefix) throws SAXException {
+<span class="nc" id="L80">			super.endPrefixMapping(prefix);</span>
+<span class="nc" id="L81">			DocIndexerXml.this.endPrefixMapping(prefix);</span>
+<span class="nc" id="L82">		}</span>
+
+		public String describePosition() {
+<span class="nc" id="L85">			return &quot;line &quot; + locator.getLineNumber() + &quot;, position &quot; + locator.getColumnNumber();</span>
+		}
+
+	}
+
+<span class="nc" id="L90">	SaxParseHandler saxParseHandler = new SaxParseHandler();</span>
+
+	/**
+	 * What namespace prefix mappings have we encountered but not output in a start tag
+	 * yet? (used to make sure the stored XML contains all the required mappings)
+	 */
+<span class="nc" id="L96">	final protected static Map&lt;String,String&gt; outputPrefixMapping = new HashMap&lt;&gt;();</span>
+
+	/**
+	 * Encountered a prefix to namespace mapping; now in effect.
+	 * @param prefix the prefix that is now in effect
+	 * @param uri the namespace the prefix refers to
+	 */
+	public void startPrefixMapping(String prefix, String uri) {
+<span class="nc" id="L104">		outputPrefixMapping.put(prefix, uri);</span>
+<span class="nc" id="L105">	}</span>
+
+	/**
+	 * A previously encountered namespace prefix mapping is no longer in effect.
+	 * @param prefix the prefix that's no longer in effect.
+	 */
+	public void endPrefixMapping(String prefix) {
+		//System.out.println(&quot;END PREFIX MAPPING: &quot; + prefix);
+<span class="nc" id="L113">	}</span>
+
+	public DocIndexerXml(Indexer indexer, String fileName, Reader reader) {
+<span class="nc" id="L116">		super(indexer, fileName, reader);</span>
+<span class="nc" id="L117">	}</span>
+
+	/**
+	 * StringBuffer re-used for building start/end tags and processing instructions.
+	 */
+<span class="nc" id="L122">	StringBuilder elementBuilder = new StringBuilder();</span>
+
+	public void startElement(String uri, String localName, String qName, Attributes attributes) {
+<span class="nc" id="L125">		elementBuilder.delete(0, elementBuilder.length());</span>
+<span class="nc" id="L126">		elementBuilder.append(&quot;&lt;&quot;).append(qName);</span>
+<span class="nc bnc" id="L127" title="All 2 branches missed.">		for (int i = 0; i &lt; attributes.getLength(); i++) {</span>
+<span class="nc" id="L128">			String value = escapeXmlChars(attributes.getValue(i));</span>
+<span class="nc" id="L129">			elementBuilder.append(&quot; &quot;).append(attributes.getQName(i)).append(&quot;=\&quot;&quot;)</span>
+<span class="nc" id="L130">					.append(value).append(&quot;\&quot;&quot;);</span>
+		}
+		// Append any namespace mapping not yet outputted
+<span class="nc bnc" id="L133" title="All 2 branches missed.">		for (Map.Entry&lt;String, String&gt; e: outputPrefixMapping.entrySet()) {</span>
+<span class="nc bnc" id="L134" title="All 2 branches missed.">			if (e.getKey().length() == 0)</span>
+<span class="nc" id="L135">				elementBuilder.append(&quot; xmlns=\&quot;&quot;).append(e.getValue()).append(&quot;\&quot;&quot;);</span>
+			else
+<span class="nc" id="L137">				elementBuilder.append(&quot; xmlns:&quot;).append(e.getKey()).append(&quot;=\&quot;&quot;).append(e.getValue()).append(&quot;\&quot;&quot;);</span>
+<span class="nc" id="L138">		}</span>
+<span class="nc" id="L139">		outputPrefixMapping.clear(); // outputted all prefix mappings for now</span>
+<span class="nc" id="L140">		elementBuilder.append(&quot;&gt;&quot;);</span>
+<span class="nc" id="L141">		processContent(elementBuilder.toString());</span>
+<span class="nc" id="L142">	}</span>
+
+	/**
+	 * StringBuffer re-used for escaping XML chars
+	 */
+<span class="nc" id="L147">	StringBuilder escapeBuilder = new StringBuilder();</span>
+
+	/**
+	 * Escape the special XML chars (&lt;, &gt;, &amp;, &quot;) with their named entity equivalents.
+	 *
+	 * NOTE: copy of StringUtil.escapeXmlChars that re-uses its StringBuilder for increased memory
+	 * efficiency.
+	 *
+	 * @param source
+	 *            the source string
+	 * @return the escaped string
+	 */
+	public String escapeXmlChars(String source) {
+<span class="nc" id="L160">		escapeBuilder.delete(0, escapeBuilder.length());</span>
+<span class="nc" id="L161">		int start = 0;</span>
+<span class="nc" id="L162">		char[] srcArr = new char[source.length()];</span>
+<span class="nc" id="L163">		source.getChars(0, source.length(), srcArr, 0);</span>
+<span class="nc" id="L164">		int end = source.length();</span>
+<span class="nc bnc" id="L165" title="All 2 branches missed.">		for (int i = 0; i &lt; end; i++) {</span>
+<span class="nc" id="L166">			char c = srcArr[i]; // source.charAt(i);</span>
+<span class="nc bnc" id="L167" title="All 8 branches missed.">			if (c == '&lt;' || c == '&gt;' || c == '&amp;' || c == '&quot;') {</span>
+<span class="nc" id="L168">				escapeBuilder.append(srcArr, start, i - start); // source.substring(start, i));</span>
+<span class="nc bnc" id="L169" title="All 5 branches missed.">				switch (c) {</span>
+				case '&lt;':
+<span class="nc" id="L171">					escapeBuilder.append(&quot;&amp;lt;&quot;);</span>
+<span class="nc" id="L172">					break;</span>
+				case '&gt;':
+<span class="nc" id="L174">					escapeBuilder.append(&quot;&amp;gt;&quot;);</span>
+<span class="nc" id="L175">					break;</span>
+				case '&amp;':
+<span class="nc" id="L177">					escapeBuilder.append(&quot;&amp;amp;&quot;);</span>
+<span class="nc" id="L178">					break;</span>
+				case '&quot;':
+<span class="nc" id="L180">					escapeBuilder.append(&quot;&amp;quot;&quot;);</span>
+<span class="nc" id="L181">					break;</span>
+				default:
+					// Not possible
+<span class="nc" id="L184">					throw new RuntimeException();</span>
+				}
+<span class="nc" id="L186">				start = i + 1;</span>
+			}
+		}
+<span class="nc" id="L189">		escapeBuilder.append(srcArr, start, end - start); // source.substring(start));</span>
+<span class="nc" id="L190">		return escapeBuilder.toString();</span>
+	}
+
+	/**
+	 * Escape the special XML chars (&lt;, &gt;, &amp;, &quot;) with their named entity equivalents.
+	 *
+	 * NOTE: copy of StringUtil.escapeXmlChars that re-uses its StringBuilder for increased memory
+	 * efficiency.
+	 *
+	 * @param source
+	 *            the source string
+	 * @param start where in the string to start processing
+	 * @param length how many characters to process
+	 * @return the escaped string
+	 */
+	public String escapeXmlChars(char[] source, int start, int length) {
+<span class="nc" id="L206">		escapeBuilder.delete(0, escapeBuilder.length());</span>
+<span class="nc" id="L207">		int end = start + length;</span>
+<span class="nc bnc" id="L208" title="All 2 branches missed.">		for (int i = start; i &lt; end; i++) {</span>
+<span class="nc" id="L209">			char c = source[i];</span>
+<span class="nc bnc" id="L210" title="All 8 branches missed.">			if (c == '&lt;' || c == '&gt;' || c == '&amp;' || c == '&quot;') {</span>
+<span class="nc" id="L211">				escapeBuilder.append(source, start, i - start);</span>
+<span class="nc bnc" id="L212" title="All 5 branches missed.">				switch (c) {</span>
+				case '&lt;':
+<span class="nc" id="L214">					escapeBuilder.append(&quot;&amp;lt;&quot;);</span>
+<span class="nc" id="L215">					break;</span>
+				case '&gt;':
+<span class="nc" id="L217">					escapeBuilder.append(&quot;&amp;gt;&quot;);</span>
+<span class="nc" id="L218">					break;</span>
+				case '&amp;':
+<span class="nc" id="L220">					escapeBuilder.append(&quot;&amp;amp;&quot;);</span>
+<span class="nc" id="L221">					break;</span>
+				case '&quot;':
+<span class="nc" id="L223">					escapeBuilder.append(&quot;&amp;quot;&quot;);</span>
+					break;
+				}
+<span class="nc" id="L226">				start = i + 1;</span>
+			}
+		}
+<span class="nc" id="L229">		escapeBuilder.append(source, start, end - start);</span>
+<span class="nc" id="L230">		return escapeBuilder.toString();</span>
+	}
+
+	public void characters(char[] buffer, int start, int length) {
+<span class="nc" id="L234">		String s = escapeXmlChars(buffer, start, length);</span>
+<span class="nc" id="L235">		processContent(s);</span>
+<span class="nc" id="L236">	}</span>
+
+	public void endElement(String uri, String localName, String qName) {
+<span class="nc" id="L239">		elementBuilder.delete(0, elementBuilder.length());</span>
+<span class="nc" id="L240">		elementBuilder.append(&quot;&lt;/&quot;).append(qName).append(&quot;&gt;&quot;);</span>
+<span class="nc" id="L241">		processContent(elementBuilder.toString());</span>
+<span class="nc" id="L242">	}</span>
+
+	public void processingInstruction(String target, String data) {
+<span class="nc" id="L245">		elementBuilder.delete(0, elementBuilder.length());</span>
+<span class="nc" id="L246">		elementBuilder.append(&quot;&lt;?&quot;).append(target).append(&quot; &quot;).append(data).append(&quot;?&gt;&quot;);</span>
+<span class="nc" id="L247">		processContent(elementBuilder.toString());</span>
+<span class="nc" id="L248">	}</span>
+
+	@Override
+	public void index() throws IOException, MalformedInputFileException  {
+<span class="nc" id="L252">		SAXParserFactory factory = SAXParserFactory.newInstance();</span>
+<span class="nc" id="L253">		factory.setNamespaceAware(true);</span>
+		SAXParser parser;
+		try {
+<span class="nc" id="L256">			parser = factory.newSAXParser();</span>
+<span class="nc" id="L257">		} catch (Exception e1) {</span>
+			// Unrecoverable error, throw runtime exception
+<span class="nc" id="L259">			throw new RuntimeException(e1);</span>
+<span class="nc" id="L260">		}</span>
+//		try {
+			try {
+<span class="nc" id="L263">				parser.parse(new InputSource(reader), saxParseHandler);</span>
+<span class="nc" id="L264">			} catch (IOException e) {</span>
+<span class="nc" id="L265">				throw e;</span>
+<span class="nc" id="L266">			} catch (SAXException e) {</span>
+<span class="nc" id="L267">				throw new MalformedInputFileException();</span>
+<span class="nc" id="L268">			} catch (DocIndexer.MaxDocsReachedException e) {</span>
+				// OK; just stop indexing prematurely
+<span class="nc" id="L270">			}</span>
+//		} catch (Exception e) {
+//			System.out.println(&quot;An exception occurred while parsing at &quot; + describePosition());
+//			throw e;
+//		}
+
+<span class="nc bnc" id="L276" title="All 2 branches missed.">		if (nDocumentsSkipped &gt; 0)</span>
+<span class="nc" id="L277">			System.err.println(&quot;Skipped &quot; + nDocumentsSkipped + &quot; large documents&quot;);</span>
+<span class="nc" id="L278">	}</span>
+
+	protected String describePosition() {
+<span class="nc" id="L281">		return saxParseHandler.describePosition();</span>
+	}
+
+	// protected abstract OutputStreamWriter getXmlContentWriter();
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

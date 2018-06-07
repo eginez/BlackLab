@@ -1,0 +1,419 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ContentStoreDir.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.externalstorage</a> &gt; <span class="el_source">ContentStoreDir.java</span></div><h1>ContentStoreDir.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.externalstorage;
+
+import java.io.BufferedOutputStream;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
+import java.io.Writer;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
+
+import nl.inl.util.ExUtil;
+
+/**
+ * Store string content by id in a directory of compound files with a TOC file. Quickly retrieve
+ * (parts of) the string content.
+ * @deprecated use ContentStoreDirZip
+ */
+@Deprecated
+public class ContentStoreDir extends ContentStoreDirAbstract {
+	private static final String CHAR_ENCODING = &quot;UTF-16LE&quot;;
+
+	private static final int BYTES_PER_CHAR = 2;
+
+	private static final int BYTE_ORDER_MARK_SIZE = 0;
+
+	/** Table of contents entry */
+	static class TocEntry {
+		/** id of the string */
+		public int id;
+
+		/** id of the file the string was stored in */
+		public int fileId;
+
+		/** byte offset into the file of the string */
+		public long offset;
+
+		/** length of the string (in bytes) */
+		public int length;
+
+		/** was this entry deleted? (remove in next compacting run) */
+		public boolean deleted;
+
+		public TocEntry(int id, int fileId, long offset, int length, boolean deleted) {
+<span class="nc" id="L67">			super();</span>
+<span class="nc" id="L68">			this.id = id;</span>
+<span class="nc" id="L69">			this.fileId = fileId;</span>
+<span class="nc" id="L70">			this.offset = offset;</span>
+<span class="nc" id="L71">			this.length = length;</span>
+<span class="nc" id="L72">			this.deleted = deleted;</span>
+<span class="nc" id="L73">		}</span>
+
+		/**
+		 * Convert TOC entry to a string for storing in the TOC file
+		 *
+		 * @return string representation of entry
+		 */
+		public String serialize() {
+<span class="nc bnc" id="L81" title="All 2 branches missed.">			return String.format(&quot;%d\t%d\t%d\t%d\t%d&quot;, id, fileId, offset, length, deleted ? 1 : 0);</span>
+		}
+
+		/**
+		 * Convert string representation back into a TOC entry.
+		 *
+		 * @param line
+		 *            the line read from the TOC file
+		 * @return new TocEntry
+		 */
+		public static TocEntry deserialize(String line) {
+<span class="nc" id="L92">			String[] parts = line.trim().split(&quot;\t&quot;, -1);</span>
+<span class="nc" id="L93">			int id = Integer.parseInt(parts[0]);</span>
+<span class="nc" id="L94">			int fileId = Integer.parseInt(parts[1]);</span>
+<span class="nc" id="L95">			int offset = Integer.parseInt(parts[2]);</span>
+<span class="nc" id="L96">			int length = Integer.parseInt(parts[3]);</span>
+<span class="nc bnc" id="L97" title="All 2 branches missed.">			boolean deleted = Integer.parseInt(parts[4]) != 0;</span>
+<span class="nc" id="L98">			return new TocEntry(id, fileId, offset, length, deleted);</span>
+		}
+	}
+
+	/**
+	 * The TOC entries
+	 */
+	private Map&lt;Integer, TocEntry&gt; toc;
+
+	/**
+	 * The table of contents (TOC) file
+	 */
+	private File tocFile;
+
+	/**
+	 * Preferred size of data files. Note that the data files consist only of whole documents, so
+	 * this size may be exceeded.
+	 */
+<span class="nc" id="L116">	private long dataFileSizeHint = 100000000; // 100M</span>
+
+	/**
+	 * Next content ID.
+	 */
+<span class="nc" id="L121">	private int nextId = 1;</span>
+
+	/**
+	 * File ID of the current file we're writing to.
+	 */
+<span class="nc" id="L126">	private int currentFileId = 1;</span>
+
+	/**
+	 * Length of the file we're writing to.
+	 */
+<span class="nc" id="L131">	private long currentFileLength = 0;</span>
+
+	/**
+	 * If we're writing content in chunks, this keeps track of how many bytes were already written.
+	 * Used by store() to calculate the total content length.
+	 */
+<span class="nc" id="L137">	private int charsAlreadyWritten = 0;</span>
+
+	/**
+	 * @param dir directory to use for the content store
+	 * @deprecated use ContentStoreDirZip
+	 */
+	@Deprecated
+	public ContentStoreDir(File dir) {
+<span class="nc" id="L145">		this(dir, false);</span>
+<span class="nc" id="L146">	}</span>
+
+	/**
+	 * @param dir directory to use for the content store
+	 * @param create if true, create a new content store. Otherwise append to the existing one
+	 * @deprecated use ContentStoreDirZip
+	 */
+	@Deprecated
+<span class="nc" id="L154">	public ContentStoreDir(File dir, boolean create) {</span>
+<span class="nc" id="L155">		this.dir = dir;</span>
+<span class="nc bnc" id="L156" title="All 2 branches missed.">		if (!dir.exists())</span>
+<span class="nc" id="L157">			dir.mkdir();</span>
+<span class="nc" id="L158">		tocFile = new File(dir, &quot;toc.dat&quot;);</span>
+<span class="nc" id="L159">		toc = new HashMap&lt;&gt;();</span>
+<span class="nc bnc" id="L160" title="All 2 branches missed.">		if (tocFile.exists())</span>
+<span class="nc" id="L161">			readToc();</span>
+<span class="nc bnc" id="L162" title="All 2 branches missed.">		if (create) {</span>
+<span class="nc" id="L163">			clear();</span>
+<span class="nc" id="L164">			setStoreType(&quot;utf16&quot;, &quot;1&quot;);</span>
+		}
+<span class="nc" id="L166">	}</span>
+
+	/**
+	 * Delete all content in the document store
+	 */
+	@Override
+	public void clear() {
+		// delete all data files and empty TOC
+<span class="nc bnc" id="L174" title="All 2 branches missed.">		for (Map.Entry&lt;Integer, TocEntry&gt; me : toc.entrySet()) {</span>
+<span class="nc" id="L175">			TocEntry e = me.getValue();</span>
+<span class="nc" id="L176">			File f = getContentFile(e.fileId);</span>
+<span class="nc bnc" id="L177" title="All 2 branches missed.">			if (f.exists())</span>
+<span class="nc" id="L178">				f.delete();</span>
+<span class="nc" id="L179">		}</span>
+<span class="nc" id="L180">		toc.clear();</span>
+<span class="nc" id="L181">		currentFileId = 1;</span>
+<span class="nc" id="L182">		currentFileLength = 0;</span>
+<span class="nc" id="L183">		nextId = 1;</span>
+<span class="nc" id="L184">	}</span>
+
+	/**
+	 * Read the table of contents from the file
+	 */
+	private void readToc() {
+<span class="nc" id="L190">		try (BufferedReader f = new BufferedReader(new InputStreamReader(new FileInputStream(tocFile), DEFAULT_CHARSET))) {</span>
+			while (true) {
+<span class="nc" id="L192">				String line = f.readLine();</span>
+<span class="nc bnc" id="L193" title="All 2 branches missed.">				if (line == null)</span>
+<span class="nc" id="L194">					break;</span>
+<span class="nc" id="L195">				TocEntry e = TocEntry.deserialize(line);</span>
+<span class="nc" id="L196">				toc.put(e.id, e);</span>
+<span class="nc bnc" id="L197" title="All 2 branches missed.">				if (e.fileId &gt; currentFileId) {</span>
+<span class="nc" id="L198">					currentFileId = e.fileId;</span>
+<span class="nc" id="L199">					currentFileLength = 0;</span>
+				}
+<span class="nc bnc" id="L201" title="All 2 branches missed.">				if (e.fileId == currentFileId) {</span>
+<span class="nc" id="L202">					long endOfEntry = e.offset + e.length;</span>
+<span class="nc bnc" id="L203" title="All 2 branches missed.">					if (endOfEntry &gt; currentFileLength)</span>
+<span class="nc" id="L204">						currentFileLength = endOfEntry;</span>
+				}
+<span class="nc bnc" id="L206" title="All 2 branches missed.">				if (e.id + 1 &gt; nextId)</span>
+<span class="nc" id="L207">					nextId = e.id + 1;</span>
+<span class="nc" id="L208">			}</span>
+<span class="nc bnc" id="L209" title="All 8 branches missed.">		} catch (Exception e) {</span>
+<span class="nc" id="L210">			throw ExUtil.wrapRuntimeException(e);</span>
+<span class="nc" id="L211">		}</span>
+<span class="nc" id="L212">	}</span>
+
+	/**
+	 * Write the table of contents to the file
+	 */
+	@Override
+	public void close() {
+<span class="nc" id="L219">		try (PrintWriter f = new PrintWriter(new OutputStreamWriter(new FileOutputStream(tocFile), DEFAULT_CHARSET))) {</span>
+<span class="nc bnc" id="L220" title="All 2 branches missed.">			for (Map.Entry&lt;Integer, TocEntry&gt; e : toc.entrySet()) {</span>
+<span class="nc" id="L221">				f.println(e.getValue().serialize());</span>
+<span class="nc" id="L222">			}</span>
+<span class="nc bnc" id="L223" title="All 8 branches missed.">		} catch (Exception e) {</span>
+<span class="nc" id="L224">			throw ExUtil.wrapRuntimeException(e);</span>
+<span class="nc" id="L225">		}</span>
+<span class="nc" id="L226">	}</span>
+
+	/**
+	 * Indicate preferred maximum size of data files (defaults to 10M)
+	 *
+	 * @param dataFileSizeHint
+	 */
+	public void setDataFileSizeHint(long dataFileSizeHint) {
+<span class="nc" id="L234">		this.dataFileSizeHint = dataFileSizeHint;</span>
+<span class="nc" id="L235">	}</span>
+
+	/**
+	 * Store part of a piece of large content. This may be called several times to store chunks of
+	 * content, but MUST be *finished* by calling the &quot;normal&quot; store() method. You may call store()
+	 * with the empty string if you wish.
+	 *
+	 * @param content
+	 *            the content to store
+	 */
+	@Override
+	public synchronized void storePart(String content) {
+<span class="nc" id="L247">		try (Writer w = openCurrentStoreFile()) {</span>
+<span class="nc bnc" id="L248" title="All 2 branches missed.">			if (content.length() &gt; 0) {</span>
+<span class="nc" id="L249">				w.write(content);</span>
+<span class="nc" id="L250">				charsAlreadyWritten += content.length();</span>
+			}
+<span class="nc bnc" id="L252" title="All 8 branches missed.">		} catch (IOException e) {</span>
+<span class="nc" id="L253">			throw ExUtil.wrapRuntimeException(e);</span>
+<span class="nc" id="L254">		}</span>
+<span class="nc" id="L255">	}</span>
+
+	/**
+	 * Store the given content and assign an id to it
+	 *
+	 * @param content
+	 *            the content to store
+	 * @return the id assigned to the content
+	 */
+	@Override
+	public synchronized int store(String content) {
+<span class="nc" id="L266">		try (Writer w = openCurrentStoreFile()) {</span>
+<span class="nc bnc" id="L267" title="All 2 branches missed.">			if (content.length() &gt; 0)</span>
+<span class="nc" id="L268">				w.write(content);</span>
+<span class="nc" id="L269">			int entryLengthChars = charsAlreadyWritten + content.length();</span>
+<span class="nc" id="L270">			TocEntry e = new TocEntry(nextId, currentFileId, currentFileLength,</span>
+					entryLengthChars * BYTES_PER_CHAR, false);
+<span class="nc" id="L272">			nextId++;</span>
+<span class="nc" id="L273">			currentFileLength += e.length;</span>
+<span class="nc" id="L274">			toc.put(e.id, e);</span>
+<span class="nc" id="L275">			charsAlreadyWritten = 0;</span>
+<span class="nc" id="L276">			return e.id;</span>
+<span class="nc bnc" id="L277" title="All 8 branches missed.">		} catch (IOException e) {</span>
+<span class="nc" id="L278">			throw ExUtil.wrapRuntimeException(e);</span>
+		}
+	}
+
+	private Writer openCurrentStoreFile() {
+		try {
+<span class="nc bnc" id="L284" title="All 2 branches missed.">			if (currentFileLength &gt; dataFileSizeHint) {</span>
+<span class="nc" id="L285">				currentFileId++;</span>
+<span class="nc" id="L286">				currentFileLength = 0;</span>
+			}
+<span class="nc" id="L288">			File f = getContentFile(currentFileId);</span>
+<span class="nc" id="L289">			return new OutputStreamWriter(new BufferedOutputStream(new FileOutputStream(f, true)),</span>
+					CHAR_ENCODING);
+<span class="nc" id="L291">		} catch (Exception e) {</span>
+<span class="nc" id="L292">			throw ExUtil.wrapRuntimeException(e);</span>
+		}
+	}
+
+	/**
+	 * Get a data File object, given the data file id.
+	 *
+	 * @param fileId
+	 *            the data file id
+	 * @return the File object
+	 */
+	private File getContentFile(int fileId) {
+<span class="nc" id="L304">		File f = new File(dir, String.format(&quot;data%04d.dat&quot;, fileId));</span>
+<span class="nc" id="L305">		return f;</span>
+	}
+
+	/**
+	 * Retrieve content with given id
+	 *
+	 * @param id
+	 *            the id
+	 * @return the string
+	 */
+	@Override
+	public String retrieve(int id) {
+<span class="nc" id="L317">		String[] rv = retrieveParts(id, new int[] { -1 }, new int[] { -1 });</span>
+<span class="nc bnc" id="L318" title="All 2 branches missed.">		return rv == null ? null : rv[0];</span>
+	}
+
+	/**
+	 * Retrieve one or more substrings from the specified content.
+	 *
+	 * This is more efficient than retrieving the whole content, or retrieving parts in separate
+	 * calls, because the file is only opened once and random access is used to read only the
+	 * required parts.
+	 *
+	 * NOTE: if offset and length are both -1, retrieves the whole content. This is used by the
+	 * retrieve(id) method.
+	 *
+	 * @param contentId
+	 *            id of the entry to get substrings from
+	 * @param start
+	 *            the starting points of the substrings (in characters)
+	 * @param end
+	 *            the end points of the substrings (in characters)
+	 * @return the parts
+	 */
+	@Override
+	public synchronized String[] retrieveParts(int contentId, int[] start, int[] end) {
+		try {
+<span class="nc" id="L342">			TocEntry e = toc.get(contentId);</span>
+<span class="nc bnc" id="L343" title="All 4 branches missed.">			if (e == null || e.deleted)</span>
+<span class="nc" id="L344">				return null;</span>
+
+<span class="nc" id="L346">			int n = start.length;</span>
+<span class="nc bnc" id="L347" title="All 2 branches missed.">			if (n != end.length)</span>
+<span class="nc" id="L348">				throw new IllegalArgumentException(&quot;start and end must be of equal length&quot;);</span>
+<span class="nc" id="L349">			String[] result = new String[n];</span>
+
+<span class="nc" id="L351">			File f = getContentFile(e.fileId);</span>
+<span class="nc" id="L352">			try (FileInputStream fileInputStream = new FileInputStream(f)) {</span>
+<span class="nc" id="L353">				try (FileChannel fileChannel = fileInputStream.getChannel()) {</span>
+<span class="nc" id="L354">					int charLength = e.length / BYTES_PER_CHAR; // take BOM size into account?</span>
+<span class="nc bnc" id="L355" title="All 2 branches missed.">					for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc bnc" id="L356" title="All 4 branches missed.">						if (start[i] == -1 &amp;&amp; end[i] == -1) {</span>
+							// whole content
+<span class="nc" id="L358">							start[i] = 0;</span>
+<span class="nc" id="L359">							end[i] = charLength;</span>
+						}
+<span class="nc bnc" id="L361" title="All 4 branches missed.">						if (start[i] &lt; 0 || end[i] &lt; 0) {</span>
+<span class="nc" id="L362">							throw new IllegalArgumentException(&quot;Illegal values, start = &quot; + start[i]</span>
+									+ &quot;, end = &quot; + end[i]);
+						}
+<span class="nc bnc" id="L365" title="All 4 branches missed.">						if (start[i] &gt; charLength || end[i] &gt; charLength) {</span>
+<span class="nc" id="L366">							throw new IllegalArgumentException(&quot;Value(s) out of range, start = &quot; + start[i]</span>
+									+ &quot;, end = &quot; + end[i] + &quot;, content length = &quot; + charLength);
+						}
+<span class="nc bnc" id="L369" title="All 2 branches missed.">						if (end[i] &lt;= start[i]) {</span>
+<span class="nc" id="L370">							throw new IllegalArgumentException(</span>
+									&quot;Tried to read empty or negative length snippet (from &quot; + start[i]
+											+ &quot; to &quot; + end[i] + &quot;)&quot;);
+						}
+<span class="nc" id="L374">						long startOffsetBytes = e.offset + start[i] * BYTES_PER_CHAR</span>
+								+ BYTE_ORDER_MARK_SIZE;
+<span class="nc" id="L376">						int bytesToRead = (end[i] - start[i]) * BYTES_PER_CHAR;</span>
+<span class="nc" id="L377">						ByteBuffer buffer = ByteBuffer.allocate(bytesToRead);</span>
+<span class="nc" id="L378">						int bytesRead = fileChannel.read(buffer, startOffsetBytes);</span>
+<span class="nc bnc" id="L379" title="All 2 branches missed.">						if (bytesRead &lt; bytesToRead)</span>
+<span class="nc" id="L380">							throw new RuntimeException(&quot;Not enough bytes read, &quot; + bytesRead + &quot; &lt; &quot;</span>
+									+ bytesToRead);
+<span class="nc" id="L382">						result[i] = new String(buffer.array(), 0, bytesRead, CHAR_ENCODING);</span>
+					}
+<span class="nc bnc" id="L384" title="All 8 branches missed.">				}</span>
+<span class="nc bnc" id="L385" title="All 8 branches missed.">			}</span>
+<span class="nc" id="L386">			return result;</span>
+<span class="nc" id="L387">		} catch (Exception e) {</span>
+<span class="nc" id="L388">			throw ExUtil.wrapRuntimeException(e);</span>
+		}
+	}
+
+	@Override
+	public synchronized void delete(int id) {
+<span class="nc" id="L394">		TocEntry e = toc.get(id);</span>
+<span class="nc" id="L395">		e.deleted = true;</span>
+<span class="nc" id="L396">	}</span>
+
+	@Override
+	public Set&lt;Integer&gt; getDocIds() {
+<span class="nc" id="L400">		return toc.keySet();</span>
+	}
+
+	@Override
+	public boolean isDeleted(int id) {
+<span class="nc" id="L405">		return toc.get(id).deleted;</span>
+	}
+
+	@Override
+	public int getDocLength(int id) {
+<span class="nc" id="L410">		return toc.get(id).length;</span>
+	}
+
+	@Override
+	public Set&lt;Integer&gt; idSet() {
+<span class="nc" id="L415">		return toc.keySet();</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

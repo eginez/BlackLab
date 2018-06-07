@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DocResultsWindow.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.perdocument</a> &gt; <span class="el_source">DocResultsWindow.java</span></div><h1>DocResultsWindow.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.perdocument;
+
+import java.util.ArrayList;
+
+import nl.inl.blacklab.search.ResultsWindow;
+
+/**
+ * A list of DocResult objects (document-level query results). The list may be sorted by calling
+ * DocResults.sort().
+ */
+public class DocResultsWindow extends DocResults implements ResultsWindow {
+	private DocResults source;
+
+	private int first;
+
+	private int numberPerPage;
+
+	/**
+	 *
+	 * @param source
+	 * @param first
+	 * @param numberPerPage
+	 */
+	DocResultsWindow(DocResults source, int first, int numberPerPage) {
+<span class="nc" id="L40">		super(source.getSearcher());</span>
+<span class="nc" id="L41">		this.source = source;</span>
+<span class="nc" id="L42">		this.first = first;</span>
+<span class="nc" id="L43">		this.numberPerPage = numberPerPage;</span>
+
+<span class="nc bnc" id="L45" title="All 2 branches missed.">		boolean emptyResultSet = !source.sizeAtLeast(1);</span>
+<span class="nc bnc" id="L46" title="All 8 branches missed.">		if (first &lt; 0 || (emptyResultSet &amp;&amp; first &gt; 0) ||</span>
+<span class="nc bnc" id="L47" title="All 2 branches missed.">			(!emptyResultSet &amp;&amp; !source.sizeAtLeast(first + 1))) {</span>
+<span class="nc" id="L48">			throw new RuntimeException(&quot;First hit out of range&quot;);</span>
+		}
+
+		// Auto-clamp number
+<span class="nc" id="L52">		int number = numberPerPage;</span>
+<span class="nc bnc" id="L53" title="All 2 branches missed.">		if (!source.sizeAtLeast(first + number))</span>
+<span class="nc" id="L54">			number = source.size() - first;</span>
+
+		// Make sublist (don't use sublist because the backing list may change if not
+		// all hits have been read yet)
+<span class="nc" id="L58">		results = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L59" title="All 2 branches missed.">		for (int i = first; i &lt; first + number; i++) {</span>
+<span class="nc" id="L60">			results.add(source.get(i));</span>
+		}
+<span class="nc" id="L62">	}</span>
+
+	@Override
+	public boolean hasNext() {
+<span class="nc" id="L66">		return source.sizeAtLeast(first + numberPerPage + 1);</span>
+	}
+
+	@Override
+	public boolean hasPrevious() {
+<span class="nc bnc" id="L71" title="All 2 branches missed.">		return first &gt; 0;</span>
+	}
+
+	@Override
+	public int nextFrom() {
+<span class="nc" id="L76">		return first + results.size();</span>
+	}
+
+	@Override
+	public int prevFrom() {
+<span class="nc" id="L81">		return first - numberPerPage;</span>
+	}
+
+	@Override
+	public int first() {
+<span class="nc" id="L86">		return first;</span>
+	}
+
+	@Override
+	public int last() {
+<span class="nc" id="L91">		return first + results.size() - 1;</span>
+	}
+
+	/**
+	 * Return the number of results.
+	 * @return number of results
+	 * @deprecated use ResultsWindow.size()
+	 */
+	@Deprecated
+	public int number() {
+<span class="nc" id="L101">		return results.size();</span>
+	}
+
+	/**
+	 * Return the total number of results
+	 * @return total number of results
+	 * @deprecated use ResultsWindow.sourceSize()
+	 */
+	@Deprecated
+	public int totalResults() {
+<span class="nc" id="L111">		return sourceSize();</span>
+	}
+
+	public DocResults getOriginalDocs() {
+<span class="nc" id="L115">		return source;</span>
+	}
+
+	@Override
+	public int sourceSize() {
+<span class="nc" id="L120">		return source.size();</span>
+	}
+
+	@Override
+	public int sourceTotalSize() {
+<span class="nc" id="L125">		return source.totalSize();</span>
+	}
+
+	@Override
+	public int requestedWindowSize() {
+<span class="nc" id="L130">		return numberPerPage;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

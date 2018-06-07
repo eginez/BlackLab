@@ -1,0 +1,346 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HitPropertyContextWords.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.grouping</a> &gt; <span class="el_source">HitPropertyContextWords.java</span></div><h1>HitPropertyContextWords.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.grouping;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+import nl.inl.blacklab.forwardindex.Terms;
+import nl.inl.blacklab.index.complex.ComplexFieldUtil;
+import nl.inl.blacklab.search.Hits;
+import nl.inl.blacklab.search.Searcher;
+
+/**
+ * A hit property for grouping on the context of the hit. Requires
+ * HitConcordances as input (so we have the hit text available).
+ */
+public class HitPropertyContextWords extends HitProperty {
+
+<span class="fc" id="L33">	final int MAX_HIT_LENGTH = 10;</span>
+
+	/** A location in the hit context to start a stretch of words from. */
+<span class="pc" id="L36">	public enum ContextStart {</span>
+<span class="fc" id="L37">		LEFT_OF_HIT(&quot;L&quot;),          // left context of the hit</span>
+<span class="fc" id="L38">		HIT_TEXT_FROM_START(&quot;H&quot;),  // hit text</span>
+<span class="fc" id="L39">		HIT_TEXT_FROM_END(&quot;E&quot;),    // hit text, backwards from last matched word</span>
+<span class="fc" id="L40">		RIGHT_OF_HIT(&quot;R&quot;);         // right context of the hit</span>
+
+		private String code;
+
+<span class="fc" id="L44">		ContextStart(String code) {</span>
+<span class="fc" id="L45">			this.code = code;</span>
+<span class="fc" id="L46">		}</span>
+
+		@Override
+		public String toString() {
+<span class="fc" id="L50">			return code;</span>
+		}
+	}
+
+	/** A stretch of words from the (surroundings of) the matched text.
+	 *  Note the public members because usage of this object in
+	 *  sorting/grouping is performance-critical.
+	 */
+	public static class ContextPart {
+
+		/*
+		 * More generic:
+		 * - part/dir (left / hit / hitFromEnd / right)
+		 * - startOffset (=firstWord)
+		 * - direction
+		 * - maxLength (terminated by end of part)
+		 */
+
+		public ContextStart startFrom;
+
+		public int firstWord;
+
+		//public int lastWord;
+
+		/** Direction: 1 = default direction, -1 = reverse direction.
+		 *  Default direction is right for ContextStart.HIT_TEXT_FROM_START and ContextStart.RIGHT_OF_HIT,
+		 *  left for ContextStart.HIT_TEXT_FROM_END and ContextStart.LEFT_OF_HIT.
+		 */
+		public int direction;
+
+		public int maxLength;
+
+<span class="fc" id="L82">		public ContextPart(ContextStart startFrom, int firstWord, int lastWord) {</span>
+<span class="fc" id="L83">			this.startFrom = startFrom;</span>
+<span class="fc" id="L84">			this.firstWord = firstWord;</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">			if (lastWord == Integer.MAX_VALUE) {</span>
+<span class="nc" id="L86">				this.direction = 1;</span>
+<span class="nc" id="L87">				this.maxLength = Integer.MAX_VALUE;</span>
+			} else {
+<span class="fc bfc" id="L89" title="All 2 branches covered.">				this.direction = firstWord &lt;= lastWord ? 1 : -1;</span>
+<span class="fc" id="L90">				this.maxLength = Math.abs(firstWord - lastWord) + 1;</span>
+			}
+<span class="fc" id="L92">		}</span>
+
+<span class="nc" id="L94">		public ContextPart(ContextStart startFrom, int firstWord, int direction, int maxLength) {</span>
+<span class="nc" id="L95">			this.startFrom = startFrom;</span>
+<span class="nc" id="L96">			this.firstWord = firstWord;</span>
+<span class="nc" id="L97">			this.direction = direction;</span>
+<span class="nc bnc" id="L98" title="All 2 branches missed.">			this.maxLength = maxLength &lt; 0 ? Integer.MAX_VALUE : maxLength;</span>
+<span class="nc" id="L99">		}</span>
+
+		@Override
+		public String toString() {
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">			return startFrom.toString() + (firstWord + 1) + (maxLength != Integer.MAX_VALUE ? &quot;-&quot; + (firstWord + direction * (maxLength - 1) + 1) : &quot;&quot;);</span>
+		}
+
+		public int getAbsoluteDirection() {
+<span class="fc bfc" id="L107" title="All 4 branches covered.">			boolean defaultRight = startFrom == ContextStart.HIT_TEXT_FROM_START || startFrom == ContextStart.RIGHT_OF_HIT;</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">			return defaultRight ? direction : -direction;</span>
+		}
+	}
+
+	private String luceneFieldName;
+
+	private String propName;
+
+	private boolean sensitive;
+
+	private Searcher searcher;
+
+	private List&lt;ContextPart&gt; words;
+
+	int totalWords;
+
+	public HitPropertyContextWords(Hits hits, String field, String property, boolean sensitive, String wordSpec) {
+<span class="fc" id="L125">		this(hits, field, property, sensitive, parseContextWordSpec(wordSpec));</span>
+<span class="fc" id="L126">	}</span>
+
+	public HitPropertyContextWords(Hits hits, String field, String property, boolean sensitive, List&lt;ContextPart&gt; words) {
+<span class="fc" id="L129">		super(hits);</span>
+<span class="fc" id="L130">		this.searcher = hits.getSearcher();</span>
+<span class="pc bpc" id="L131" title="2 of 4 branches missed.">		if (property == null || property.length() == 0) {</span>
+<span class="nc" id="L132">			this.luceneFieldName = ComplexFieldUtil.mainPropertyField(searcher.getIndexStructure(), field);</span>
+<span class="nc" id="L133">			this.propName = ComplexFieldUtil.getDefaultMainPropName();</span>
+		} else {
+<span class="fc" id="L135">			this.luceneFieldName = ComplexFieldUtil.propertyField(field, property);</span>
+<span class="fc" id="L136">			this.propName = property;</span>
+		}
+<span class="fc" id="L138">		this.sensitive = sensitive;</span>
+<span class="fc" id="L139">		this.words = words;</span>
+<span class="pc bpc" id="L140" title="1 of 2 branches missed.">		if (words == null) {</span>
+			// &quot;entire hit text&quot;
+<span class="nc" id="L142">			this.words = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L143">			this.words.add(new ContextPart(ContextStart.HIT_TEXT_FROM_START, 0, 1, hits.settings().contextSize()));</span>
+		} else {
+			// Determine the maximum length of each part, by limiting it to the
+			// maximum possible given the anchor point, direction and first word.
+<span class="fc bfc" id="L147" title="All 2 branches covered.">			for (ContextPart part: words) {</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">				if (part.direction &lt; 0) {</span>
+					// Reverse direction, so back towards our anchor point.
+<span class="fc" id="L150">					part.maxLength = Math.min(part.maxLength, part.firstWord + 1);</span>
+				} else {
+					// Default direction, so away from our anchor point.
+<span class="pc bfc" id="L153" title="All 2 branches covered.">					switch(part.startFrom) {</span>
+					case HIT_TEXT_FROM_END:
+					case HIT_TEXT_FROM_START:
+						// Limit to length of hit text. We don't know how long the hits will be;
+						// Assume hits won't be more than 10 tokens.
+<span class="fc" id="L158">						part.maxLength = Math.min(part.maxLength, MAX_HIT_LENGTH - part.firstWord);</span>
+<span class="fc" id="L159">						break;</span>
+					default:
+						// Limit to length of left or right context.
+<span class="fc" id="L162">						part.maxLength = Math.min(part.maxLength, hits.settings().contextSize() - part.firstWord);</span>
+						break;
+					}
+<span class="pc bpc" id="L165" title="1 of 2 branches missed.">					if (part.maxLength &lt; 0)</span>
+<span class="nc" id="L166">						part.maxLength = 0;</span>
+				}
+<span class="fc" id="L168">			}</span>
+		}
+		// Add the maximum length of each part so we know the length of the context array needed
+<span class="fc" id="L171">		totalWords = 0;</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">		for (ContextPart contextWordDef: this.words) {</span>
+<span class="fc" id="L173">			totalWords += contextWordDef.maxLength;</span>
+<span class="fc" id="L174">		}</span>
+<span class="fc" id="L175">	}</span>
+
+	@Override
+	public HitPropValueContextWords get(int hitNumber) {
+<span class="fc" id="L179">		int[] context = hits.getHitContext(hitNumber);</span>
+<span class="fc" id="L180">		int contextHitStart = context[Hits.CONTEXTS_HIT_START_INDEX];</span>
+<span class="fc" id="L181">		int contextRightStart = context[Hits.CONTEXTS_RIGHT_START_INDEX];</span>
+<span class="fc" id="L182">		int contextLength = context[Hits.CONTEXTS_LENGTH_INDEX];</span>
+
+<span class="fc" id="L184">		int[] dest = new int[totalWords];</span>
+<span class="fc" id="L185">		int destIndex = 0;</span>
+<span class="fc bfc" id="L186" title="All 2 branches covered.">		for (ContextPart ctxPart: words) {</span>
+			// Determine anchor position, direction to move in, and edge of part (left/hit/right)
+			int srcStartIndex, srcDirection, firstInvalidSrcIndex;
+<span class="fc" id="L189">            srcDirection = ctxPart.getAbsoluteDirection();</span>
+			int firstWordSrcIndex;
+<span class="pc bpc" id="L191" title="1 of 4 branches missed.">			switch (ctxPart.startFrom) {</span>
+			case LEFT_OF_HIT:
+<span class="fc" id="L193">	            srcStartIndex = contextHitStart - 1;  // first word before hit</span>
+<span class="fc" id="L194">				firstWordSrcIndex = srcStartIndex - ctxPart.firstWord;</span>
+<span class="pc bpc" id="L195" title="1 of 2 branches missed.">	            firstInvalidSrcIndex = srcDirection &lt; 0 ? -1 : contextHitStart; // end/start of left context</span>
+<span class="fc" id="L196">				break;</span>
+			case RIGHT_OF_HIT:
+<span class="fc" id="L198">				srcStartIndex = contextRightStart;       // first word after hit</span>
+<span class="fc" id="L199">				firstWordSrcIndex = srcStartIndex + ctxPart.firstWord;</span>
+<span class="pc bpc" id="L200" title="1 of 2 branches missed.">	            firstInvalidSrcIndex = srcDirection &gt; 0 ? contextLength : contextRightStart - 1; // end/start of right context</span>
+<span class="fc" id="L201">				break;</span>
+			case HIT_TEXT_FROM_END:
+<span class="nc" id="L203">				srcStartIndex = contextRightStart - 1; // last hit word</span>
+<span class="nc" id="L204">				firstWordSrcIndex = srcStartIndex - ctxPart.firstWord;</span>
+<span class="nc bnc" id="L205" title="All 2 branches missed.">	            firstInvalidSrcIndex = srcDirection &lt; 0 ? contextHitStart : contextRightStart - 1;  // first/last hit word</span>
+<span class="nc" id="L206">				break;</span>
+			case HIT_TEXT_FROM_START: default:
+<span class="fc" id="L208">				srcStartIndex = contextHitStart;            // first hit word</span>
+<span class="fc" id="L209">				firstWordSrcIndex = srcStartIndex + ctxPart.firstWord;</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">	            firstInvalidSrcIndex = srcDirection &gt; 0 ? contextRightStart : contextHitStart - 1; // last/first hit word</span>
+				break;
+			}
+			// Determine start position, stop position
+<span class="fc" id="L214">			boolean valuesToCopy = true;</span>
+<span class="fc bfc" id="L215" title="All 2 branches covered.">			if (srcDirection &gt; 0) {</span>
+<span class="fc" id="L216">				firstInvalidSrcIndex = Math.min(firstInvalidSrcIndex, srcStartIndex + ctxPart.firstWord + ctxPart.maxLength);</span>
+<span class="pc bpc" id="L217" title="1 of 2 branches missed.">				if (firstWordSrcIndex &gt;= firstInvalidSrcIndex)</span>
+<span class="nc" id="L218">					valuesToCopy = false; // there are no values to copy</span>
+			} else {
+<span class="fc" id="L220">				firstInvalidSrcIndex = Math.max(firstInvalidSrcIndex, srcStartIndex - ctxPart.firstWord - ctxPart.maxLength);</span>
+<span class="fc bfc" id="L221" title="All 2 branches covered.">				if (firstWordSrcIndex &lt;= firstInvalidSrcIndex)</span>
+<span class="fc" id="L222">					valuesToCopy = false; // there are no values to copy</span>
+			}
+			// Copy the words we want to our dest array
+<span class="fc" id="L225">			int valuesCopied = 0;</span>
+<span class="fc" id="L226">			int contextStartIndex = contextLength * contextIndices.get(0) + Hits.CONTEXTS_NUMBER_OF_BOOKKEEPING_INTS;</span>
+<span class="fc bfc" id="L227" title="All 2 branches covered.">			if (valuesToCopy) {</span>
+<span class="fc bfc" id="L228" title="All 2 branches covered.">				for (int srcIndex = firstWordSrcIndex; srcIndex != firstInvalidSrcIndex; srcIndex += srcDirection) {</span>
+<span class="fc" id="L229">					dest[destIndex] = context[contextStartIndex + srcIndex];</span>
+<span class="fc" id="L230">					destIndex++;</span>
+<span class="fc" id="L231">					valuesCopied++;</span>
+				}
+			}
+			// If we don't have enough (e.g. because the hit is shorter), add dummy values
+<span class="fc bfc" id="L235" title="All 2 branches covered.">			for ( ; valuesCopied &lt; ctxPart.maxLength; valuesCopied++) {</span>
+<span class="fc" id="L236">				dest[destIndex] = Terms.NO_TERM;</span>
+<span class="fc" id="L237">				destIndex++;</span>
+			}
+<span class="fc" id="L239">		}</span>
+<span class="fc" id="L240">		return new HitPropValueContextWords(hits, propName, dest, sensitive);</span>
+	}
+
+	// OPT: provide specific compare() method that compares contexts in-place
+
+	@Override
+	public List&lt;String&gt; needsContext() {
+<span class="fc" id="L247">		return Arrays.asList(luceneFieldName);</span>
+	}
+
+	@Override
+	public String getName() {
+<span class="nc" id="L252">		return &quot;left context&quot;;</span>
+	}
+
+	@Override
+	public List&lt;String&gt; getPropNames() {
+<span class="nc" id="L257">		return Arrays.asList(&quot;left context: &quot; + propName);</span>
+	}
+
+	@Override
+	public String serialize() {
+<span class="fc" id="L262">		String[] parts = ComplexFieldUtil.getNameComponents(luceneFieldName);</span>
+<span class="pc bpc" id="L263" title="1 of 2 branches missed.">		String thePropName = parts.length &gt; 1 ? parts[1] : &quot;&quot;;</span>
+<span class="fc" id="L264">		String contextWordSpec = serializeContextWordSpec();</span>
+<span class="pc bpc" id="L265" title="1 of 2 branches missed.">		return serializeReverse() + PropValSerializeUtil.combineParts(&quot;context&quot;, thePropName, sensitive ? &quot;s&quot; : &quot;i&quot;, contextWordSpec);</span>
+	}
+
+	/**
+	 * Build a context word specification from the list of context word definition objects.
+	 * @return context word specification string, e.g. &quot;L1-3,R1-3&quot;
+	 */
+	private String serializeContextWordSpec() {
+<span class="fc" id="L273">		StringBuilder result = new StringBuilder();</span>
+<span class="fc bfc" id="L274" title="All 2 branches covered.">		for (ContextPart contextWordPart: words) {</span>
+<span class="fc bfc" id="L275" title="All 2 branches covered.">			if (result.length() &gt; 0)</span>
+<span class="fc" id="L276">				result.append(&quot;;&quot;);</span>
+<span class="fc" id="L277">			result.append(contextWordPart.toString());</span>
+<span class="fc" id="L278">		}</span>
+<span class="fc" id="L279">		return result.toString();</span>
+	}
+
+	public static HitPropertyContextWords deserialize(Hits hits, String info) {
+<span class="nc" id="L283">		String[] parts = PropValSerializeUtil.splitParts(info);</span>
+<span class="nc" id="L284">		String fieldName = hits.settings().concordanceField();</span>
+<span class="nc" id="L285">		String propName = parts[0];</span>
+<span class="nc bnc" id="L286" title="All 2 branches missed.">		if (propName.length() == 0)</span>
+<span class="nc" id="L287">			propName = ComplexFieldUtil.getDefaultMainPropName();</span>
+<span class="nc bnc" id="L288" title="All 2 branches missed.">		boolean sensitive = parts.length &gt; 1 ? parts[1].equalsIgnoreCase(&quot;s&quot;) : true;</span>
+<span class="nc" id="L289">		List&lt;ContextPart&gt; whichWords = null;</span>
+<span class="nc bnc" id="L290" title="All 2 branches missed.">		if (parts.length &gt; 2)</span>
+<span class="nc" id="L291">			whichWords = parseContextWordSpec(parts[2]);</span>
+<span class="nc bnc" id="L292" title="All 4 branches missed.">		if (fieldName == null || fieldName.length() == 0)</span>
+<span class="nc" id="L293">			return new HitPropertyContextWords(hits, hits.getSearcher().getMainContentsFieldName(), null, sensitive, whichWords);</span>
+<span class="nc" id="L294">		return new HitPropertyContextWords(hits, fieldName, propName, sensitive, whichWords);</span>
+	}
+
+	/** Parse context word specification such as &quot;L1-3,R1-3&quot;
+	 * @param contextWordSpec specification string
+	 * @return stretches of context words indicated in the string
+	 */
+	private static List&lt;ContextPart&gt; parseContextWordSpec(String contextWordSpec) {
+<span class="fc" id="L302">		List&lt;ContextPart&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L303" title="All 2 branches covered.">		for (String part: contextWordSpec.split(&quot;\\s*;\\s*&quot;)) {</span>
+<span class="pc bpc" id="L304" title="1 of 2 branches missed.">			if (part.length() == 0)</span>
+<span class="nc" id="L305">				continue;</span>
+			ContextStart startFrom;
+<span class="pc bpc" id="L307" title="1 of 4 branches missed.">			switch(part.charAt(0)) {</span>
+			case 'L':
+<span class="fc" id="L309">				startFrom = ContextStart.LEFT_OF_HIT;</span>
+<span class="fc" id="L310">				break;</span>
+			case 'E':
+<span class="nc" id="L312">				startFrom = ContextStart.HIT_TEXT_FROM_END;</span>
+<span class="nc" id="L313">				break;</span>
+			case 'R':
+<span class="fc" id="L315">				startFrom = ContextStart.RIGHT_OF_HIT;</span>
+<span class="fc" id="L316">				break;</span>
+			default:
+			case 'H':
+<span class="fc" id="L319">				startFrom = ContextStart.HIT_TEXT_FROM_START;</span>
+				break;
+			}
+<span class="fc" id="L322">			int firstWord = 0;</span>
+<span class="fc" id="L323">			int lastWord = Integer.MAX_VALUE; // == &quot;as much as possible&quot;</span>
+<span class="pc bpc" id="L324" title="1 of 2 branches missed.">			if (part.length() &gt; 1) {</span>
+<span class="fc bfc" id="L325" title="All 2 branches covered.">				if (part.contains(&quot;-&quot;)) {</span>
+					// Two numbers, or a number followed by a dash (&quot;until end of part&quot;)
+<span class="fc" id="L327">					String[] numbers = part.substring(1).split(&quot;\\-&quot;);</span>
+					try {
+<span class="fc" id="L329">						firstWord = Integer.parseInt(numbers[0]) - 1;</span>
+<span class="pc bpc" id="L330" title="1 of 2 branches missed.">						if (numbers.length &gt; 1)</span>
+<span class="fc" id="L331">							lastWord = Integer.parseInt(numbers[1]) - 1;</span>
+<span class="nc" id="L332">					} catch (NumberFormatException e) {</span>
+						// ignore and accept the defaults
+<span class="fc" id="L334">					}</span>
+<span class="fc" id="L335">				} else {</span>
+					// Single number: single word
+<span class="fc" id="L337">					firstWord = lastWord = Integer.parseInt(part.substring(1)) - 1;</span>
+				}
+			}
+<span class="fc" id="L340">			result.add(new ContextPart(startFrom, firstWord, lastWord));</span>
+		}
+<span class="fc" id="L342">		return result;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

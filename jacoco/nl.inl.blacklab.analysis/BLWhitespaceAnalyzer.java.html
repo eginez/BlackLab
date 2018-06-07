@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BLWhitespaceAnalyzer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.analysis</a> &gt; <span class="el_source">BLWhitespaceAnalyzer.java</span></div><h1>BLWhitespaceAnalyzer.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+/**
+ *
+ */
+package nl.inl.blacklab.analysis;
+
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.Tokenizer;
+import org.apache.lucene.analysis.core.LowerCaseFilter;
+import org.apache.lucene.analysis.core.WhitespaceTokenizer;
+
+import nl.inl.blacklab.filter.RemoveAllAccentsFilter;
+import nl.inl.blacklab.index.complex.ComplexFieldUtil;
+
+/**
+ * Simple whitespace analyzer.
+ *
+ * Has the option of analyzing case-/accent-sensitive or -insensitive, depending on the field name.
+ */
+<span class="fc" id="L35">public final class BLWhitespaceAnalyzer extends Analyzer {</span>
+
+	@Override
+	protected TokenStreamComponents createComponents(String fieldName) {
+<span class="nc" id="L39">		Tokenizer source = new WhitespaceTokenizer();</span>
+<span class="nc" id="L40">		TokenStream filter = source;</span>
+<span class="nc" id="L41">		boolean caseSensitive = ComplexFieldUtil.isCaseSensitive(fieldName);</span>
+<span class="nc bnc" id="L42" title="All 2 branches missed.">		if (!caseSensitive)</span>
+		{
+<span class="nc" id="L44">			filter = new LowerCaseFilter(filter);// lowercase all</span>
+		}
+<span class="nc" id="L46">		boolean diacSensitive = ComplexFieldUtil.isDiacriticsSensitive(fieldName);</span>
+<span class="nc bnc" id="L47" title="All 2 branches missed.">		if (!diacSensitive)</span>
+		{
+<span class="nc" id="L49">			filter = new RemoveAllAccentsFilter(filter); // remove accents</span>
+		}
+<span class="nc" id="L51">		return new TokenStreamComponents(source, filter);</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

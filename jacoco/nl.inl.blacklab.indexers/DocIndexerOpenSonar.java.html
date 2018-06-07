@@ -1,0 +1,264 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DocIndexerOpenSonar.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.indexers</a> &gt; <span class="el_source">DocIndexerOpenSonar.java</span></div><h1>DocIndexerOpenSonar.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.indexers;
+
+import java.io.Reader;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Map.Entry;
+
+import org.xml.sax.Attributes;
+
+import nl.inl.blacklab.index.DocIndexerXmlHandlers;
+import nl.inl.blacklab.index.HookableSaxHandler.ContentCapturingHandler;
+import nl.inl.blacklab.index.HookableSaxHandler.ElementHandler;
+import nl.inl.blacklab.index.Indexer;
+import nl.inl.blacklab.index.complex.ComplexFieldProperty;
+import nl.inl.blacklab.index.complex.ComplexFieldUtil;
+
+/**
+ * Index a FoLiA file.
+ * For information about FoLiA, see http://proycon.github.io/folia/
+ */
+public class DocIndexerOpenSonar extends DocIndexerXmlHandlers {
+
+	String wordform;
+
+	String pos;
+
+	String lemma;
+
+<span class="nc" id="L44">	boolean lemPosProblemReported = false;</span>
+
+	/**
+	 * If we have 1 PoS annotation, use pos tags without a set
+	 * attribute. If we have 2, we use pos tags with
+	 * set=&quot;http://ilk.uvt.nl/folia/sets/frog-mbpos-cgn&quot;
+	 */
+<span class="nc" id="L51">	int numPosAnnotations = 0;</span>
+
+	/**
+	 * If we have 1 lemma annotation, use lemma tags without a set
+	 * attribute. If we have 2, we use pos tags with
+	 * set=&quot;http://ilk.uvt.nl/folia/sets/frog-mblem-nl&quot;
+	 */
+<span class="nc" id="L58">	int numLemmaAnnotations = 0;</span>
+
+	/** Are we capturing the features inside a pos element? */
+<span class="nc" id="L61">	boolean capturePosFeatures = false;</span>
+
+	/** The features inside the current pos element, to be indexed as subproperties */
+<span class="nc" id="L64">	Map&lt;String, String&gt; posFeatures = new HashMap&lt;&gt;();</span>
+
+	public DocIndexerOpenSonar(Indexer indexer, String fileName, Reader reader) {
+<span class="nc" id="L67">		super(indexer, fileName, reader);</span>
+
+		// Get handles to the default properties (the main one &amp; punct)
+<span class="nc" id="L70">		final ComplexFieldProperty propMain = getMainProperty();</span>
+<span class="nc" id="L71">		final ComplexFieldProperty propPunct = getPropPunct();</span>
+
+		// Add some extra properties
+<span class="nc" id="L74">		final ComplexFieldProperty propLemma = addProperty(&quot;lemma&quot;);</span>
+<span class="nc" id="L75">		final ComplexFieldProperty propPartOfSpeech = addProperty(&quot;pos&quot;);</span>
+
+		// Doc element: the individual documents to index
+<span class="nc" id="L78">		addHandler(&quot;/FoLiA&quot;, new DocumentElementHandler());</span>
+
+		// PoS annotation metadata: see which annotation we need to use.
+<span class="nc" id="L81">		addHandler(&quot;pos-annotation&quot;, new ElementHandler() {</span>
+			@Override
+			public void startElement(String uri, String localName,
+					String qName, Attributes attributes) {
+<span class="nc" id="L85">				super.startElement(uri, localName, qName, attributes);</span>
+<span class="nc" id="L86">				numPosAnnotations++;</span>
+<span class="nc" id="L87">			}</span>
+		});
+
+		// Lemma annotation metadata: see which annotation we need to use.
+<span class="nc" id="L91">		addHandler(&quot;lemma-annotation&quot;, new ElementHandler() {</span>
+			@Override
+			public void startElement(String uri, String localName,
+					String qName, Attributes attributes) {
+<span class="nc" id="L95">				super.startElement(uri, localName, qName, attributes);</span>
+<span class="nc" id="L96">				numLemmaAnnotations++;</span>
+<span class="nc" id="L97">			}</span>
+		});
+
+		// Word elements: index as main contents
+<span class="nc" id="L101">		addHandler(&quot;w&quot;, new WordHandlerBase() {</span>
+
+			@Override
+			public void startElement(String uri, String localName, String qName,
+					Attributes attributes) {
+<span class="nc" id="L106">				super.startElement(uri, localName, qName, attributes);</span>
+<span class="nc" id="L107">				wordform = &quot;&quot;;</span>
+<span class="nc" id="L108">				pos = &quot;&quot;;</span>
+<span class="nc" id="L109">				lemma = &quot;&quot;;</span>
+<span class="nc" id="L110">			}</span>
+
+			@Override
+			public void endElement(String uri, String localName, String qName) {
+<span class="nc" id="L114">				super.endElement(uri, localName, qName);</span>
+<span class="nc bnc" id="L115" title="All 2 branches missed.">				if (wordform.length() &gt; 0) {</span>
+<span class="nc" id="L116">					propMain.addValue(wordform);</span>
+<span class="nc" id="L117">					propPartOfSpeech.addValue(pos);</span>
+<span class="nc bnc" id="L118" title="All 2 branches missed.">					for (Entry&lt;String, String&gt; e: posFeatures.entrySet()) {</span>
+						// Add the separate PoS features as extra values at this position.
+<span class="nc" id="L120">						String sep = ComplexFieldUtil.SUBPROPERTY_SEPARATOR;</span>
+<span class="nc" id="L121">						propPartOfSpeech.addValue(sep + e.getKey() + sep + e.getValue(), 0);</span>
+<span class="nc" id="L122">					}</span>
+<span class="nc" id="L123">					propLemma.addValue(lemma);</span>
+<span class="nc bnc" id="L124" title="All 6 branches missed.">					if ((pos.length() == 0 || lemma.length() == 0) &amp;&amp; !lemPosProblemReported) {</span>
+<span class="nc" id="L125">						lemPosProblemReported = true;</span>
+<span class="nc" id="L126">						System.err.println(</span>
+							&quot;Word without Pos (set=http://ilk.uvt.nl/folia/sets/frog-mbpos-cgn) and/or lemma (set=http://ilk.uvt.nl/folia/sets/frog-mblem-nl &quot;
+<span class="nc" id="L128">							+ &quot;at &quot; + describePosition());</span>
+					}
+<span class="nc" id="L130">					propPunct.addValue(&quot; &quot;);</span>
+				}
+<span class="nc" id="L132">			}</span>
+		});
+
+		// lemma element: contains lemma
+<span class="nc" id="L136">		addHandler(&quot;lemma&quot;, new ElementHandler() {</span>
+			@Override
+			public void startElement(String uri, String localName, String qName,
+					Attributes attributes) {
+<span class="nc" id="L140">				super.startElement(uri, localName, qName, attributes);</span>
+<span class="nc" id="L141">				String set = attributes.getValue(&quot;set&quot;);</span>
+<span class="nc bnc" id="L142" title="All 4 branches missed.">				boolean isSetLess = set == null || set.length() == 0;</span>
+<span class="nc bnc" id="L143" title="All 4 branches missed.">				boolean isFrog = !isSetLess &amp;&amp; set.equals(&quot;http://ilk.uvt.nl/folia/sets/frog-mblem-nl&quot;);</span>
+<span class="nc bnc" id="L144" title="All 8 branches missed.">				if (numLemmaAnnotations == 2 &amp;&amp; isFrog ||</span>
+					numLemmaAnnotations == 1 &amp;&amp; isSetLess) {
+					// If there were 2 lemma annotation meta declarations,
+					// we should use the frog ones; if only 1, the ones
+					// without a &quot;set&quot; attribute.
+<span class="nc" id="L149">					lemma = attributes.getValue(&quot;class&quot;);</span>
+<span class="nc bnc" id="L150" title="All 2 branches missed.">					if (lemma == null)</span>
+<span class="nc" id="L151">						lemma = &quot;&quot;;</span>
+				}
+<span class="nc" id="L153">			}</span>
+		});
+
+		// pos element: contains part of speech
+<span class="nc" id="L157">		addHandler(&quot;pos&quot;, new ElementHandler() {</span>
+			@Override
+			public void startElement(String uri, String localName, String qName,
+					Attributes attributes) {
+<span class="nc" id="L161">				super.startElement(uri, localName, qName, attributes);</span>
+<span class="nc" id="L162">				String set = attributes.getValue(&quot;set&quot;);</span>
+<span class="nc bnc" id="L163" title="All 4 branches missed.">				boolean isSetLess = set == null || set.length() == 0;</span>
+<span class="nc bnc" id="L164" title="All 4 branches missed.">				boolean isFrog = !isSetLess &amp;&amp; set.equals(&quot;http://ilk.uvt.nl/folia/sets/frog-mbpos-cgn&quot;);</span>
+<span class="nc bnc" id="L165" title="All 8 branches missed.">				if (numPosAnnotations == 2 &amp;&amp; isFrog ||</span>
+					numPosAnnotations == 1 &amp;&amp; isSetLess) {
+					// If there were 2 pos annotation meta declarations,
+					// we should use the frog ones; if only 1, the ones
+					// without a &quot;set&quot; attribute.
+<span class="nc" id="L170">					pos = attributes.getValue(&quot;class&quot;);</span>
+<span class="nc bnc" id="L171" title="All 2 branches missed.">					if (pos == null)</span>
+<span class="nc" id="L172">						pos = &quot;&quot;;</span>
+					// Capture the features inside this pos element (and add the head PoS now)
+<span class="nc" id="L174">					capturePosFeatures = true;</span>
+<span class="nc" id="L175">					posFeatures.clear();</span>
+<span class="nc bnc" id="L176" title="All 2 branches missed.">					String posHead = pos.contains(&quot;(&quot;) ? pos.substring(0, pos.indexOf(&quot;(&quot;)).trim() : pos;</span>
+<span class="nc" id="L177">					posFeatures.put(&quot;head&quot;, posHead);</span>
+				}
+<span class="nc" id="L179">			}</span>
+
+			@Override
+			public void endElement(String uri, String localName, String qName) {
+<span class="nc" id="L183">				capturePosFeatures = false; // we have all the features</span>
+<span class="nc" id="L184">				super.endElement(uri, localName, qName);</span>
+<span class="nc" id="L185">			}</span>
+
+		});
+
+		// pos/feat element: contains a part of speech feature
+<span class="nc" id="L190">		addHandler(&quot;pos/feat&quot;, new ElementHandler() {</span>
+			@Override
+			public void startElement(String uri, String localName, String qName,
+					Attributes attributes) {
+<span class="nc" id="L194">				super.startElement(uri, localName, qName, attributes);</span>
+<span class="nc bnc" id="L195" title="All 2 branches missed.">				if (capturePosFeatures) {</span>
+<span class="nc" id="L196">					String featSubset = attributes.getValue(&quot;subset&quot;);</span>
+<span class="nc" id="L197">					String featClass = attributes.getValue(&quot;class&quot;);</span>
+<span class="nc" id="L198">					posFeatures.put(featSubset, featClass);</span>
+				}
+<span class="nc" id="L200">			}</span>
+		});
+
+		// t (token) element directly under w (word) element: contains the word form
+<span class="nc" id="L204">		addHandler(&quot;w/t&quot;, new ContentCapturingHandler() {</span>
+
+			/** Tokens with a class attribute are (usually?) the original scanned token before correction,
+			 *  so we skip them */
+			boolean isOcr;
+
+			@Override
+			public void startElement(String uri, String localName, String qName,
+					Attributes attributes) {
+<span class="nc" id="L213">				super.startElement(uri, localName, qName, attributes);</span>
+<span class="nc bnc" id="L214" title="All 2 branches missed.">				isOcr = attributes.getValue(&quot;class&quot;) != null;</span>
+<span class="nc" id="L215">			}</span>
+
+			@Override
+			public void endElement(String uri, String localName, String qName) {
+<span class="nc" id="L219">				super.endElement(uri, localName, qName);</span>
+<span class="nc bnc" id="L220" title="All 2 branches missed.">				if (!isOcr)</span>
+<span class="nc" id="L221">					wordform = getElementContent();</span>
+<span class="nc" id="L222">			}</span>
+		});
+
+		// Sentence tags: index as tags in the content
+<span class="nc" id="L226">		addHandler(&quot;s&quot;, new InlineTagHandler());</span>
+
+		// Paragraph tags: index as tags in the content
+<span class="nc" id="L229">		addHandler(&quot;p&quot;, new InlineTagHandler());</span>
+
+		// &lt;event/&gt; tags: index as tags in the content
+<span class="nc" id="L232">		addHandler(&quot;event&quot;, new InlineTagHandler());</span>
+
+		// meta elements: metadata fields
+		// [NOT USED FOR OPENSONAR..?]
+<span class="nc" id="L236">		addHandler(&quot;meta&quot;, new ContentCapturingHandler() {</span>
+
+
+			private String metadataFieldName;
+
+			/** Open tag: add metadata field */
+			@Override
+			public void startElement(String uri, String localName, String qName, Attributes attributes) {
+<span class="nc" id="L244">				super.startElement(uri, localName, qName, attributes);</span>
+<span class="nc" id="L245">				metadataFieldName = attributes.getValue(&quot;id&quot;);</span>
+<span class="nc" id="L246">			}</span>
+
+			@Override
+			public void endElement(String uri, String localName, String qName) {
+<span class="nc" id="L250">				super.endElement(uri, localName, qName);</span>
+<span class="nc bnc" id="L251" title="All 2 branches missed.">				if (metadataFieldName != null)</span>
+<span class="nc" id="L252">					addMetadataField(metadataFieldName, getElementContent());</span>
+<span class="nc" id="L253">			}</span>
+		});
+<span class="nc" id="L255">	}</span>
+
+	public static void main(String[] args) {
+<span class="nc" id="L258">		System.out.println(&quot;NL B&quot;.replaceAll(&quot;[\\s\\./]&quot;, &quot;_&quot;));</span>
+<span class="nc" id="L259">		System.out.println(&quot;NL/B&quot;.replaceAll(&quot;[\\s\\./]&quot;, &quot;_&quot;));</span>
+<span class="nc" id="L260">		System.out.println(&quot;a.b.c.d&quot;.replaceAll(&quot;[\\s\\./]&quot;, &quot;_&quot;));</span>
+<span class="nc" id="L261">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

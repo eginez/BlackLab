@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TextPatternAnyToken.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search</a> &gt; <span class="el_source">TextPatternAnyToken.java</span></div><h1>TextPatternAnyToken.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search;
+
+import nl.inl.blacklab.search.lucene.BLSpanQuery;
+import nl.inl.blacklab.search.lucene.SpanQueryAnyToken;
+
+/**
+ * A 'gap' of a number of tokens we don't care about, with minimum and maximum length.
+ *
+ * This may be used to implement a 'wildcard' token in a pattern language.
+ */
+public class TextPatternAnyToken extends TextPattern {
+	/*
+	 * The minimum number of tokens in this stretch.
+	 */
+	protected int min;
+
+	/*
+	 * The maximum number of tokens in this stretch.
+	 */
+	protected int max;
+
+<span class="fc" id="L37">	public TextPatternAnyToken(int min, int max) {</span>
+<span class="fc" id="L38">		this.min = min;</span>
+<span class="fc" id="L39">		this.max = max;</span>
+<span class="fc" id="L40">	}</span>
+
+	public TextPattern repeat(int nmin, int nmax) {
+<span class="pc bpc" id="L43" title="1 of 4 branches missed.">		if (nmin == 1 &amp;&amp; nmax == 1)</span>
+<span class="nc" id="L44">			return this;</span>
+<span class="pc bpc" id="L45" title="1 of 4 branches missed.">		if (min == 1 &amp;&amp; max == 1) {</span>
+<span class="fc" id="L46">			return new TextPatternAnyToken(nmin, nmax);</span>
+		}
+<span class="fc" id="L48">		return new TextPatternRepetition(this, nmin, nmax);</span>
+	}
+
+	@Override
+	public BLSpanQuery translate(QueryExecutionContext context) {
+<span class="fc" id="L53">		SpanQueryAnyToken result = new SpanQueryAnyToken(min, max, context.luceneField());</span>
+<span class="fc" id="L54">		result.setAlwaysHasClosingToken(context.alwaysHasClosingToken());</span>
+<span class="fc" id="L55">		return result;</span>
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+<span class="nc bnc" id="L60" title="All 2 branches missed.">		if (obj instanceof TextPatternAnyToken) {</span>
+<span class="nc" id="L61">			TextPatternAnyToken tp = ((TextPatternAnyToken) obj);</span>
+<span class="nc bnc" id="L62" title="All 4 branches missed.">			return min == tp.min &amp;&amp; max == tp.max;</span>
+		}
+<span class="nc" id="L64">		return false;</span>
+	}
+
+	@Override
+	public int hashCode() {
+<span class="nc" id="L69">		return min + 31 * max;</span>
+	}
+
+	@Deprecated
+	@Override
+	public String toString(QueryExecutionContext context) {
+<span class="nc" id="L75">		return toString();</span>
+	}
+
+	@Override
+	public String toString() {
+<span class="fc" id="L80">		return &quot;ANYTOKEN(&quot; + min + &quot;, &quot; + max + &quot;)&quot;;</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

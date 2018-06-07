@@ -1,0 +1,1731 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HitsImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search</a> &gt; <span class="el_source">HitsImpl.java</span></div><h1>HitsImpl.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Set;
+import java.util.TreeMap;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.index.TermContext;
+import org.apache.lucene.search.BooleanQuery.TooManyClauses;
+import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.search.spans.SpanQuery;
+import org.apache.lucene.search.spans.SpanWeight;
+import org.apache.lucene.search.spans.SpanWeight.Postings;
+import org.apache.lucene.search.spans.Spans;
+import org.eclipse.collections.api.map.primitive.MutableIntIntMap;
+import org.eclipse.collections.api.map.primitive.MutableIntObjectMap;
+import org.eclipse.collections.api.tuple.primitive.IntIntPair;
+import org.eclipse.collections.impl.factory.primitive.IntIntMaps;
+import org.eclipse.collections.impl.factory.primitive.IntObjectMaps;
+
+import nl.inl.blacklab.forwardindex.ForwardIndex;
+import nl.inl.blacklab.forwardindex.Terms;
+import nl.inl.blacklab.highlight.XmlHighlighter;
+import nl.inl.blacklab.index.complex.ComplexFieldUtil;
+import nl.inl.blacklab.search.grouping.HitProperty;
+import nl.inl.blacklab.search.lucene.BLSpanQuery;
+import nl.inl.blacklab.search.lucene.BLSpans;
+import nl.inl.util.StringUtil;
+import nl.inl.util.ThreadPriority;
+
+/**
+ * Represents a list of Hit objects. Also maintains information about the context (concordance)
+ * information stored in the Hit objects.
+ */
+public class HitsImpl extends Hits {
+
+<span class="fc" id="L65">	protected static final Logger logger = LogManager.getLogger(HitsImpl.class);</span>
+
+	/**
+	 * The hits.
+	 */
+	protected List&lt;Hit&gt; hits;
+
+	/**
+	 * The captured groups, if we have any.
+	 */
+	protected Map&lt;Hit, Span[]&gt; capturedGroups;
+
+	/**
+	 * The hit contexts.
+	 *
+	 * There may be multiple contexts for each hit (see contextFieldsPropName).
+	 * Each int array starts with three bookkeeping integers, followed by the contexts information.
+	 * The bookkeeping integers are:
+	 * * 0 = hit start, index of the hit word (and length of the left context), counted from the start the context
+	 * * 1 = right start, start of the right context, counted from the start the context
+	 * * 2 = context length, length of 1 context. As stated above, there may be multiple contexts.
+	 *
+	 * The first context therefore starts at index 3.
+	 *
+	 */
+	private int[][] contexts;
+
+	/**
+	 * The current context size (number of words around hits we now have).
+	 */
+	private int currentContextSize;
+
+	/**
+	 * The sort order, if we've sorted, or null if not
+	 */
+	Integer[] sortOrder;
+
+	/**
+	 * The KWIC data, if it has been retrieved.
+	 *
+	 * NOTE: this will always be null if not all the hits have been retrieved.
+	 */
+	protected Map&lt;Hit, Kwic&gt; kwics;
+
+	/**
+	 * The concordances, if they have been retrieved.
+	 *
+	 * NOTE: when making concordances from the forward index, this will
+	 * always be null, because Kwics will be used internally. This is
+	 * only used when making concordances from the content store (the old
+	 * default).
+	 */
+	Map&lt;Hit, Concordance&gt; concordances;
+
+	/**
+	 * If we have context information, this specifies the property (i.e. word, lemma, pos) the context came from.
+	 * Otherwise, it is null.
+	 */
+	protected List&lt;String&gt; contextFieldsPropName;
+
+	/**
+	 * Our SpanQuery.
+	 */
+	protected BLSpanQuery spanQuery;
+
+	/** The SpanWeight for our SpanQuery, from which we can get the next Spans when the current one's done. */
+	private SpanWeight weight;
+
+	/**
+	 * The LeafReaderContexts we should query in succession.
+	 */
+	protected List&lt;LeafReaderContext&gt; atomicReaderContexts;
+
+	/**
+	 * What LeafReaderContext we're querying now.
+	 */
+<span class="pc" id="L141">	protected int atomicReaderContextIndex = -1;</span>
+
+	/**
+	 * Term contexts for the terms in the query.
+	 */
+	private Map&lt;Term, TermContext&gt; termContexts;
+
+	/**
+	 * docBase of the segment we're currently in
+	 */
+	protected int currentDocBase;
+
+	/**
+	 * Our Spans object, which may not have been fully read yet.
+	 */
+	protected BLSpans currentSourceSpans;
+
+	/**
+	 * Did we completely read our Spans object?
+	 */
+<span class="pc" id="L161">	protected boolean sourceSpansFullyRead = true;</span>
+
+	/**
+	 * If true, we've stopped retrieving hits because there are more than
+	 * the maximum we've set.
+	 */
+<span class="pc" id="L167">	private boolean maxHitsRetrieved = false;</span>
+
+	/**
+	 * If true, we've stopped counting hits because there are more than
+	 * the maximum we've set.
+	 */
+<span class="pc" id="L173">	private boolean maxHitsCounted = false;</span>
+
+	/**
+	 * The number of hits we've seen and counted so far. May be more than
+	 * the number of hits we've retrieved if that exceeds maxHitsToRetrieve.
+	 */
+<span class="pc" id="L179">	protected int hitsCounted = 0;</span>
+
+	/**
+	 * The number of separate documents we've seen in the hits retrieved.
+	 */
+<span class="pc" id="L184">	protected int docsRetrieved = 0;</span>
+
+	/**
+	 * The number of separate documents we've counted so far (includes non-retrieved hits).
+	 */
+<span class="pc" id="L189">	protected int docsCounted = 0;</span>
+
+	/**
+	 * Document the previous hit was in, so we can count separate documents.
+	 */
+<span class="pc" id="L194">	protected int previousHitDoc = -1;</span>
+
+	@Override
+	public Hits copy() {
+<span class="nc" id="L198">		return new HitsImpl(this);</span>
+	}
+
+	/**
+	 * Construct a Hits object from an existing Hits object.
+	 *
+	 * The same hits list is reused. Context and sort order are
+	 * not copied. All other fields are.
+	 *
+	 * @param copyFrom the Hits object to copy
+	 */
+	private HitsImpl(HitsImpl copyFrom) {
+<span class="nc" id="L210">		super(copyFrom.searcher);</span>
+		try {
+<span class="nc" id="L212">			copyFrom.ensureAllHitsRead();</span>
+<span class="nc" id="L213">		} catch (InterruptedException e) {</span>
+			// (should be detected by the client)
+<span class="nc" id="L215">		}</span>
+<span class="nc" id="L216">		hits = copyFrom.hits;</span>
+<span class="nc" id="L217">		kwics = copyFrom.kwics;</span>
+<span class="nc" id="L218">		sourceSpansFullyRead = true;</span>
+<span class="nc" id="L219">		hitsCounted = copyFrom.countSoFarHitsCounted();</span>
+<span class="nc" id="L220">		docsRetrieved = copyFrom.countSoFarDocsRetrieved();</span>
+<span class="nc" id="L221">		docsCounted = copyFrom.countSoFarDocsCounted();</span>
+<span class="nc" id="L222">		previousHitDoc = copyFrom.previousHitDoc;</span>
+
+<span class="nc" id="L224">		copySettingsFrom(copyFrom);</span>
+
+<span class="nc" id="L226">		currentContextSize = -1; // context is not copied</span>
+<span class="nc" id="L227">		etiquette = new ThreadPriority();</span>
+<span class="nc" id="L228">	}</span>
+
+	/**
+	 * Make a wrapper Hits object for a list of Hit objects.
+	 *
+	 * Does not copy the list, but reuses it.
+	 *
+	 * @param searcher
+	 *            the searcher object
+	 * @param concordanceFieldName
+	 *            field to use by default when finding concordances
+	 * @param hits the list of hits to wrap
+	 */
+	HitsImpl(Searcher searcher, List&lt;Hit&gt; hits) {
+<span class="fc" id="L242">		super(searcher);</span>
+<span class="fc bfc" id="L243" title="All 2 branches covered.">		this.hits = hits == null ? new ArrayList&lt;&gt;() : hits;</span>
+<span class="fc" id="L244">		hitsCounted = this.hits.size();</span>
+<span class="fc" id="L245">		currentContextSize = -1;</span>
+<span class="fc" id="L246">		int prevDoc = -1;</span>
+<span class="fc" id="L247">		docsRetrieved = docsCounted = 0;</span>
+<span class="fc bfc" id="L248" title="All 2 branches covered.">		for (Hit h: this.hits) {</span>
+<span class="fc bfc" id="L249" title="All 2 branches covered.">			if (h.doc != prevDoc) {</span>
+<span class="fc" id="L250">				docsRetrieved++;</span>
+<span class="fc" id="L251">				docsCounted++;</span>
+<span class="fc" id="L252">				prevDoc = h.doc;</span>
+			}
+<span class="fc" id="L254">		}</span>
+<span class="fc" id="L255">		etiquette = new ThreadPriority();</span>
+<span class="fc" id="L256">	}</span>
+
+	/**
+	 * Make a wrapper Hits object for a list of Hit objects.
+	 *
+	 * Does not copy the list, but reuses it.
+	 *
+	 * @param searcher
+	 *            the searcher object
+	 * @param concordanceFieldName
+	 *            field to use by default when finding concordances
+	 * @param hits the list of hits to wrap
+	 * @deprecated if you need a different concordance field, set it manually
+	 */
+	@Deprecated
+	HitsImpl(Searcher searcher, String concordanceFieldName, List&lt;Hit&gt; hits) {
+<span class="fc" id="L272">		this(searcher, hits);</span>
+<span class="fc" id="L273">		settings.setConcordanceField(concordanceFieldName);</span>
+<span class="fc" id="L274">	}</span>
+
+	/**
+	 * Construct a Hits object from a SpanQuery.
+	 *
+	 * @param searcher
+	 *            the searcher object
+	 * @param concordanceFieldPropName
+	 *            field to use by default when finding concordances
+	 * @param sourceQuery
+	 *            the query to execute to get the hits
+	 * @throws TooManyClauses if the query is overly broad (expands to too many terms)
+	 */
+	HitsImpl(Searcher searcher, SpanQuery sourceQuery) throws TooManyClauses {
+<span class="fc" id="L288">		this(searcher, (List&lt;Hit&gt;)null);</span>
+		try {
+<span class="fc" id="L290">			IndexReader reader = searcher.getIndexReader();</span>
+<span class="pc bpc" id="L291" title="1 of 2 branches missed.">			if (!(sourceQuery instanceof BLSpanQuery))</span>
+<span class="nc" id="L292">				throw new IllegalArgumentException(&quot;Supplied query must be a BLSpanQuery!&quot;);</span>
+
+<span class="pc bpc" id="L294" title="1 of 2 branches missed.">			if (Searcher.traceQueryExecution) logger.debug(&quot;HitsImpl(): optimize&quot;);</span>
+<span class="fc" id="L295">			BLSpanQuery optimize = ((BLSpanQuery)sourceQuery).optimize(reader);</span>
+
+<span class="pc bpc" id="L297" title="1 of 2 branches missed.">			if (Searcher.traceQueryExecution) logger.debug(&quot;HitsImpl(): rewrite&quot;);</span>
+<span class="fc" id="L298">			spanQuery = optimize.rewrite(reader);</span>
+
+			//System.err.println(spanQuery);
+<span class="fc" id="L301">			termContexts = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L302">			Set&lt;Term&gt; terms = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L303">			spanQuery = BLSpanQuery.ensureSortedUnique(spanQuery);</span>
+<span class="pc bpc" id="L304" title="1 of 2 branches missed.">			if (Searcher.traceQueryExecution) logger.debug(&quot;HitsImpl(): createWeight&quot;);</span>
+<span class="fc" id="L305">			weight = spanQuery.createWeight(searcher.getIndexSearcher(), false);</span>
+<span class="fc" id="L306">			weight.extractTerms(terms);</span>
+<span class="fc" id="L307">			etiquette = new ThreadPriority();</span>
+<span class="pc bpc" id="L308" title="1 of 2 branches missed.">			if (Searcher.traceQueryExecution) logger.debug(&quot;HitsImpl(): extract terms&quot;);</span>
+<span class="fc bfc" id="L309" title="All 2 branches covered.">			for (Term term: terms) {</span>
+				try {
+<span class="fc" id="L311">					etiquette.behave();</span>
+<span class="nc" id="L312">				} catch (InterruptedException e) {</span>
+					// Taking too long, break it off.
+					// Not a very graceful way to do it... but at least it won't
+					// be stuck forever.
+<span class="nc" id="L316">					Thread.currentThread().interrupt(); // client can check this</span>
+<span class="nc" id="L317">					throw new RuntimeException(&quot;Query matches too many terms; aborted.&quot;);</span>
+<span class="fc" id="L318">				}</span>
+<span class="fc" id="L319">				termContexts.put(term, TermContext.build(reader.getContext(), term));</span>
+<span class="fc" id="L320">			}</span>
+
+<span class="fc" id="L322">			currentSourceSpans = null;</span>
+<span class="fc bfc" id="L323" title="All 2 branches covered.">			atomicReaderContexts = reader == null ? null : reader.leaves();</span>
+<span class="fc" id="L324">			atomicReaderContextIndex = -1;</span>
+<span class="nc" id="L325">		} catch (IOException e) {</span>
+<span class="nc" id="L326">			throw new RuntimeException(e);</span>
+<span class="fc" id="L327">		}</span>
+
+<span class="fc" id="L329">		sourceSpansFullyRead = false;</span>
+<span class="pc bpc" id="L330" title="1 of 2 branches missed.">		if (Searcher.traceQueryExecution) logger.debug(&quot;HitsImpl(): done&quot;);</span>
+<span class="fc" id="L331">	}</span>
+
+	/**
+	 * Construct a Hits object from a SpanQuery.
+	 *
+	 * @param searcher
+	 *            the searcher object
+	 * @param concordanceFieldPropName
+	 *            field to use by default when finding concordances
+	 * @param sourceQuery
+	 *            the query to execute to get the hits
+	 * @throws TooManyClauses if the query is overly broad (expands to too many terms)
+	 * @deprecated if you need a different concordance field, set it manually
+	 */
+	@Deprecated
+	HitsImpl(Searcher searcher, String concordanceFieldPropName, SpanQuery sourceQuery)
+			throws TooManyClauses {
+<span class="nc" id="L348">		this(searcher, sourceQuery);</span>
+<span class="nc" id="L349">		settings.setConcordanceField(concordanceFieldPropName);</span>
+<span class="nc" id="L350">	}</span>
+
+	/**
+	 * Construct a Hits object from a Spans.
+	 *
+	 * If possible, don't use this constructor, use the one that takes
+	 * a SpanQuery, as it's more efficient.
+	 *
+	 * Note that the Spans provided must be start-point sorted and contain unique hits.
+	 *
+	 * @param searcher
+	 *            the searcher object
+	 * @param source
+	 *            where to retrieve the Hit objects from
+	 */
+	HitsImpl(Searcher searcher, BLSpans source) {
+<span class="nc" id="L366">		this(searcher, (List&lt;Hit&gt;)null);</span>
+
+<span class="nc" id="L368">		currentSourceSpans = source;</span>
+		try {
+<span class="nc bnc" id="L370" title="All 2 branches missed.">			sourceSpansFullyRead = currentSourceSpans.nextDoc() != DocIdSetIterator.NO_MORE_DOCS;</span>
+<span class="nc" id="L371">		} catch (IOException e) {</span>
+<span class="nc" id="L372">			throw new RuntimeException(e);</span>
+<span class="nc" id="L373">		}</span>
+<span class="nc" id="L374">	}</span>
+
+	/**
+	 * Construct a Hits object from a Spans.
+	 *
+	 * If possible, don't use this constructor, use the one that takes
+	 * a SpanQuery, as it's more efficient.
+	 *
+	 * @param searcher
+	 *            the searcher object
+	 * @param concordanceFieldPropName
+	 *            field to use by default when finding concordances
+	 * @param source
+	 *            where to retrieve the Hit objects from
+	 * @deprecated if you need a different concordance field, set it manually
+	 */
+	@Deprecated
+	HitsImpl(Searcher searcher, String concordanceFieldPropName, BLSpans source) {
+<span class="nc" id="L392">		this(searcher, source);</span>
+<span class="nc" id="L393">		settings.setConcordanceField(concordanceFieldPropName);</span>
+<span class="nc" id="L394">	}</span>
+
+	/** Sets the desired context size.
+	 * @param contextSize the context size (number of words to fetch around hits)
+	 * @deprecated use settings().setContextSize()
+	 */
+	@Override
+	@Deprecated
+	public synchronized void setContextSize(int contextSize) {
+<span class="nc" id="L403">		settings().setContextSize(contextSize);</span>
+<span class="nc" id="L404">	}</span>
+
+	/**
+	 * Did we stop retrieving hits because we reached the maximum?
+	 * @return true if we reached the maximum and stopped retrieving hits
+	 */
+	@Override
+	public boolean maxHitsRetrieved() {
+<span class="fc" id="L412">		return maxHitsRetrieved;</span>
+	}
+
+	/**
+	 * Did we stop counting hits because we reached the maximum?
+	 * @return true if we reached the maximum and stopped counting hits
+	 */
+	@Override
+	public boolean maxHitsCounted() {
+<span class="fc" id="L421">		return maxHitsCounted;</span>
+	}
+
+	private void ensureAllHitsRead() throws InterruptedException {
+<span class="fc" id="L425">		ensureHitsRead(-1);</span>
+<span class="fc" id="L426">	}</span>
+
+	/**
+	 * Ensure that we have read at least as many hits as specified in the parameter.
+	 *
+	 * @param number the minimum number of hits that will have been read when this method
+	 *   returns (unless there are fewer hits than this); if negative, reads all hits
+	 * @throws InterruptedException if the thread was interrupted during this operation
+	 */
+	void ensureHitsRead(int number) throws InterruptedException {
+<span class="fc bfc" id="L436" title="All 6 branches covered.">		if (sourceSpansFullyRead || (number &gt;= 0 &amp;&amp; hits.size() &gt;= number))</span>
+<span class="fc" id="L437">			return;</span>
+
+<span class="fc" id="L439">		synchronized (this) {</span>
+<span class="fc bfc" id="L440" title="All 2 branches covered.">			boolean readAllHits = number &lt; 0;</span>
+			try {
+<span class="fc" id="L442">				int maxHitsToCount = settings.maxHitsToCount();</span>
+<span class="fc" id="L443">				int maxHitsToRetrieve = settings.maxHitsToRetrieve();</span>
+<span class="fc bfc" id="L444" title="All 4 branches covered.">				while (readAllHits || hits.size() &lt; number) {</span>
+
+					// Don't hog the CPU, don't take too long
+<span class="fc" id="L447">					etiquette.behave();</span>
+
+					// Stop if we're at the maximum number of hits we want to count
+<span class="pc bpc" id="L450" title="3 of 4 branches missed.">					if (maxHitsToCount &gt;= 0 &amp;&amp; hitsCounted &gt;= maxHitsToCount) {</span>
+<span class="nc" id="L451">						maxHitsCounted = true;</span>
+<span class="nc" id="L452">						break;</span>
+					}
+
+					// Get the next hit from the spans, moving to the next
+					// segment when necessary.
+					while (true) {
+<span class="fc bfc" id="L458" title="All 2 branches covered.">						while (currentSourceSpans == null) {</span>
+							// Exhausted (or not started yet); get next segment spans.
+
+<span class="pc bpc" id="L461" title="1 of 2 branches missed.">							if (spanQuery == null) {</span>
+								// We started from a Spans, not a SpanQuery. We're done now.
+								// (only used in deprecated methods or while testing)
+<span class="nc" id="L464">								return;</span>
+							}
+
+<span class="fc" id="L467">							atomicReaderContextIndex++;</span>
+<span class="fc bfc" id="L468" title="All 4 branches covered.">							if (atomicReaderContexts != null &amp;&amp; atomicReaderContextIndex &gt;= atomicReaderContexts.size()) {</span>
+<span class="fc" id="L469">								sourceSpansFullyRead = true;</span>
+<span class="fc" id="L470">								return;</span>
+							}
+<span class="fc bfc" id="L472" title="All 2 branches covered.">							if (atomicReaderContexts != null) {</span>
+								// Get the atomic reader context and get the next Spans from it.
+<span class="fc" id="L474">								LeafReaderContext context = atomicReaderContexts.get(atomicReaderContextIndex);</span>
+<span class="fc" id="L475">								currentDocBase = context.docBase;</span>
+<span class="fc" id="L476">								BLSpans spans = (BLSpans) weight.getSpans(context, Postings.OFFSETS);</span>
+<span class="fc" id="L477">								currentSourceSpans = spans; //BLSpansWrapper.optWrapSortUniq(spans);</span>
+<span class="fc" id="L478">							} else {</span>
+								// TESTING
+<span class="fc" id="L480">								currentDocBase = 0;</span>
+<span class="fc bfc" id="L481" title="All 2 branches covered.">								if (atomicReaderContextIndex &gt; 0) {</span>
+<span class="fc" id="L482">									sourceSpansFullyRead = true;</span>
+<span class="fc" id="L483">									return;</span>
+								}
+<span class="fc" id="L485">								BLSpans spans = (BLSpans) weight.getSpans(null, Postings.OFFSETS);</span>
+<span class="fc" id="L486">								currentSourceSpans = spans; //BLSpansWrapper.optWrapSortUniq(spans);</span>
+							}
+
+<span class="fc bfc" id="L489" title="All 2 branches covered.">							if (currentSourceSpans != null) {</span>
+								// Update the hit query context with our new spans,
+								// and notify the spans of the hit query context
+								// (TODO: figure out if we need to call setHitQueryContext()
+								//    for each segment or not; if it's just about capture groups
+								//    registering themselves, we only need that for the first Spans.
+								//    But it's probably required for backreferences, etc. anyway,
+								//    and there won't be that many segments, so it's probably ok)
+<span class="fc" id="L497">								hitQueryContext.setSpans(currentSourceSpans);</span>
+<span class="fc" id="L498">								currentSourceSpans.setHitQueryContext(hitQueryContext); // let captured groups register themselves</span>
+<span class="pc bpc" id="L499" title="1 of 4 branches missed.">								if (capturedGroups == null &amp;&amp; hitQueryContext.numberOfCapturedGroups() &gt; 0) {</span>
+<span class="fc" id="L500">									capturedGroups = new HashMap&lt;&gt;();</span>
+								}
+
+<span class="fc" id="L503">								int doc = currentSourceSpans.nextDoc();</span>
+<span class="fc bfc" id="L504" title="All 2 branches covered.">								if (doc == DocIdSetIterator.NO_MORE_DOCS)</span>
+<span class="fc" id="L505">									currentSourceSpans = null; // no matching docs in this segment, try next</span>
+<span class="fc" id="L506">							}</span>
+						}
+
+						// Advance to next hit
+<span class="fc" id="L510">						int start = currentSourceSpans.nextStartPosition();</span>
+<span class="fc bfc" id="L511" title="All 2 branches covered.">						if (start == Spans.NO_MORE_POSITIONS) {</span>
+<span class="fc" id="L512">							int doc = currentSourceSpans.nextDoc();</span>
+<span class="fc bfc" id="L513" title="All 2 branches covered.">							if (doc != DocIdSetIterator.NO_MORE_DOCS) {</span>
+								// Go to first hit in doc
+<span class="fc" id="L515">								start = currentSourceSpans.nextStartPosition();</span>
+							} else {
+								// This one is exhausted; go to the next one.
+<span class="fc" id="L518">								currentSourceSpans = null;</span>
+							}
+						}
+<span class="fc bfc" id="L521" title="All 2 branches covered.">						if (currentSourceSpans != null) {</span>
+							// We're at the next hit.
+<span class="fc" id="L523">							break;</span>
+						}
+<span class="fc" id="L525">					}</span>
+
+					// Count the hit and add it (unless we've reached the maximum number of hits we
+					// want)
+<span class="fc" id="L529">					hitsCounted++;</span>
+<span class="fc" id="L530">					int hitDoc = currentSourceSpans.docID() + currentDocBase;</span>
+<span class="fc bfc" id="L531" title="All 2 branches covered.">					if (hitDoc != previousHitDoc) {</span>
+<span class="fc" id="L532">						docsCounted++;</span>
+<span class="pc bpc" id="L533" title="1 of 2 branches missed.">						if (!maxHitsRetrieved)</span>
+<span class="fc" id="L534">							docsRetrieved++;</span>
+<span class="fc" id="L535">						previousHitDoc = hitDoc;</span>
+					}
+<span class="pc bpc" id="L537" title="2 of 4 branches missed.">					maxHitsRetrieved = maxHitsToRetrieve &gt;= 0 &amp;&amp; hits.size() &gt;= maxHitsToRetrieve;</span>
+<span class="pc bpc" id="L538" title="1 of 2 branches missed.">					if (!maxHitsRetrieved) {</span>
+<span class="fc" id="L539">						Hit hit = currentSourceSpans.getHit();</span>
+<span class="fc" id="L540">						Hit offsetHit = new Hit(hit.doc + currentDocBase, hit.start, hit.end);</span>
+<span class="fc bfc" id="L541" title="All 2 branches covered.">						if (capturedGroups != null) {</span>
+<span class="fc" id="L542">							Span[] groups = new Span[hitQueryContext.numberOfCapturedGroups()];</span>
+<span class="fc" id="L543">							hitQueryContext.getCapturedGroups(groups);</span>
+<span class="fc" id="L544">							capturedGroups.put(offsetHit, groups);</span>
+						}
+<span class="fc" id="L546">						hits.add(offsetHit);</span>
+					}
+<span class="fc" id="L548">				}</span>
+<span class="nc" id="L549">			} catch (InterruptedException e) {</span>
+<span class="nc" id="L550">				maxHitsRetrieved = maxHitsCounted = true; // we've stopped retrieving/counting</span>
+<span class="nc" id="L551">				throw e;</span>
+<span class="nc" id="L552">			} catch (IOException e) {</span>
+<span class="nc" id="L553">				throw new RuntimeException(e);</span>
+<span class="fc" id="L554">			}</span>
+<span class="pc" id="L555">		}</span>
+<span class="fc" id="L556">	}</span>
+
+	/**
+	 * Sort the list of hits.
+	 *
+	 * Note that if the thread is interrupted during this, sort may return
+	 * without the hits actually being fully read and sorted. We don't want
+	 * to add throws declarations to our whole API, so we assume the calling
+	 * method will check for thread interruption if the application uses it.
+	 *
+	 * @param sortProp
+	 *            the hit property to sort on
+	 * @param reverseSort
+	 *            if true, sort in descending order
+	 * @param sensitive whether to sort case-sensitively or not
+	 * @deprecated use sortedBy()
+	 */
+	@Override
+	@Deprecated
+	public synchronized void sort(final HitProperty sortProp, boolean reverseSort, boolean sensitive) {
+		try {
+<span class="nc" id="L577">			ensureAllHitsRead();</span>
+<span class="nc" id="L578">		} catch (InterruptedException e) {</span>
+			// Thread was interrupted; don't complete the operation but return
+			// and let the caller detect and deal with the interruption.
+<span class="nc" id="L581">			Thread.currentThread().interrupt();</span>
+<span class="nc" id="L582">			return;</span>
+<span class="nc" id="L583">		}</span>
+
+		// Make sure we have a sort order array of sufficient size
+<span class="nc bnc" id="L586" title="All 4 branches missed.">		if (sortOrder == null || sortOrder.length &lt; hits.size()) {</span>
+<span class="nc" id="L587">			sortOrder = new Integer[hits.size()];</span>
+		}
+		// Fill the array with the original hit order (0, 1, 2, ...)
+<span class="nc" id="L590">		int n = hits.size();</span>
+<span class="nc bnc" id="L591" title="All 2 branches missed.">		for (int i = 0; i &lt; n; i++)</span>
+<span class="nc" id="L592">			sortOrder[i] = i;</span>
+
+		// If we need context, make sure we have it.
+<span class="nc" id="L595">		List&lt;String&gt; requiredContext = sortProp.needsContext();</span>
+<span class="nc bnc" id="L596" title="All 2 branches missed.">		if (requiredContext != null)</span>
+<span class="nc" id="L597">			findContext(requiredContext);</span>
+
+		// Perform the actual sort.
+<span class="nc" id="L600">		Arrays.sort(sortOrder, sortProp);</span>
+
+<span class="nc bnc" id="L602" title="All 2 branches missed.">		if (reverseSort) {</span>
+			// Instead of creating a new Comparator that reverses the order of the
+			// sort property (which adds an extra layer of indirection to each of the
+			// O(n log n) comparisons), just reverse the hits now (which runs
+			// in linear time).
+<span class="nc bnc" id="L607" title="All 2 branches missed.">			for (int i = 0; i &lt; n / 2; i++) {</span>
+<span class="nc" id="L608">				sortOrder[i] = sortOrder[n - i - 1];</span>
+			}
+		}
+<span class="nc" id="L611">	}</span>
+
+	/**
+	 * Determines if there are at least a certain number of hits
+	 *
+	 * This may be used if we don't want to process all hits (which
+	 * may be a lot) but we do need to know something about the size
+	 * of the result set (such as for paging).
+	 *
+	 * Note that this method applies to the hits retrieved, which may
+	 * be less than the total number of hits (depending on maxHitsToRetrieve).
+	 *
+	 * @param lowerBound the number we're testing against
+	 *
+	 * @return true if the size of this set is at least lowerBound, false otherwise.
+	 */
+	@Override
+	public boolean sizeAtLeast(int lowerBound) {
+		try {
+			// Try to fetch at least this many hits
+<span class="nc" id="L631">			ensureHitsRead(lowerBound);</span>
+<span class="nc" id="L632">		} catch (InterruptedException e) {</span>
+			// Thread was interrupted; abort operation
+			// and let client decide what to do
+<span class="nc" id="L635">			Thread.currentThread().interrupt();</span>
+<span class="nc" id="L636">		}</span>
+
+<span class="nc bnc" id="L638" title="All 2 branches missed.">		return hits.size() &gt;= lowerBound;</span>
+	}
+
+	/**
+	 * Return the number of hits available.
+	 *
+	 * Note that this method applies to the hits retrieved, which may
+	 * be less than the total number of hits (depending on maxHitsToRetrieve).
+	 * Use totalSize() to find the total hit count (which may also be limited
+	 * depending on maxHitsToCount).
+	 *
+	 * @return the number of hits available
+	 */
+	@Override
+	public int size() {
+		try {
+			// Probably not all hits have been seen yet. Collect them all.
+<span class="fc" id="L655">			ensureAllHitsRead();</span>
+<span class="nc" id="L656">		} catch (InterruptedException e) {</span>
+			// Thread was interrupted; don't complete the operation but return
+			// and let the caller detect and deal with the interruption.
+			// Returned value is probably not the correct total number of hits,
+			// but will not cause any crashes. The thread was interrupted anyway,
+			// the value should never be presented to the user.
+<span class="nc" id="L662">			maxHitsCounted = true; // indicate that we've stopped counting</span>
+<span class="nc" id="L663">			Thread.currentThread().interrupt();</span>
+<span class="fc" id="L664">		}</span>
+<span class="fc" id="L665">		return hits.size();</span>
+	}
+
+	/**
+	 * Return the total number of hits.
+	 *
+	 * NOTE: Depending on maxHitsToRetrieve, hit retrieval may stop
+	 * before all hits are seen. We do keep counting hits though
+	 * (until we reach maxHitsToCount, or that value is negative).
+	 * This method returns our total hit count. Some of these hits
+	 * may not be available.
+	 *
+	 * @return the total hit count
+	 */
+	@Override
+	public int totalSize() {
+		try {
+<span class="nc" id="L682">			ensureAllHitsRead();</span>
+<span class="nc" id="L683">		} catch (InterruptedException e) {</span>
+			// Thread was interrupted; don't complete the operation but return
+			// and let the caller detect and deal with the interruption.
+			// Returned value is probably not the correct total number of hits,
+			// but will not cause any crashes. The thread was interrupted anyway,
+			// the value should never be presented to the user.
+<span class="nc" id="L689">			Thread.currentThread().interrupt();</span>
+<span class="nc" id="L690">		}</span>
+<span class="nc" id="L691">		return hitsCounted;</span>
+	}
+
+	/**
+	 * Return the number of documents in the hits we've retrieved.
+	 *
+	 * @return the number of documents.
+	 */
+	@Override
+	public int numberOfDocs() {
+		try {
+<span class="nc" id="L702">			ensureAllHitsRead();</span>
+<span class="nc" id="L703">		} catch (InterruptedException e) {</span>
+			// Thread was interrupted; don't complete the operation but return
+			// and let the caller detect and deal with the interruption.
+			// Returned value is probably not the correct total number of hits,
+			// but will not cause any crashes. The thread was interrupted anyway,
+			// the value should never be presented to the user.
+<span class="nc" id="L709">			Thread.currentThread().interrupt();</span>
+<span class="nc" id="L710">		}</span>
+<span class="nc" id="L711">		return docsRetrieved;</span>
+	}
+
+	/**
+	 * Return the total number of documents in all hits.
+	 * This counts documents even in hits that are not stored, only counted.
+	 *
+	 * @return the total number of documents.
+	 */
+	@Override
+	public int totalNumberOfDocs() {
+		try {
+<span class="nc" id="L723">			ensureAllHitsRead();</span>
+<span class="nc" id="L724">		} catch (InterruptedException e) {</span>
+			// Thread was interrupted; don't complete the operation but return
+			// and let the caller detect and deal with the interruption.
+			// Returned value is probably not the correct total number of hits,
+			// but will not cause any crashes. The thread was interrupted anyway,
+			// the value should never be presented to the user.
+<span class="nc" id="L730">			Thread.currentThread().interrupt();</span>
+<span class="nc" id="L731">		}</span>
+<span class="nc" id="L732">		return docsCounted;</span>
+	}
+
+	/**
+	 * Return the number of hits counted so far.
+	 *
+	 * If you're retrieving hit in a background thread, call this
+	 * method from another thread to get an update of the count so far.
+	 *
+	 * @return the current total hit count
+	 */
+	@Override
+	public int countSoFarHitsCounted() {
+<span class="nc" id="L745">		return hitsCounted;</span>
+	}
+
+	/**
+	 * Return the number of hits retrieved so far.
+	 *
+	 * If you're retrieving hits in a background thread, call this
+	 * method from another thread to get an update of the count so far.
+	 *
+	 * @return the current total hit count
+	 */
+	@Override
+	public int countSoFarHitsRetrieved() {
+<span class="nc" id="L758">		return hits.size();</span>
+	}
+
+	/**
+	 * Return the number of documents counted so far.
+	 *
+	 * If you're retrieving hit in a background thread, call this
+	 * method from another thread to get an update of the count so far.
+	 *
+	 * @return the current total hit count
+	 */
+	@Override
+	public int countSoFarDocsCounted() {
+<span class="nc" id="L771">		return docsCounted;</span>
+	}
+
+	/**
+	 * Return the number of documents retrieved so far.
+	 *
+	 * If you're retrieving hits in a background thread, call this
+	 * method from another thread to get an update of the count so far.
+	 *
+	 * @return the current total hit count
+	 */
+	@Override
+	public int countSoFarDocsRetrieved() {
+<span class="nc" id="L784">		return docsRetrieved;</span>
+	}
+
+	/**
+	 * Check if we're done retrieving/counting hits.
+	 *
+	 * If you're retrieving hits in a background thread, call this
+	 * method from another thread to check if all hits have been processed.
+	 *
+	 * @return true iff all hits have been retrieved/counted.
+	 */
+	@Override
+	public boolean doneFetchingHits() {
+<span class="nc bnc" id="L797" title="All 4 branches missed.">		return sourceSpansFullyRead || maxHitsCounted;</span>
+	}
+
+	/**
+	 * Return an iterator over these hits that produces the
+	 * hits in their original order.
+	 *
+	 * @param originalOrder if true, returns hits in original order. If false,
+	 *   returns them in sorted order (if any)
+	 * @return the iterator
+	 */
+	@Override
+	public Iterator&lt;Hit&gt; getIterator(final boolean originalOrder) {
+		// Construct a custom iterator that iterates over the hits in the hits
+		// list, but can also take into account the Spans object that may not have
+		// been fully read. This ensures we don't instantiate Hit objects for all hits
+		// if we just want to display the first few.
+<span class="fc" id="L814">		return new Iterator&lt;Hit&gt;() {</span>
+
+<span class="fc" id="L816">			int index = -1;</span>
+
+			@Override
+			public boolean hasNext() {
+				// Do we still have hits in the hits list?
+				try {
+<span class="fc" id="L822">					ensureHitsRead(index + 2);</span>
+<span class="nc" id="L823">				} catch (InterruptedException e) {</span>
+					// Thread was interrupted. Don't finish reading hits and accept possibly wrong
+					// answer.
+					// Client must detect the interruption and stop the thread.
+<span class="nc" id="L827">					Thread.currentThread().interrupt();</span>
+<span class="fc" id="L828">				}</span>
+<span class="fc bfc" id="L829" title="All 2 branches covered.">				return hits.size() &gt;= index + 2;</span>
+			}
+
+			@Override
+			public Hit next() {
+				// Check if there is a next, taking unread hits from Spans into account
+<span class="pc bpc" id="L835" title="1 of 2 branches missed.">				if (hasNext()) {</span>
+<span class="fc" id="L836">					index++;</span>
+<span class="pc bpc" id="L837" title="2 of 4 branches missed.">					return hits.get( (originalOrder || sortOrder == null) ? index : sortOrder[index]);</span>
+				}
+<span class="nc" id="L839">				throw new NoSuchElementException();</span>
+			}
+
+			@Override
+			public void remove() {
+<span class="nc" id="L844">				throw new UnsupportedOperationException();</span>
+			}
+
+		};
+	}
+
+	/**
+	 * Return the specified hit number, based on the order they
+	 * were originally found (not the sorted order).
+	 *
+	 * @param i
+	 *            index of the desired hit
+	 * @return the hit, or null if it's beyond the last hit
+	 */
+	@Override
+	public Hit getByOriginalOrder(int i) {
+		try {
+<span class="fc" id="L861">			ensureHitsRead(i + 1);</span>
+<span class="nc" id="L862">		} catch (InterruptedException e) {</span>
+			// Thread was interrupted. Required hit hasn't been gathered;
+			// we will just return null.
+<span class="nc" id="L865">			Thread.currentThread().interrupt();</span>
+<span class="fc" id="L866">		}</span>
+<span class="pc bpc" id="L867" title="1 of 2 branches missed.">		if (i &gt;= hits.size())</span>
+<span class="nc" id="L868">			return null;</span>
+<span class="fc" id="L869">		return hits.get(i);</span>
+	}
+
+	/**
+	 * Return the specified hit.
+	 *
+	 * @param i
+	 *            index of the desired hit
+	 * @return the hit, or null if it's beyond the last hit
+	 */
+	@Override
+	public Hit get(int i) {
+		try {
+<span class="fc" id="L882">			ensureHitsRead(i + 1);</span>
+<span class="nc" id="L883">		} catch (InterruptedException e) {</span>
+			// Thread was interrupted. Required hit hasn't been gathered;
+			// we will just return null.
+<span class="nc" id="L886">			Thread.currentThread().interrupt();</span>
+<span class="fc" id="L887">		}</span>
+<span class="pc bpc" id="L888" title="1 of 2 branches missed.">		if (i &gt;= hits.size())</span>
+<span class="nc" id="L889">			return null;</span>
+<span class="pc bpc" id="L890" title="1 of 2 branches missed.">		return hits.get(sortOrder == null ? i : sortOrder[i]);</span>
+	}
+
+	/**
+	 * Retrieve a single KWIC (KeyWord In Context). Only use if you need a larger
+	 * snippet around a single
+	 * hit. If you need KWICs for a set of hits, just instantiate a HitsWindow and call
+	 * getKwic() on that; it will fetch all KWICs in the window in a batch, which
+	 * is more efficient.
+	 *
+	 * @param fieldName field to use for building the KWIC
+	 * @param hit the hit for which we want a KWIC
+	 * @param contextSize the desired number of words around the hit
+	 * @return the KWIC
+	 */
+	@Override
+	public Kwic getKwic(String fieldName, Hit hit, int contextSize) {
+<span class="nc" id="L907">		List&lt;Hit&gt; oneHit = Arrays.asList(hit);</span>
+<span class="nc" id="L908">		HitsImpl h = new HitsImpl(searcher, searcher.getMainContentsFieldName(), oneHit);</span>
+<span class="nc" id="L909">		h.copySettingsFrom(this); // concordance type, etc.</span>
+<span class="nc" id="L910">		Map&lt;Hit, Kwic&gt; oneConc = h.retrieveKwics(contextSize, fieldName);</span>
+<span class="nc" id="L911">		return oneConc.get(hit);</span>
+	}
+
+	/**
+	 * Get a KWIC with a custom context size.
+	 *
+	 * Don't call this directly for displaying a list of results. In that case,
+	 * just instantiate a HitsWindow, call setContextSize() on it to set a
+	 * default context size and call getKwic(Hit) for each hit. That's
+	 * more efficient if you're dealing with many hits.
+	 *
+	 * This method is mostly just for getting a larger snippet around
+	 * a single hit.
+	 *
+	 * @param h the hit
+	 * @param contextSize the context size for this KWIC
+	 *   (only use if you want a different one than the preset preference)
+	 * @return KWIC for this hit
+	 */
+	@Override
+	public Kwic getKwic(Hit h, int contextSize) {
+<span class="pc bpc" id="L932" title="1 of 2 branches missed.">		if (contextSize != settings().contextSize()) {</span>
+			// Different context size than the default for the whole set;
+			// We probably want to show a hit with a larger snippet around it
+			// (say, 50 words or so). Don't clobber the context of the other
+			// hits, just fetch this snippet separately.
+<span class="nc" id="L937">			return getKwic(settings().concordanceField(), h, contextSize);</span>
+		}
+
+		// Default context size. Read all hits and find concordances for all of them
+		// in batch.
+		try {
+<span class="fc" id="L943">			ensureAllHitsRead();</span>
+<span class="nc" id="L944">		} catch (InterruptedException e) {</span>
+			// Thread was interrupted. Just go ahead with the hits we did
+			// get, so at least we can return a valid concordance object and
+			// not break the calling method. It is responsible for checking
+			// for thread interruption (only some applications use this at all,
+			// so throwing exceptions from all methods is too inconvenient)
+<span class="nc" id="L950">			Thread.currentThread().interrupt();</span>
+<span class="fc" id="L951">		}</span>
+<span class="fc bfc" id="L952" title="All 2 branches covered.">		if (kwics == null) {</span>
+<span class="fc" id="L953">			findKwics(); // just try to find the default concordances</span>
+		}
+<span class="fc" id="L955">		Kwic kwic = kwics.get(h);</span>
+<span class="pc bpc" id="L956" title="1 of 2 branches missed.">		if (kwic == null)</span>
+<span class="nc" id="L957">			throw new RuntimeException(&quot;KWIC for hit not found: &quot; + h);</span>
+<span class="fc" id="L958">		return kwic;</span>
+	}
+
+	/**
+	 * Retrieve a single concordance. Only use if you need a larger snippet around a single
+	 * hit. If you need concordances for a set of hits, just instantiate a HitsWindow and call
+	 * getConcordance() on that; it will fetch all concordances in the window in a batch, which
+	 * is more efficient.
+	 *
+	 * @param fieldName field to use for building the concordance
+	 * @param hit the hit for which we want a concordance
+	 * @param contextSize the desired number of words around the hit
+	 * @return the concordance
+	 */
+	@Override
+	public synchronized Concordance getConcordance(String fieldName, Hit hit, int contextSize) {
+<span class="nc" id="L974">		List&lt;Hit&gt; oneHit = Arrays.asList(hit);</span>
+<span class="nc" id="L975">		HitsImpl h = new HitsImpl(searcher, searcher.getMainContentsFieldName(), oneHit);</span>
+<span class="nc" id="L976">		h.copySettingsFrom(this); // concordance type, etc.</span>
+<span class="nc bnc" id="L977" title="All 2 branches missed.">		if (settings().concordanceType() == ConcordanceType.FORWARD_INDEX) {</span>
+<span class="nc" id="L978">			Map&lt;Hit, Kwic&gt; oneKwic = h.retrieveKwics(contextSize, fieldName);</span>
+<span class="nc" id="L979">			return oneKwic.get(hit).toConcordance();</span>
+		}
+<span class="nc" id="L981">		Map&lt;Hit, Concordance&gt; oneConc = h.retrieveConcordancesFromContentStore(contextSize, fieldName);</span>
+<span class="nc" id="L982">		return oneConc.get(hit);</span>
+	}
+
+	/**
+	 * Get a concordance with a custom context size.
+	 *
+	 * Don't call this directly for displaying a list of results. In that case,
+	 * just instantiate a HitsWindow, call setContextSize() on it to set a
+	 * default context size and call getConcordance(Hit) for each hit. That's
+	 * more efficient if you're dealing with many hits.
+	 *
+	 * This method is mostly just for getting a larger snippet around
+	 * a single hit.
+	 *
+	 * @param h the hit
+	 * @param contextSize the context size for this concordance
+	 *   (only use if you want a different one than the preset preference)
+	 * @return concordance for this hit
+	 */
+	@Override
+	public synchronized Concordance getConcordance(Hit h, int contextSize) {
+<span class="nc bnc" id="L1003" title="All 2 branches missed.">		if (settings().concordanceType() == ConcordanceType.FORWARD_INDEX)</span>
+<span class="nc" id="L1004">			return getKwic(h, contextSize).toConcordance();</span>
+
+<span class="nc bnc" id="L1006" title="All 2 branches missed.">		if (contextSize != settings().contextSize()) {</span>
+			// Different context size than the default for the whole set;
+			// We probably want to show a hit with a larger snippet around it
+			// (say, 50 words or so). Don't clobber the context of the other
+			// hits, just fetch this snippet separately.
+<span class="nc" id="L1011">			return getConcordance(settings().concordanceField(), h, contextSize);</span>
+		}
+
+		// Default context size. Read all hits and find concordances for all of them
+		// in batch.
+		try {
+<span class="nc" id="L1017">			ensureAllHitsRead();</span>
+<span class="nc" id="L1018">		} catch (InterruptedException e) {</span>
+			// Thread was interrupted. Just go ahead with the hits we did
+			// get, so at least we can return a valid concordance object and
+			// not break the calling method. It is responsible for checking
+			// for thread interruption (only some applications use this at all,
+			// so throwing exceptions from all methods is too inconvenient)
+<span class="nc" id="L1024">			Thread.currentThread().interrupt();</span>
+<span class="nc" id="L1025">		}</span>
+<span class="nc bnc" id="L1026" title="All 2 branches missed.">		if (concordances == null) {</span>
+<span class="nc" id="L1027">			findConcordances(); // just try to find the default concordances</span>
+		}
+<span class="nc" id="L1029">		Concordance conc = concordances.get(h);</span>
+<span class="nc bnc" id="L1030" title="All 2 branches missed.">		if (conc == null)</span>
+<span class="nc" id="L1031">			throw new RuntimeException(&quot;Concordance for hit not found: &quot; + h);</span>
+<span class="nc" id="L1032">		return conc;</span>
+	}
+
+	/**
+	 * Retrieve concordances for the hits.
+	 *
+	 * You shouldn't have to call this manually, as it's automatically called when
+	 * you call getConcordance() for the first time.
+	 */
+	synchronized void findConcordances() {
+<span class="nc bnc" id="L1042" title="All 2 branches missed.">		if (settings.concordanceType() == ConcordanceType.FORWARD_INDEX) {</span>
+<span class="nc" id="L1043">			findKwics();</span>
+<span class="nc" id="L1044">			return;</span>
+		}
+
+		try {
+<span class="nc" id="L1048">			ensureAllHitsRead();</span>
+<span class="nc" id="L1049">		} catch (InterruptedException e) {</span>
+			// Thread was interrupted. Just go ahead with the hits we did
+			// get, so at least we'll have valid concordances.
+<span class="nc" id="L1052">			Thread.currentThread().interrupt();</span>
+<span class="nc" id="L1053">		}</span>
+		// Make sure we don't have the desired concordances already
+<span class="nc bnc" id="L1055" title="All 2 branches missed.">		if (concordances != null) {</span>
+<span class="nc" id="L1056">			return;</span>
+		}
+
+		// Get the concordances
+<span class="nc" id="L1060">		concordances = retrieveConcordancesFromContentStore(settings().contextSize(), settings().concordanceField());</span>
+<span class="nc" id="L1061">	}</span>
+
+	/**
+	 * Retrieve KWICs for the hits.
+	 *
+	 * You shouldn't have to call this manually, as it's automatically called when
+	 * you call getKwic() for the first time.
+	 *
+	 */
+	synchronized void findKwics() {
+		try {
+<span class="fc" id="L1072">			ensureAllHitsRead();</span>
+<span class="nc" id="L1073">		} catch (InterruptedException e) {</span>
+			// Thread was interrupted. Just go ahead with the hits we did
+			// get, so at least we'll have valid concordances.
+<span class="nc" id="L1076">			Thread.currentThread().interrupt();</span>
+<span class="fc" id="L1077">		}</span>
+		// Make sure we don't have the desired concordances already
+<span class="pc bpc" id="L1079" title="1 of 2 branches missed.">		if (kwics != null) {</span>
+<span class="nc" id="L1080">			return;</span>
+		}
+
+		// Get the concordances
+<span class="fc" id="L1084">		kwics = retrieveKwics(settings().contextSize(), settings().concordanceField());</span>
+<span class="fc" id="L1085">	}</span>
+
+	/**
+	 * Retrieve KWICs for a (sub)list of hits.
+	 *
+	 * KWICs are the hit words 'centered' with a certain number of context words around them.
+	 *
+	 * The size of the left and right context (in words) may be set using
+	 * Searcher.setConcordanceContextSize().
+	 *
+	 * @param contextSize
+	 *            how many words around the hit to retrieve
+	 * @param fieldName
+	 *            field to use for building KWICs
+	 *
+	 * @return the KWICs
+	 */
+	private Map&lt;Hit, Kwic&gt; retrieveKwics(int contextSize, String fieldName) {
+
+		// Group hits per document
+<span class="fc" id="L1105">		MutableIntObjectMap&lt;List&lt;Hit&gt;&gt; hitsPerDocument = IntObjectMaps.mutable.empty();</span>
+<span class="fc bfc" id="L1106" title="All 2 branches covered.">		for (Hit key: this) {</span>
+<span class="fc" id="L1107">			List&lt;Hit&gt; hitsInDoc = hitsPerDocument.get(key.doc);</span>
+<span class="fc bfc" id="L1108" title="All 2 branches covered.">			if (hitsInDoc == null) {</span>
+<span class="fc" id="L1109">				hitsInDoc = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L1110">				hitsPerDocument.put(key.doc, hitsInDoc);</span>
+			}
+<span class="fc" id="L1112">			hitsInDoc.add(key);</span>
+<span class="fc" id="L1113">		}</span>
+
+<span class="pc bpc" id="L1115" title="1 of 2 branches missed.">		if (settings().concordanceType() == ConcordanceType.FORWARD_INDEX) {</span>
+			// Yes, make 'em from the forward index (faster)
+<span class="fc" id="L1117">			ForwardIndex forwardIndex = null;</span>
+<span class="fc" id="L1118">			String concWordFI = settings().concWordProp();</span>
+<span class="pc bpc" id="L1119" title="1 of 2 branches missed.">			if (concWordFI != null)</span>
+<span class="fc" id="L1120">				forwardIndex = searcher.getForwardIndex(ComplexFieldUtil.propertyField(fieldName,</span>
+						concWordFI));
+
+<span class="fc" id="L1123">			ForwardIndex punctForwardIndex = null;</span>
+<span class="fc" id="L1124">			String concPunctFI = settings().concPunctProp();</span>
+<span class="pc bpc" id="L1125" title="1 of 2 branches missed.">			if (concPunctFI != null)</span>
+<span class="fc" id="L1126">				punctForwardIndex = searcher.getForwardIndex(ComplexFieldUtil.propertyField(</span>
+						fieldName, concPunctFI));
+
+<span class="fc" id="L1129">			Map&lt;String, ForwardIndex&gt; attrForwardIndices = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L1130">			Collection&lt;String&gt; concAttrFI = settings().concAttrProps();</span>
+<span class="pc bpc" id="L1131" title="1 of 2 branches missed.">			if (concAttrFI == null) {</span>
+				// All other FIs are attributes
+<span class="fc bfc" id="L1133" title="All 2 branches covered.">				for (String p: searcher.getForwardIndices().keySet()) {</span>
+<span class="fc" id="L1134">					String[] components = ComplexFieldUtil.getNameComponents(p);</span>
+<span class="fc" id="L1135">					String propName = components[1];</span>
+<span class="fc bfc" id="L1136" title="All 2 branches covered.">					if (propName.equals(concWordFI)</span>
+<span class="fc bfc" id="L1137" title="All 2 branches covered.">							|| propName.equals(concPunctFI))</span>
+<span class="fc" id="L1138">						continue;</span>
+<span class="fc" id="L1139">					attrForwardIndices.put(propName, searcher.getForwardIndex(p));</span>
+<span class="fc" id="L1140">				}</span>
+			} else {
+				// Specific list of attribute FIs
+<span class="nc bnc" id="L1143" title="All 2 branches missed.">				for (String p: concAttrFI) {</span>
+<span class="nc" id="L1144">					attrForwardIndices.put(p,</span>
+<span class="nc" id="L1145">							searcher.getForwardIndex(ComplexFieldUtil.propertyField(fieldName, p)));</span>
+<span class="nc" id="L1146">				}</span>
+			}
+
+<span class="fc" id="L1149">			Map&lt;Hit, Kwic&gt; conc1 = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L1150" title="All 2 branches covered.">			for (List&lt;Hit&gt; l: hitsPerDocument.values()) {</span>
+<span class="fc" id="L1151">				HitsImpl hitsInThisDoc = new HitsImpl(searcher, searcher.getMainContentsFieldName(), l);</span>
+<span class="fc" id="L1152">				hitsInThisDoc.copySettingsFrom(this);</span>
+<span class="fc" id="L1153">				hitsInThisDoc.makeKwicsSingleDocForwardIndex(forwardIndex, punctForwardIndex,</span>
+						attrForwardIndices, contextSize, conc1);
+<span class="fc" id="L1155">			}</span>
+<span class="fc" id="L1156">			return conc1;</span>
+		}
+
+<span class="nc" id="L1159">		throw new UnsupportedOperationException(&quot;Concordance type is set to CONTENT_STORE, but you can only make KWICs from the forward index. NOTE: if your index has no 'punct' property, concordance type will default to CONTENT_STORE instead of FORWARD_INDEX.&quot;);</span>
+	}
+
+	/**
+	 * Retrieve context words for the hits.
+	 *
+	 * @param fieldProps
+	 *            the field and properties to use for the context
+	 */
+	@Override
+	public synchronized void findContext(List&lt;String&gt; fieldProps) {
+		try {
+<span class="fc" id="L1171">			ensureAllHitsRead();</span>
+<span class="nc" id="L1172">		} catch (InterruptedException e) {</span>
+			// Thread was interrupted. Just go ahead with the hits we did
+			// get, so at least we can return with valid context.
+<span class="nc" id="L1175">			Thread.currentThread().interrupt();</span>
+<span class="fc" id="L1176">		}</span>
+		// Make sure we don't have the desired context already
+<span class="pc bpc" id="L1178" title="3 of 4 branches missed.">		if (contextFieldsPropName != null &amp;&amp; fieldProps.equals(contextFieldsPropName)</span>
+<span class="nc bnc" id="L1179" title="All 2 branches missed.">				&amp;&amp; settings().contextSize() == currentContextSize) {</span>
+<span class="nc" id="L1180">			return;</span>
+		}
+
+<span class="fc" id="L1183">		List&lt;ForwardIndex&gt; fis = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L1184" title="All 2 branches covered.">		for (String fieldPropName: fieldProps) {</span>
+<span class="fc" id="L1185">			fis.add(searcher.getForwardIndex(fieldPropName));</span>
+<span class="fc" id="L1186">		}</span>
+
+		// Get the context
+		// Group hits per document
+<span class="fc" id="L1190">		List&lt;Hit&gt; hitsInSameDoc = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L1191">		int currentDoc = -1;</span>
+<span class="fc" id="L1192">		int index = 0;</span>
+<span class="pc bpc" id="L1193" title="3 of 4 branches missed.">		if (contexts == null || contexts.length &lt; hits.size()) {</span>
+<span class="fc" id="L1194">			contexts = new int[hits.size()][];</span>
+		}
+<span class="fc bfc" id="L1196" title="All 2 branches covered.">		for (Hit hit: hits) {</span>
+<span class="fc bfc" id="L1197" title="All 2 branches covered.">			if (hit.doc != currentDoc) {</span>
+<span class="fc bfc" id="L1198" title="All 2 branches covered.">				if (currentDoc &gt;= 0) {</span>
+					try {
+<span class="fc" id="L1200">						etiquette.behave();</span>
+<span class="nc" id="L1201">					} catch (InterruptedException e) {</span>
+						// Thread was interrupted. Just go ahead with the hits we did
+						// get, so at least we can return with valid context.
+<span class="nc" id="L1204">						Thread.currentThread().interrupt();</span>
+<span class="fc" id="L1205">					}</span>
+
+<span class="fc" id="L1207">					findPartOfContext(hitsInSameDoc, index - hitsInSameDoc.size(), fis);</span>
+
+					// Reset hits list for next doc
+<span class="fc" id="L1210">					hitsInSameDoc.clear();</span>
+				}
+<span class="fc" id="L1212">				currentDoc = hit.doc; // start a new document</span>
+			}
+<span class="fc" id="L1214">			hitsInSameDoc.add(hit);</span>
+<span class="fc" id="L1215">			index++;</span>
+<span class="fc" id="L1216">		}</span>
+<span class="pc bpc" id="L1217" title="1 of 2 branches missed.">		if (!hitsInSameDoc.isEmpty())</span>
+<span class="fc" id="L1218">			findPartOfContext(hitsInSameDoc, index - hitsInSameDoc.size(), fis);</span>
+
+<span class="fc" id="L1220">		currentContextSize = settings().contextSize();</span>
+<span class="fc" id="L1221">		contextFieldsPropName = new ArrayList&lt;&gt;(fieldProps);</span>
+<span class="fc" id="L1222">	}</span>
+
+	/**
+	 * Helper method for findContext(). Finds the hits in a single document and adds
+	 * context to our contexts array.
+	 *
+	 * @param hitsInSameDoc the hits in one document
+	 * @param firstHitIndex index of the first hit
+	 * @param fis forward indices needed for contexts
+	 */
+	private void findPartOfContext(List&lt;Hit&gt; hitsInSameDoc, int firstHitIndex, List&lt;ForwardIndex&gt; fis) {
+		// Find context for the hits in the current document
+<span class="fc" id="L1234">		HitsImpl hitsObj = new HitsImpl(searcher, searcher.getMainContentsFieldName(), hitsInSameDoc);</span>
+<span class="fc" id="L1235">		hitsObj.copySettingsFrom(this);</span>
+<span class="fc" id="L1236">		hitsObj.getContextWords(settings().contextSize(), fis);</span>
+
+		// Copy the contexts from the temporary Hits object to this one
+<span class="fc bfc" id="L1239" title="All 2 branches covered.">		for (int i = 0; i &lt; hitsInSameDoc.size(); i++) {</span>
+<span class="fc" id="L1240">			contexts[firstHitIndex + i] = hitsObj.getHitContext(i);</span>
+		}
+<span class="fc" id="L1242">	}</span>
+
+	/**
+	 * Count occurrences of context words around hit.
+	 *
+	 * @param propName the property to use for the collocations, or null if default
+	 * @param ctx query execution context, containing the sensitivity settings
+	 *
+	 * @return the frequency of each occurring token
+	 */
+	@Override
+	public synchronized TermFrequencyList getCollocations(String propName,
+			QueryExecutionContext ctx) {
+<span class="nc bnc" id="L1255" title="All 2 branches missed.">		if (propName == null)</span>
+<span class="nc" id="L1256">			propName = searcher.getIndexStructure().getMainContentsField().getMainProperty().getName();</span>
+<span class="nc bnc" id="L1257" title="All 2 branches missed.">		if (ctx == null)</span>
+<span class="nc" id="L1258">			ctx = searcher.getDefaultExecutionContext(settings().concordanceField());</span>
+<span class="nc" id="L1259">		ctx = ctx.withProperty(propName);</span>
+<span class="nc" id="L1260">		findContext(Arrays.asList(ctx.luceneField(false)));</span>
+<span class="nc" id="L1261">		MutableIntIntMap coll = IntIntMaps.mutable.empty();</span>
+<span class="nc bnc" id="L1262" title="All 2 branches missed.">		for (int j = 0; j &lt; hits.size(); j++) {</span>
+<span class="nc" id="L1263">			int[] context = contexts[j];</span>
+
+			// Count words
+<span class="nc" id="L1266">			int contextHitStart = context[CONTEXTS_HIT_START_INDEX];</span>
+<span class="nc" id="L1267">			int contextRightStart = context[CONTEXTS_RIGHT_START_INDEX];</span>
+<span class="nc" id="L1268">			int contextLength = context[CONTEXTS_LENGTH_INDEX];</span>
+<span class="nc" id="L1269">			int indexInContent = CONTEXTS_NUMBER_OF_BOOKKEEPING_INTS;</span>
+<span class="nc bnc" id="L1270" title="All 2 branches missed.">			for (int i = 0; i &lt; contextLength; i++, indexInContent++) {</span>
+<span class="nc bnc" id="L1271" title="All 4 branches missed.">				if (i &gt;= contextHitStart &amp;&amp; i &lt; contextRightStart)</span>
+<span class="nc" id="L1272">					continue; // don't count words in hit itself, just around [option..?]</span>
+<span class="nc" id="L1273">				int w = context[indexInContent];</span>
+				int n;
+<span class="nc bnc" id="L1275" title="All 2 branches missed.">				if (!coll.contains(w))</span>
+<span class="nc" id="L1276">					n = 1;</span>
+				else
+<span class="nc" id="L1278">					n = coll.get(w) + 1;</span>
+<span class="nc" id="L1279">				coll.put(w, n);</span>
+			}
+		}
+
+		// Get the actual words from the sort positions
+<span class="nc" id="L1284">		boolean caseSensitive = searcher.isDefaultSearchCaseSensitive();</span>
+<span class="nc" id="L1285">		boolean diacSensitive = searcher.isDefaultSearchDiacriticsSensitive();</span>
+<span class="nc" id="L1286">		TermFrequencyList collocations = new TermFrequencyList(coll.size());</span>
+<span class="nc" id="L1287">		Terms terms = searcher.getTerms(contextFieldsPropName.get(0));</span>
+<span class="nc" id="L1288">		Map&lt;String, Integer&gt; wordFreq = new HashMap&lt;&gt;();</span>
+<span class="nc bnc" id="L1289" title="All 2 branches missed.">		for (IntIntPair e: coll.keyValuesView()) {</span>
+<span class="nc" id="L1290">			int key = e.getOne();</span>
+<span class="nc" id="L1291">			int value = e.getTwo();</span>
+<span class="nc" id="L1292">			String word = terms.get(key);</span>
+<span class="nc bnc" id="L1293" title="All 2 branches missed.">			if (!diacSensitive) {</span>
+<span class="nc" id="L1294">				word = StringUtil.stripAccents(word);</span>
+			}
+<span class="nc bnc" id="L1296" title="All 2 branches missed.">			if (!caseSensitive) {</span>
+<span class="nc" id="L1297">				word = word.toLowerCase();</span>
+			}
+			// Note that multiple ids may map to the same word (because of sensitivity settings)
+			// Here, those groups are merged.
+<span class="nc" id="L1301">			Integer n = wordFreq.get(word);</span>
+<span class="nc bnc" id="L1302" title="All 2 branches missed.">			if (n == null) {</span>
+<span class="nc" id="L1303">				n = 0;</span>
+			}
+<span class="nc" id="L1305">			n += value;</span>
+<span class="nc" id="L1306">			wordFreq.put(word, n);</span>
+<span class="nc" id="L1307">		}</span>
+
+		// Transfer from map to list
+<span class="nc bnc" id="L1310" title="All 2 branches missed.">		for (Map.Entry&lt;String, Integer&gt; e: wordFreq.entrySet()) {</span>
+<span class="nc" id="L1311">			collocations.add(new TermFrequency(e.getKey(), e.getValue()));</span>
+<span class="nc" id="L1312">		}</span>
+<span class="nc" id="L1313">		return collocations;</span>
+	}
+
+	@Override
+	public boolean hasCapturedGroups() {
+<span class="nc bnc" id="L1318" title="All 2 branches missed.">		return capturedGroups != null;</span>
+	}
+
+	/**
+	 * Get the captured group information for this hit, if any.
+	 *
+	 * The names of the captured groups can be obtained through
+	 * the getCapturedGroupNames() method.
+	 *
+	 * @param hit the hit to get captured group information for
+	 * @return the captured group information, or null if none
+	 */
+	@Override
+	public Span[] getCapturedGroups(Hit hit) {
+<span class="nc bnc" id="L1332" title="All 2 branches missed.">		if (capturedGroups == null)</span>
+<span class="nc" id="L1333">			return null;</span>
+<span class="nc" id="L1334">		return capturedGroups.get(hit);</span>
+	}
+
+	/**
+	 * Get the captured group information in map form.
+	 *
+	 * Relatively slow; use getCapturedGroups() and getCapturedGroupNames()
+	 * for a faster alternative.
+	 *
+	 * @param hit hit to get the captured group map for
+	 * @return the captured group information map
+	 */
+	@Override
+	public Map&lt;String, Span&gt; getCapturedGroupMap(Hit hit) {
+<span class="nc bnc" id="L1348" title="All 2 branches missed.">		if (capturedGroups == null)</span>
+<span class="nc" id="L1349">			return null;</span>
+<span class="nc" id="L1350">		Map&lt;String, Span&gt; result = new TreeMap&lt;&gt;(); // TreeMap to maintain group ordering</span>
+<span class="nc" id="L1351">		List&lt;String&gt; names = getCapturedGroupNames();</span>
+<span class="nc" id="L1352">		Span[] groups = capturedGroups.get(hit);</span>
+<span class="nc bnc" id="L1353" title="All 2 branches missed.">		for (int i = 0; i &lt; names.size(); i++) {</span>
+<span class="nc" id="L1354">			result.put(names.get(i), groups[i]);</span>
+		}
+<span class="nc" id="L1356">		return result;</span>
+	}
+
+	/**
+	 * Get the field our current concordances were retrieved from
+	 *
+	 * @return the field name
+	 */
+	@Override
+	public List&lt;String&gt; getContextFieldPropName() {
+<span class="fc" id="L1366">		return contextFieldsPropName;</span>
+	}
+
+	/**
+	 * Set the field properties to retrieve context from
+	 * @param contextField the field properties
+	 */
+	@Override
+	public void setContextField(List&lt;String&gt; contextField) {
+<span class="fc bfc" id="L1375" title="All 2 branches covered.">		this.contextFieldsPropName = contextField == null ? null : new ArrayList&lt;&gt;(</span>
+				contextField);
+<span class="fc" id="L1377">	}</span>
+
+	/**
+	 * Retrieves the KWIC information (KeyWord In Context: left, hit and right context) for
+	 * a number of hits in the same document from the ContentStore.
+	 *
+	 * @param forwardIndex
+	 *    Forward index for the words
+	 * @param punctForwardIndex
+	 *    Forward index for the punctuation
+	 * @param attrForwardIndices
+	 *    Forward indices for the attributes, or null if none
+	 * @param wordsAroundHit
+	 *            number of words left and right of hit to fetch
+	 * @param theKwics
+	 *            where to add the KWICs
+	 */
+	synchronized void makeKwicsSingleDocForwardIndex(ForwardIndex forwardIndex,
+			ForwardIndex punctForwardIndex, Map&lt;String, ForwardIndex&gt; attrForwardIndices,
+			int wordsAroundHit, Map&lt;Hit, Kwic&gt; theKwics) {
+<span class="pc bpc" id="L1397" title="1 of 2 branches missed.">		if (hits.isEmpty())</span>
+<span class="nc" id="L1398">			return;</span>
+
+		// Save existing context so we can restore it afterwards
+<span class="fc" id="L1401">		int[][] oldContexts = null;</span>
+<span class="pc bpc" id="L1402" title="2 of 4 branches missed.">		if (!hits.isEmpty() &amp;&amp; contexts != null)</span>
+<span class="nc" id="L1403">			oldContexts = saveContexts();</span>
+
+		// TODO: more efficient to get all contexts with one getContextWords() call!
+
+		// Get punctuation context
+<span class="fc" id="L1408">		int[][] punctContext = null;</span>
+<span class="pc bpc" id="L1409" title="1 of 2 branches missed.">		if (punctForwardIndex != null) {</span>
+<span class="fc" id="L1410">			getContextWords(wordsAroundHit, Arrays.asList(punctForwardIndex));</span>
+<span class="fc" id="L1411">			punctContext = saveContexts();</span>
+		}
+<span class="pc bpc" id="L1413" title="1 of 2 branches missed.">		Terms punctTerms = punctForwardIndex == null ? null : punctForwardIndex.getTerms();</span>
+
+		// Get attributes context
+<span class="fc" id="L1416">		String[] attrName = null;</span>
+<span class="fc" id="L1417">		Terms[] attrTerms = null;</span>
+<span class="fc" id="L1418">		int[][][] attrContext = null;</span>
+<span class="pc bpc" id="L1419" title="1 of 2 branches missed.">		if (attrForwardIndices != null) {</span>
+<span class="fc" id="L1420">			int n = attrForwardIndices.size();</span>
+<span class="fc" id="L1421">			attrName = new String[n];</span>
+<span class="fc" id="L1422">			ForwardIndex[] attrFI = new ForwardIndex[n];</span>
+<span class="fc" id="L1423">			attrTerms = new Terms[n];</span>
+<span class="fc" id="L1424">			attrContext = new int[n][][];</span>
+<span class="fc" id="L1425">			int i = 0;</span>
+<span class="fc bfc" id="L1426" title="All 2 branches covered.">			for (Map.Entry&lt;String, ForwardIndex&gt; e: attrForwardIndices.entrySet()) {</span>
+<span class="fc" id="L1427">				attrName[i] = e.getKey();</span>
+<span class="fc" id="L1428">				attrFI[i] = e.getValue();</span>
+<span class="fc" id="L1429">				attrTerms[i] = attrFI[i].getTerms();</span>
+<span class="fc" id="L1430">				getContextWords(wordsAroundHit, Arrays.asList(attrFI[i]));</span>
+<span class="fc" id="L1431">				attrContext[i] = saveContexts();</span>
+<span class="fc" id="L1432">				i++;</span>
+<span class="fc" id="L1433">			}</span>
+		}
+
+		// Get word context
+<span class="pc bpc" id="L1437" title="1 of 2 branches missed.">		if (forwardIndex != null)</span>
+<span class="fc" id="L1438">			getContextWords(wordsAroundHit, Arrays.asList(forwardIndex));</span>
+<span class="pc bpc" id="L1439" title="1 of 2 branches missed.">		Terms terms = forwardIndex == null ? null : forwardIndex.getTerms();</span>
+
+		// Make the concordances from the context
+<span class="fc" id="L1442">		String concPunctFI = settings().concPunctProp();</span>
+<span class="fc" id="L1443">		String concWordFI = settings().concWordProp();</span>
+<span class="fc bfc" id="L1444" title="All 2 branches covered.">		for (int i = 0; i &lt; hits.size(); i++) {</span>
+<span class="fc" id="L1445">			Hit h = hits.get(i);</span>
+<span class="fc" id="L1446">			List&lt;String&gt; tokens = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L1447">			int[] context = contexts[i];</span>
+<span class="fc" id="L1448">			int contextLength = context[CONTEXTS_LENGTH_INDEX];</span>
+<span class="fc" id="L1449">			int contextRightStart = context[CONTEXTS_RIGHT_START_INDEX];</span>
+<span class="fc" id="L1450">			int contextHitStart = context[CONTEXTS_HIT_START_INDEX];</span>
+<span class="fc" id="L1451">			int indexInContext = CONTEXTS_NUMBER_OF_BOOKKEEPING_INTS;</span>
+<span class="fc bfc" id="L1452" title="All 2 branches covered.">			for (int j = 0; j &lt; contextLength; j++, indexInContext++) {</span>
+
+				// Add punctuation before word
+				// (Applications may choose to ignore punctuation before the first word)
+<span class="pc bpc" id="L1456" title="1 of 2 branches missed.">				if (punctTerms == null) {</span>
+					// There is no punctuation forward index. Just put a space
+					// between every word.
+<span class="nc" id="L1459">					tokens.add(&quot; &quot;);</span>
+				} else
+<span class="fc" id="L1461">					tokens.add(punctTerms.get(punctContext[i][indexInContext]));</span>
+
+				// Add extra attributes (e.g. lemma, pos)
+<span class="pc bpc" id="L1464" title="1 of 2 branches missed.">				if (attrContext != null) {</span>
+<span class="fc bfc" id="L1465" title="All 2 branches covered.">					for (int k = 0; k &lt; attrContext.length; k++) {</span>
+<span class="fc" id="L1466">						tokens.add(attrTerms[k].get(attrContext[k][i][indexInContext]));</span>
+					}
+				}
+
+				// Add word
+<span class="pc bpc" id="L1471" title="1 of 2 branches missed.">				if (terms != null)</span>
+<span class="fc" id="L1472">					tokens.add(terms.get(context[indexInContext]));</span>
+				else
+<span class="nc" id="L1474">					tokens.add(&quot;&quot;); // weird, but make sure the numbers add up at the end</span>
+
+			}
+<span class="fc" id="L1477">			List&lt;String&gt; properties = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L1478">			properties.add(concPunctFI);</span>
+<span class="fc bfc" id="L1479" title="All 2 branches covered.">			for (int k = 0; k &lt; attrContext.length; k++) {</span>
+<span class="fc" id="L1480">				properties.add(attrName[k]);</span>
+			}
+<span class="fc" id="L1482">			properties.add(concWordFI);</span>
+<span class="fc" id="L1483">			Kwic kwic = new Kwic(properties, tokens, contextHitStart, contextRightStart);</span>
+<span class="fc" id="L1484">			theKwics.put(h, kwic);</span>
+		}
+
+<span class="pc bpc" id="L1487" title="1 of 2 branches missed.">		if (oldContexts != null) {</span>
+<span class="nc" id="L1488">			restoreContexts(oldContexts);</span>
+		}
+<span class="fc" id="L1490">	}</span>
+
+	/**
+	 * Get context words from the forward index.
+	 *
+	 * NOTE: not synchronized because only ever called from synchronized methods!
+	 *
+	 * @param wordsAroundHit how many words of context we want
+	 * @param contextSources
+	 *            forward indices to get context from
+	 */
+	private void getContextWords(int wordsAroundHit, List&lt;ForwardIndex&gt; contextSources) {
+
+<span class="fc" id="L1503">		int n = hits.size();</span>
+<span class="pc bpc" id="L1504" title="1 of 2 branches missed.">		if (n == 0)</span>
+<span class="nc" id="L1505">			return;</span>
+<span class="fc" id="L1506">		int[] startsOfSnippets = new int[n];</span>
+<span class="fc" id="L1507">		int[] endsOfSnippets = new int[n];</span>
+<span class="fc" id="L1508">		int i = 0;</span>
+<span class="fc bfc" id="L1509" title="All 2 branches covered.">		for (Hit h: hits) {</span>
+<span class="fc bfc" id="L1510" title="All 2 branches covered.">			startsOfSnippets[i] = wordsAroundHit &gt;= h.start ? 0 : h.start - wordsAroundHit;</span>
+<span class="fc" id="L1511">			endsOfSnippets[i] = h.end + wordsAroundHit;</span>
+<span class="fc" id="L1512">			i++;</span>
+<span class="fc" id="L1513">		}</span>
+
+<span class="fc" id="L1515">		int fiNumber = 0;</span>
+<span class="fc" id="L1516">		int doc = hits.get(0).doc;</span>
+<span class="fc bfc" id="L1517" title="All 2 branches covered.">		for (ForwardIndex forwardIndex: contextSources) {</span>
+			// Get all the words from the forward index
+			List&lt;int[]&gt; words;
+<span class="pc bpc" id="L1520" title="1 of 2 branches missed.">			if (forwardIndex != null) {</span>
+				// We have a forward index for this field. Use it.
+<span class="fc" id="L1522">				int fiid = forwardIndex.luceneDocIdToFiid(doc);</span>
+<span class="fc" id="L1523">				words = forwardIndex.retrievePartsInt(fiid, startsOfSnippets, endsOfSnippets);</span>
+<span class="fc" id="L1524">			} else {</span>
+<span class="nc" id="L1525">				throw new RuntimeException(&quot;Cannot get context without a forward index&quot;);</span>
+			}
+
+			// Build the actual concordances
+<span class="fc" id="L1529">			Iterator&lt;int[]&gt; wordsIt = words.iterator();</span>
+<span class="fc" id="L1530">			int hitNum = 0;</span>
+<span class="pc bpc" id="L1531" title="1 of 4 branches missed.">			if (contexts == null || contexts.length &lt; hits.size()) {</span>
+<span class="fc" id="L1532">				contexts = new int[hits.size()][];</span>
+			}
+<span class="fc bfc" id="L1534" title="All 2 branches covered.">			for (Hit hit: hits) {</span>
+<span class="fc" id="L1535">				int[] theseWords = wordsIt.next();</span>
+
+				// Put the concordance in the Hit object
+<span class="fc" id="L1538">				int firstWordIndex = startsOfSnippets[hitNum];</span>
+
+<span class="pc bpc" id="L1540" title="1 of 2 branches missed.">				if (fiNumber == 0) {</span>
+					// Allocate context array and set hit and right start and context length
+<span class="fc" id="L1542">					contexts[hitNum] = new int[CONTEXTS_NUMBER_OF_BOOKKEEPING_INTS + theseWords.length * contextSources.size()];</span>
+<span class="fc" id="L1543">					contexts[hitNum][CONTEXTS_HIT_START_INDEX] = hit.start - firstWordIndex;</span>
+<span class="fc" id="L1544">					contexts[hitNum][CONTEXTS_RIGHT_START_INDEX] = hit.end - firstWordIndex;</span>
+<span class="fc" id="L1545">					contexts[hitNum][CONTEXTS_LENGTH_INDEX] = theseWords.length;</span>
+				}
+				// Copy the context we just retrieved into the context array
+<span class="fc" id="L1548">				int start = fiNumber * theseWords.length + CONTEXTS_NUMBER_OF_BOOKKEEPING_INTS;</span>
+<span class="fc" id="L1549">				System.arraycopy(theseWords, 0, contexts[hitNum], start, theseWords.length);</span>
+<span class="fc" id="L1550">				hitNum++;</span>
+<span class="fc" id="L1551">			}</span>
+
+<span class="fc" id="L1553">			fiNumber++;</span>
+<span class="fc" id="L1554">		}</span>
+<span class="fc" id="L1555">	}</span>
+
+	/**
+	 * Get the context information from the list of hits, so we can
+	 * look up a different context but still have access to this one as well.
+	 *
+	 * NOTE: not synchronized because only ever called from synchronized methods!
+	 *
+	 * @return the context
+	 */
+	private int[][] saveContexts() {
+<span class="fc" id="L1566">		int[][] saved = new int[contexts.length][];</span>
+<span class="fc bfc" id="L1567" title="All 2 branches covered.">		for (int i = 0; i &lt; contexts.length; i++) {</span>
+<span class="fc" id="L1568">			saved[i] = Arrays.copyOf(contexts[i], contexts[i].length);</span>
+		}
+<span class="fc" id="L1570">		return saved;</span>
+	}
+
+	/**
+	 * Put context information into the list of hits.
+	 *
+	 * NOTE: not synchronized because only ever called from synchronized methods!
+	 *
+	 * @param saved the context to restore
+	 */
+	private void restoreContexts(int[][] saved) {
+<span class="nc bnc" id="L1581" title="All 4 branches missed.">		if (contexts == null || contexts.length != saved.length) {</span>
+<span class="nc" id="L1582">			contexts = new int[saved.length][];</span>
+		}
+<span class="nc bnc" id="L1584" title="All 2 branches missed.">		for (int i = 0; i &lt; saved.length; i++) {</span>
+<span class="nc bnc" id="L1585" title="All 4 branches missed.">			if (contexts[i] == null || contexts[i].length != saved[i].length) {</span>
+<span class="nc" id="L1586">				contexts[i] = new int[saved[i].length];</span>
+			}
+<span class="nc" id="L1588">			System.arraycopy(saved[i], 0, contexts, 0, saved[i].length);</span>
+		}
+<span class="nc" id="L1590">	}</span>
+
+	/**
+	 * Retrieves the concordance information (left, hit and right context) for a number of hits in
+	 * the same document from the ContentStore.
+	 *
+	 * NOTE1: it is assumed that all hits in this Hits object are in the same document!
+	 * @param fieldName
+	 *            Lucene index field to make conc for
+	 * @param wordsAroundHit
+	 *            number of words left and right of hit to fetch
+	 * @param conc
+	 *            where to add the concordances
+	 * @param hl
+	 */
+	private synchronized void makeConcordancesSingleDocContentStore(String fieldName, int wordsAroundHit, Map&lt;Hit, Concordance&gt; conc,
+			XmlHighlighter hl) {
+<span class="nc bnc" id="L1607" title="All 2 branches missed.">		if (hits.isEmpty())</span>
+<span class="nc" id="L1608">			return;</span>
+<span class="nc" id="L1609">		int doc = hits.get(0).doc;</span>
+<span class="nc" id="L1610">		int arrayLength = hits.size() * 2;</span>
+<span class="nc" id="L1611">		int[] startsOfWords = new int[arrayLength];</span>
+<span class="nc" id="L1612">		int[] endsOfWords = new int[arrayLength];</span>
+
+		// Determine the first and last word of the concordance, as well as the
+		// first and last word of the actual hit inside the concordance.
+<span class="nc" id="L1616">		int startEndArrayIndex = 0;</span>
+<span class="nc bnc" id="L1617" title="All 2 branches missed.">		for (Hit hit: hits) {</span>
+<span class="nc" id="L1618">			int hitStart = hit.start;</span>
+<span class="nc" id="L1619">			int hitEnd = hit.end - 1;</span>
+
+<span class="nc" id="L1621">			int start = hitStart - wordsAroundHit;</span>
+<span class="nc bnc" id="L1622" title="All 2 branches missed.">			if (start &lt; 0)</span>
+<span class="nc" id="L1623">				start = 0;</span>
+<span class="nc" id="L1624">			int end = hitEnd + wordsAroundHit;</span>
+
+<span class="nc" id="L1626">			startsOfWords[startEndArrayIndex] = start;</span>
+<span class="nc" id="L1627">			startsOfWords[startEndArrayIndex + 1] = hitStart;</span>
+<span class="nc" id="L1628">			endsOfWords[startEndArrayIndex] = hitEnd;</span>
+<span class="nc" id="L1629">			endsOfWords[startEndArrayIndex + 1] = end;</span>
+
+<span class="nc" id="L1631">			startEndArrayIndex += 2;</span>
+<span class="nc" id="L1632">		}</span>
+
+		// Get the relevant character offsets (overwrites the startsOfWords and endsOfWords
+		// arrays)
+<span class="nc" id="L1636">		searcher.getCharacterOffsets(doc, fieldName, startsOfWords, endsOfWords, true);</span>
+
+		// Make all the concordances
+<span class="nc" id="L1639">		List&lt;Concordance&gt; newConcs = searcher.makeConcordancesFromContentStore(doc, fieldName, startsOfWords,</span>
+				endsOfWords, hl);
+<span class="nc bnc" id="L1641" title="All 2 branches missed.">		for (int i = 0; i &lt; hits.size(); i++) {</span>
+<span class="nc" id="L1642">			conc.put(hits.get(i), newConcs.get(i));</span>
+		}
+<span class="nc" id="L1644">	}</span>
+
+	/**
+	 * Convenience method to get all hits in a single doc from a larger hitset.
+	 *
+	 * Don't use this for grouping or per-document results as it's relatively inefficient.
+	 *
+	 * @param docid the doc id to get hits for
+	 * @return the list of hits in this doc (if any)
+	 */
+	@Override
+	public Hits getHitsInDoc(int docid) {
+		try {
+<span class="nc" id="L1657">			ensureAllHitsRead();</span>
+<span class="nc" id="L1658">		} catch (InterruptedException e) {</span>
+			// Interrupted. Just return no hits;
+			// client should detect thread was interrupted if it
+			// wants to use background threads.
+<span class="nc" id="L1662">			Thread.currentThread().interrupt();</span>
+<span class="nc" id="L1663">			return Hits.emptyList(searcher);</span>
+<span class="nc" id="L1664">		}</span>
+<span class="nc" id="L1665">		List&lt;Hit&gt; hitsInDoc = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L1666" title="All 2 branches missed.">		for (Hit hit: hits) {</span>
+<span class="nc bnc" id="L1667" title="All 2 branches missed.">			if (hit.doc == docid)</span>
+<span class="nc" id="L1668">				hitsInDoc.add(hit);</span>
+<span class="nc" id="L1669">		}</span>
+<span class="nc" id="L1670">		Hits result = Hits.fromList(searcher, hitsInDoc);</span>
+<span class="nc" id="L1671">		result.copySettingsFrom(this);</span>
+<span class="nc" id="L1672">		return result;</span>
+	}
+
+	/**
+	 * Return the context(s) for the specified hit number
+	 * @param hitNumber which hit we want the context(s) for
+	 * @return the context(s)
+	 */
+	@Override
+	public int[] getHitContext(int hitNumber) {
+<span class="fc" id="L1682">		return contexts[hitNumber];</span>
+	}
+
+	/**
+	 * Generate concordances from content store (slower).
+	 *
+	 * @param hits the hits for which to retrieve concordances
+	 * @param contextSize how many words around the hit to retrieve
+	 * @param fieldName field to use for building concordances
+	 * @return the concordances
+	 */
+	private Map&lt;Hit, Concordance&gt; retrieveConcordancesFromContentStore(int contextSize, String fieldName) {
+<span class="nc" id="L1694">		XmlHighlighter hl = new XmlHighlighter(); // used to make fragments well-formed</span>
+<span class="nc" id="L1695">		hl.setUnbalancedTagsStrategy(searcher.getDefaultUnbalancedTagsStrategy());</span>
+		// Group hits per document
+<span class="nc" id="L1697">		MutableIntObjectMap&lt;List&lt;Hit&gt;&gt; hitsPerDocument = IntObjectMaps.mutable.empty();</span>
+<span class="nc bnc" id="L1698" title="All 2 branches missed.">		for (Hit key: hits) {</span>
+<span class="nc" id="L1699">			List&lt;Hit&gt; hitsInDoc = hitsPerDocument.get(key.doc);</span>
+<span class="nc bnc" id="L1700" title="All 2 branches missed.">			if (hitsInDoc == null) {</span>
+<span class="nc" id="L1701">				hitsInDoc = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L1702">				hitsPerDocument.put(key.doc, hitsInDoc);</span>
+			}
+<span class="nc" id="L1704">			hitsInDoc.add(key);</span>
+<span class="nc" id="L1705">		}</span>
+<span class="nc" id="L1706">		Map&lt;Hit, Concordance&gt; conc = new HashMap&lt;&gt;();</span>
+<span class="nc bnc" id="L1707" title="All 2 branches missed.">		for (List&lt;Hit&gt; l: hitsPerDocument.values()) {</span>
+<span class="nc" id="L1708">			HitsImpl hitsInThisDoc = new HitsImpl(searcher, l);</span>
+<span class="nc" id="L1709">			hitsInThisDoc.copySettingsFrom(this);</span>
+<span class="nc" id="L1710">			hitsInThisDoc.makeConcordancesSingleDocContentStore(fieldName, contextSize, conc, hl);</span>
+<span class="nc" id="L1711">		}</span>
+<span class="nc" id="L1712">		return conc;</span>
+	}
+
+	@Override
+	public void setMaxHitsCounted(boolean maxHitsCounted) {
+<span class="fc" id="L1717">		this.maxHitsCounted = maxHitsCounted;</span>
+<span class="fc" id="L1718">	}</span>
+
+	@Override
+	protected void setMaxHitsRetrieved(boolean maxHitsRetrieved) {
+<span class="fc" id="L1722">		this.maxHitsRetrieved = maxHitsRetrieved;</span>
+<span class="fc" id="L1723">	}</span>
+
+	@Override
+	public String toString() {
+<span class="nc" id="L1727">	    return &quot;HitsImpl#&quot; + hitsObjId + &quot; (fullyRead=&quot; + sourceSpansFullyRead + &quot;, hits.size()=&quot; + hits.size() + &quot;)&quot;;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SpanQueryCaptureGroup.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">SpanQueryCaptureGroup.java</span></div><h1>SpanQueryCaptureGroup.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.lucene;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.index.TermContext;
+import org.apache.lucene.search.IndexSearcher;
+
+/**
+ * Captures its clause as a captured group.
+ */
+public class SpanQueryCaptureGroup extends BLSpanQueryAbstract {
+
+	String name;
+
+	/** How to adjust the left edge of the captured hits while matching.
+	 *  (necessary because we try to internalize constant-length neighbouring clauses
+	 *   into our clause to speed up matching)
+	 */
+	int leftAdjust;
+
+	/** How to adjust the right edge of the captured hits while matching.
+	 *  (necessary because we try to internalize constant-length neighbouring clauses
+	 *   into our clause to speed up matching)
+	 */
+	int rightAdjust;
+
+	/**
+	 * Construct SpanQueryCaptureGroup object.
+	 * @param query the query to determine edges from
+	 * @param name captured group name
+	 * @param leftAdjust how to adjust the captured group's start position
+	 * @param rightAdjust how to adjust the captured group's end position
+	 */
+	public SpanQueryCaptureGroup(BLSpanQuery query, String name, int leftAdjust, int rightAdjust) {
+<span class="fc" id="L56">		super(query);</span>
+<span class="fc" id="L57">		this.name = name;</span>
+<span class="fc" id="L58">		this.leftAdjust = leftAdjust;</span>
+<span class="fc" id="L59">		this.rightAdjust = rightAdjust;</span>
+<span class="fc" id="L60">	}</span>
+
+	@Override
+	public BLSpanQuery rewrite(IndexReader reader) throws IOException {
+<span class="fc" id="L64">		List&lt;BLSpanQuery&gt; rewritten = rewriteClauses(reader);</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">		return rewritten == null ? this : new SpanQueryCaptureGroup(rewritten.get(0), name, leftAdjust, rightAdjust);</span>
+	}
+
+	@Override
+	public boolean matchesEmptySequence() {
+<span class="fc" id="L70">		return clauses.get(0).matchesEmptySequence();</span>
+	}
+
+	@Override
+	public BLSpanQuery noEmpty() {
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">		if (!matchesEmptySequence())</span>
+<span class="fc" id="L76">			return this;</span>
+<span class="nc" id="L77">		return new SpanQueryCaptureGroup(clauses.get(0).noEmpty(), name, leftAdjust, rightAdjust);</span>
+	}
+
+	@Override
+	public BLSpanWeight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
+<span class="fc" id="L82">		BLSpanWeight weight = clauses.get(0).createWeight(searcher, needsScores);</span>
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">		return new SpanWeightCaptureGroup(weight, searcher, needsScores ? getTermContexts(weight) : null);</span>
+	}
+
+	class SpanWeightCaptureGroup extends BLSpanWeight {
+
+		final BLSpanWeight weight;
+
+<span class="fc" id="L90">		public SpanWeightCaptureGroup(BLSpanWeight weight, IndexSearcher searcher, Map&lt;Term, TermContext&gt; terms) throws IOException {</span>
+<span class="fc" id="L91">			super(SpanQueryCaptureGroup.this, searcher, terms);</span>
+<span class="fc" id="L92">			this.weight = weight;</span>
+<span class="fc" id="L93">		}</span>
+
+		@Override
+		public void extractTerms(Set&lt;Term&gt; terms) {
+<span class="fc" id="L97">			weight.extractTerms(terms);</span>
+<span class="fc" id="L98">		}</span>
+
+		@Override
+		public void extractTermContexts(Map&lt;Term, TermContext&gt; contexts) {
+<span class="nc" id="L102">			weight.extractTermContexts(contexts);</span>
+<span class="nc" id="L103">		}</span>
+
+		@Override
+		public BLSpans getSpans(final LeafReaderContext context, Postings requiredPostings) throws IOException {
+<span class="fc" id="L107">			BLSpans spans = weight.getSpans(context, requiredPostings);</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">			if (spans == null)</span>
+<span class="fc" id="L109">				return null;</span>
+<span class="fc" id="L110">			return new SpansCaptureGroup(spans, name, leftAdjust, rightAdjust);</span>
+		}
+
+	}
+
+	@Override
+	public String toString(String field) {
+<span class="pc bpc" id="L117" title="1 of 4 branches missed.">		String adj = (leftAdjust != 0 || rightAdjust != 0 ? &quot;, &quot; + leftAdjust + &quot;, &quot; + rightAdjust : &quot;&quot;);</span>
+<span class="fc" id="L118">		return &quot;CAPTURE(&quot; + clausesToString(field) + &quot;, &quot; + name + adj + &quot;)&quot;;</span>
+	}
+
+	@Override
+	public boolean hitsAllSameLength() {
+<span class="fc" id="L123">		return clauses.get(0).hitsAllSameLength();</span>
+	}
+
+	@Override
+	public int hitsLengthMin() {
+<span class="fc" id="L128">		return clauses.get(0).hitsLengthMin();</span>
+	}
+
+	@Override
+	public int hitsLengthMax() {
+<span class="fc" id="L133">		return clauses.get(0).hitsLengthMax();</span>
+	}
+
+	@Override
+	public boolean hitsStartPointSorted() {
+<span class="fc" id="L138">		return clauses.get(0).hitsStartPointSorted();</span>
+	}
+
+	@Override
+	public boolean hitsEndPointSorted() {
+<span class="fc" id="L143">		return clauses.get(0).hitsEndPointSorted();</span>
+	}
+
+	@Override
+	public boolean hitsHaveUniqueStart() {
+<span class="fc" id="L148">		return clauses.get(0).hitsHaveUniqueStart();</span>
+	}
+
+	@Override
+	public boolean hitsHaveUniqueEnd() {
+<span class="fc" id="L153">		return clauses.get(0).hitsHaveUniqueEnd();</span>
+	}
+
+	@Override
+	public boolean hitsAreUnique() {
+<span class="fc" id="L158">		return clauses.get(0).hitsAreUnique();</span>
+	}
+
+	@Override
+	public boolean canInternalizeNeighbour(BLSpanQuery clause, boolean onTheRight) {
+<span class="fc" id="L163">		return clause.hitsAllSameLength();</span>
+	}
+
+	@Override
+	public BLSpanQuery internalizeNeighbour(BLSpanQuery clause, boolean onTheRight) {
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">		if (!clause.hitsAllSameLength())</span>
+<span class="nc" id="L169">			throw new IllegalArgumentException(&quot;Can only internalize fixed-length clause!&quot;);</span>
+		// Check how to adjust the capture group edges after internalization
+<span class="fc" id="L171">		int nla = leftAdjust, nra = rightAdjust;</span>
+<span class="fc" id="L172">		int clauseLength = clause.hitsLengthMin();</span>
+<span class="fc bfc" id="L173" title="All 2 branches covered.">		if (onTheRight)</span>
+<span class="fc" id="L174">			nra -= clauseLength;</span>
+		else
+<span class="fc" id="L176">			nla += clauseLength;</span>
+<span class="fc" id="L177">		return new SpanQueryCaptureGroup(SpanQuerySequence.sequenceInternalize(clauses.get(0), clause, onTheRight), name, nla, nra);</span>
+	}
+
+	@Override
+	public long reverseMatchingCost(IndexReader reader) {
+<span class="fc" id="L182">		return clauses.get(0).reverseMatchingCost(reader);</span>
+	}
+
+	@Override
+	public int forwardMatchingCost() {
+<span class="fc" id="L187">		return clauses.get(0).forwardMatchingCost();</span>
+	}
+
+	@Override
+	public int hashCode() {
+<span class="nc" id="L192">		final int prime = 31;</span>
+<span class="nc" id="L193">		int result = super.hashCode();</span>
+<span class="nc bnc" id="L194" title="All 2 branches missed.">		result = prime * result + ((name == null) ? 0 : name.hashCode());</span>
+<span class="nc" id="L195">		return result;</span>
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+<span class="pc bpc" id="L200" title="1 of 2 branches missed.">		if (this == obj)</span>
+<span class="nc" id="L201">			return true;</span>
+<span class="pc bpc" id="L202" title="1 of 2 branches missed.">		if (!super.equals(obj))</span>
+<span class="fc" id="L203">			return false;</span>
+<span class="nc bnc" id="L204" title="All 2 branches missed.">		if (getClass() != obj.getClass())</span>
+<span class="nc" id="L205">			return false;</span>
+<span class="nc" id="L206">		SpanQueryCaptureGroup other = (SpanQueryCaptureGroup) obj;</span>
+<span class="nc bnc" id="L207" title="All 2 branches missed.">		if (name == null) {</span>
+<span class="nc bnc" id="L208" title="All 2 branches missed.">			if (other.name != null)</span>
+<span class="nc" id="L209">				return false;</span>
+<span class="nc bnc" id="L210" title="All 2 branches missed.">		} else if (!name.equals(other.name))</span>
+<span class="nc" id="L211">			return false;</span>
+<span class="nc" id="L212">		return true;</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

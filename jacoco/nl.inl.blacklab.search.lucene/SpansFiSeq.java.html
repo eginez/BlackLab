@@ -1,0 +1,288 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SpansFiSeq.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">SpansFiSeq.java</span></div><h1>SpansFiSeq.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.lucene;
+
+import java.io.IOException;
+import java.util.Iterator;
+import java.util.NavigableSet;
+
+import org.apache.lucene.search.spans.SpanCollector;
+
+import nl.inl.blacklab.search.Span;
+import nl.inl.blacklab.search.fimatch.ForwardIndexAccessor.ForwardIndexAccessorLeafReader;
+import nl.inl.blacklab.search.fimatch.ForwardIndexDocument;
+import nl.inl.blacklab.search.fimatch.NfaState;
+
+/**
+ * Finds hits using the forward index, by matching an NFA from anchor points.
+ */
+class SpansFiSeq extends BLSpans {
+
+	/** The spans we're (possibly) looking for */
+	private BLSpans anchor;
+
+	/** What doc is the anchorSpans in? */
+<span class="fc" id="L38">	private int anchorDoc = -1;</span>
+
+	/** Where to get forward index tokens for the current doc */
+	private ForwardIndexDocument currentFiDoc;
+
+	/** What start pos is the anchor at? */
+<span class="fc" id="L44">	private int anchorStart = -1;</span>
+
+	/** Are we already at the first match in a new document, before nextStartPosition() has been called?
+	 * Necessary because we have to make sure nextDoc()/advance() actually puts us in a document with at
+	 * least one match.
+	 */
+<span class="fc" id="L50">	private boolean alreadyAtFirstMatch = false;</span>
+
+	/** If true, match from the start of the anchor hit. Otherwise, match from the end. */
+	private boolean startOfAnchor;
+
+	/** The NFA to use to find matches in the forward index. */
+	private NfaState nfa;
+
+	/** The direction to match in (-1 = backward, 1 = forward). */
+	private int direction;
+
+	/** Maps from term strings to term indices for each property. */
+	private ForwardIndexAccessorLeafReader fiAccessor;
+
+	/** Iterator over NFA-matched endpoints */
+	private Iterator&lt;Integer&gt; matchEndPointIt;
+
+	/** Current NFA-matched endpoint */
+<span class="fc" id="L68">	private int currentMatchEndPoint = -1;</span>
+
+<span class="fc" id="L70">	public SpansFiSeq(BLSpans anchorSpans, boolean startOfAnchor, NfaState nfa, int direction, ForwardIndexAccessorLeafReader fiAccessor) {</span>
+<span class="fc" id="L71">		this.anchor = anchorSpans;</span>
+<span class="fc" id="L72">		this.startOfAnchor = startOfAnchor;</span>
+<span class="fc" id="L73">		this.nfa = nfa;</span>
+<span class="fc" id="L74">		this.direction = direction;</span>
+<span class="fc" id="L75">		this.fiAccessor = fiAccessor;</span>
+<span class="fc" id="L76">	}</span>
+
+	@Override
+	public int docID() {
+<span class="fc" id="L80">		return anchorDoc;</span>
+	}
+
+	@Override
+	public int startPosition() {
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">		if (alreadyAtFirstMatch)</span>
+<span class="nc" id="L86">			return -1; // nextStartPosition() hasn't been called yet</span>
+<span class="pc bpc" id="L87" title="1 of 4 branches missed.">		if (anchorStart == NO_MORE_POSITIONS || anchorStart &lt; 0)</span>
+<span class="fc" id="L88">			return anchorStart;</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">		return direction &lt; 0 ? Math.min(currentMatchEndPoint + 1, anchorStart) : anchorStart;</span>
+	}
+
+	@Override
+	public int endPosition() {
+<span class="pc bpc" id="L94" title="1 of 2 branches missed.">		if (alreadyAtFirstMatch)</span>
+<span class="nc" id="L95">			return -1; // nextStartPosition() hasn't been called yet</span>
+<span class="fc" id="L96">		int endPos = anchor.endPosition();</span>
+<span class="pc bpc" id="L97" title="2 of 4 branches missed.">		if (endPos == NO_MORE_POSITIONS || endPos &lt; 0)</span>
+<span class="nc" id="L98">			return endPos;</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">		return direction &gt; 0 ? Math.max(currentMatchEndPoint, anchor.endPosition()) : anchor.endPosition();</span>
+	}
+
+	@Override
+	public int nextDoc() throws IOException {
+<span class="fc" id="L104">		alreadyAtFirstMatch = false;</span>
+
+		// Are we done yet?
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">		if (anchorDoc == NO_MORE_DOCS)</span>
+<span class="nc" id="L108">			return NO_MORE_DOCS;</span>
+
+		// Advance container
+<span class="fc" id="L111">		anchorDoc = anchor.nextDoc();</span>
+<span class="fc" id="L112">		anchorStart = -1;</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">		if (anchorDoc == NO_MORE_DOCS) {</span>
+<span class="fc" id="L114">			currentFiDoc = null;</span>
+<span class="fc" id="L115">			return NO_MORE_DOCS; // no more containers; we're done.</span>
+		}
+<span class="fc" id="L117">		currentFiDoc = fiAccessor.getForwardIndexDoc(anchorDoc);</span>
+
+		// Find first matching anchor span from here
+<span class="fc" id="L120">		return findDocWithMatch();</span>
+	}
+
+	@Override
+	public int nextStartPosition() throws IOException {
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">		if (anchorDoc == NO_MORE_DOCS)</span>
+<span class="nc" id="L126">			return NO_MORE_POSITIONS;</span>
+
+<span class="fc bfc" id="L128" title="All 2 branches covered.">		if (alreadyAtFirstMatch) {</span>
+			// We're already at the first match in the doc. Return it.
+<span class="fc" id="L130">			alreadyAtFirstMatch = false;</span>
+<span class="fc" id="L131">			return anchorStart;</span>
+		}
+
+		// Are we done yet?
+<span class="pc bpc" id="L135" title="1 of 2 branches missed.">		if (anchorStart == NO_MORE_POSITIONS)</span>
+<span class="nc" id="L136">			return NO_MORE_POSITIONS;</span>
+
+<span class="fc bfc" id="L138" title="All 2 branches covered.">		if (matchEndPointIt.hasNext()) {</span>
+<span class="fc" id="L139">			currentMatchEndPoint = matchEndPointIt.next();</span>
+<span class="fc" id="L140">			return startPosition();</span>
+		}
+
+		// Find first matching anchor span from here
+<span class="fc" id="L144">		anchorStart = anchor.nextStartPosition();</span>
+<span class="fc" id="L145">		return synchronizePos();</span>
+	}
+
+	@Override
+	public int advanceStartPosition(int target) throws IOException {
+<span class="nc bnc" id="L150" title="All 2 branches missed.">		if (anchorDoc == NO_MORE_DOCS)</span>
+<span class="nc" id="L151">			return NO_MORE_POSITIONS;</span>
+
+<span class="nc bnc" id="L153" title="All 2 branches missed.">		if (alreadyAtFirstMatch) {</span>
+<span class="nc" id="L154">			alreadyAtFirstMatch = false;</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">			if (anchorStart &gt;= target)</span>
+<span class="nc" id="L156">				return anchorStart;</span>
+		}
+
+		// Are we done yet?
+<span class="nc bnc" id="L160" title="All 2 branches missed.">		if (anchorStart == NO_MORE_POSITIONS)</span>
+<span class="nc" id="L161">			return NO_MORE_POSITIONS;</span>
+
+<span class="nc" id="L163">		anchorStart = anchor.advanceStartPosition(target);</span>
+
+		// Find first matching anchor span from here
+<span class="nc" id="L166">		return synchronizePos();</span>
+	}
+
+	/**
+	 * Find a anchor span (not necessarily in this document) matching with NFA,
+	 * starting from the current anchor span.
+	 *
+	 * @return docID if found, NO_MORE_DOCS if no such anchor span exists (i.e. we're done)
+	 * @throws IOException
+	 */
+	private int findDocWithMatch() throws IOException {
+		// Find the next &quot;valid&quot; container, if there is one.
+<span class="fc bfc" id="L178" title="All 2 branches covered.">		while (anchorDoc != NO_MORE_DOCS) {</span>
+
+			// Are there search results in this document?
+<span class="pc bpc" id="L181" title="1 of 2 branches missed.">			if (anchorStart != NO_MORE_POSITIONS) {</span>
+<span class="fc" id="L182">				anchorStart = anchor.nextStartPosition();</span>
+			}
+<span class="fc" id="L184">			anchorStart = synchronizePos();</span>
+<span class="fc bfc" id="L185" title="All 2 branches covered.">			if (anchorStart != NO_MORE_POSITIONS) {</span>
+<span class="fc" id="L186">				alreadyAtFirstMatch = true;</span>
+<span class="fc" id="L187">				return anchorDoc;</span>
+			}
+
+			// No search results found in the current container.
+			// Advance to the next container.
+<span class="fc" id="L192">			anchorDoc = anchor.nextDoc();</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">			if (anchorDoc != NO_MORE_DOCS) {</span>
+<span class="fc" id="L194">				currentFiDoc = fiAccessor.getForwardIndexDoc(anchorDoc);</span>
+			} else {
+<span class="fc" id="L196">				currentFiDoc = null;</span>
+			}
+<span class="fc" id="L198">			anchorStart = -1;</span>
+		}
+<span class="fc" id="L200">		return anchorDoc;</span>
+	}
+
+	/**
+	 * Find a anchor span that has an NFA match, starting from the current anchor span.
+	 *
+	 * @return start position if found, NO_MORE_POSITIONS if no such anchor spans exists (i.e. we're done)
+	 * @throws IOException
+	 */
+	private int synchronizePos() throws IOException {
+		// Find the next &quot;valid&quot; anchor spans, if there is one.
+<span class="fc bfc" id="L211" title="All 2 branches covered.">		while (anchorStart != NO_MORE_POSITIONS) {</span>
+
+			// We're at the first unchecked anchor spans. Does our NFA match?
+<span class="fc bfc" id="L214" title="All 2 branches covered.">			int anchorPos = startOfAnchor ? anchorStart : anchor.endPosition();</span>
+<span class="fc bfc" id="L215" title="All 2 branches covered.">			if (direction &lt; 0)</span>
+<span class="fc" id="L216">				anchorPos--;</span>
+<span class="fc" id="L217">			NavigableSet&lt;Integer&gt; setMatchEndpoints = nfa.findMatches(currentFiDoc, anchorPos, direction);</span>
+<span class="fc bfc" id="L218" title="All 2 branches covered.">			if (setMatchEndpoints.size() &gt; 0) {</span>
+<span class="fc bfc" id="L219" title="All 2 branches covered.">				if (direction == 1)</span>
+<span class="fc" id="L220">					matchEndPointIt = setMatchEndpoints.iterator();</span>
+				else
+<span class="fc" id="L222">					matchEndPointIt = setMatchEndpoints.descendingSet().iterator();</span>
+<span class="fc" id="L223">				currentMatchEndPoint = matchEndPointIt.next();</span>
+<span class="fc" id="L224">				return startPosition();</span>
+			}
+
+			// Didn't match filter; go to the next position.
+<span class="fc" id="L228">			anchorStart = anchor.nextStartPosition();</span>
+<span class="fc bfc" id="L229" title="All 2 branches covered.">			if (anchorStart == NO_MORE_POSITIONS)</span>
+<span class="fc" id="L230">				return NO_MORE_POSITIONS;</span>
+
+<span class="fc" id="L232">		}</span>
+<span class="fc" id="L233">		return anchorStart;</span>
+	}
+
+	@Override
+	public int advance(int doc) throws IOException {
+<span class="nc" id="L238">		alreadyAtFirstMatch = false;</span>
+
+		// Skip both to doc
+<span class="nc" id="L241">		anchorDoc = anchor.advance(doc);</span>
+<span class="nc" id="L242">		anchorStart = -1;</span>
+<span class="nc bnc" id="L243" title="All 2 branches missed.">		if (anchorDoc == NO_MORE_DOCS) {</span>
+<span class="nc" id="L244">			currentFiDoc = null;</span>
+<span class="nc" id="L245">			return NO_MORE_DOCS;</span>
+		}
+<span class="nc" id="L247">		currentFiDoc = fiAccessor.getForwardIndexDoc(anchorDoc);</span>
+
+		// Find first matching anchor span from here
+<span class="nc" id="L250">		return findDocWithMatch();</span>
+	}
+
+	@Override
+	public String toString() {
+<span class="nc bnc" id="L255" title="All 4 branches missed.">		return &quot;SpansFiSeq(&quot; + anchor + &quot;, &quot; + (startOfAnchor ? &quot;START&quot; : &quot;END&quot;) + &quot;, &quot; + nfa + &quot;, &quot; + (direction == 1 ? &quot;FORWARD&quot; : &quot;BACKWARD&quot;) + &quot;)&quot;;</span>
+	}
+
+	@Override
+	public void passHitQueryContextToClauses(HitQueryContext context) {
+<span class="fc" id="L260">		anchor.setHitQueryContext(context);</span>
+		//@@@ NFA?
+<span class="fc" id="L262">	}</span>
+
+	@Override
+	public void getCapturedGroups(Span[] capturedGroups) {
+<span class="nc bnc" id="L266" title="All 2 branches missed.">		if (!childClausesCaptureGroups)</span>
+<span class="nc" id="L267">			return;</span>
+<span class="nc" id="L268">		anchor.getCapturedGroups(capturedGroups);</span>
+		//@@@ NFA?
+<span class="nc" id="L270">	}</span>
+
+	@Override
+	public int width() {
+<span class="nc" id="L274">		return anchor.width();</span>
+	}
+
+	@Override
+	public void collect(SpanCollector collector) throws IOException {
+<span class="nc" id="L279">		anchor.collect(collector);</span>
+<span class="nc" id="L280">	}</span>
+
+	@Override
+	public float positionsCost() {
+<span class="nc" id="L284">		return anchor.positionsCost();</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

@@ -1,0 +1,513 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HookableSaxHandler.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.index</a> &gt; <span class="el_source">HookableSaxHandler.java</span></div><h1>HookableSaxHandler.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.index;
+
+import java.io.IOException;
+import java.io.StringReader;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.parsers.SAXParser;
+import javax.xml.parsers.SAXParserFactory;
+
+import org.xml.sax.Attributes;
+import org.xml.sax.InputSource;
+import org.xml.sax.Locator;
+import org.xml.sax.SAXException;
+import org.xml.sax.helpers.DefaultHandler;
+
+import nl.inl.util.StringUtil;
+
+/**
+ * SAX parser with the ability to attach &quot;SAX-path hooks&quot; to process specific elements/attributes in
+ * the XML.
+ */
+public class HookableSaxHandler extends DefaultHandler {
+
+	/**
+	 * Describes a path in an XML document that can be evaluated while doing SAX parsing, and keeps
+	 * track of the current matching state(s).
+	 */
+	public static class SaxPathExpressionChecker {
+		/** Keeps track of a (potential) match of this expression. */
+<span class="fc" id="L49">		class ExprMatcher {</span>
+			/** How many elements of the current path have we matched? */
+<span class="fc" id="L51">			private int succesfulMatches = 0;</span>
+
+			/** How many unmatched elements deeper than the matched path are we? */
+<span class="fc" id="L54">			private int failedMatches = 0;</span>
+
+			/** For relative paths: how many elements have we skipped to find the first part? */
+<span class="fc" id="L57">			private int elementsSkipped = 0;</span>
+
+			public void startElement(String elementName) {
+<span class="fc bfc" id="L60" title="All 2 branches covered.">				if (failedMatches &gt; 0) {</span>
+					// Already unmatched. Just increment the level.
+<span class="fc" id="L62">					failedMatches++;</span>
+				} else {
+					// No failed matches yet. Does this one match?
+<span class="fc bfc" id="L65" title="All 2 branches covered.">					if (succesfulMatches &lt; elementNames.size()) {</span>
+<span class="fc" id="L66">						String elementToMatch = elementNames.get(succesfulMatches);</span>
+<span class="pc bpc" id="L67" title="1 of 4 branches missed.">						if (elementToMatch.equals(elementName) || elementToMatch.equals(&quot;*&quot;)) {</span>
+							// We have a match! Record it.
+<span class="fc" id="L69">							succesfulMatches++;</span>
+						} else {
+							// Mismatch.
+<span class="fc" id="L72">							failedMatches++;</span>
+						}
+<span class="fc" id="L74">						return;</span>
+					}
+
+					// No, no match. Are we still in the skipping phase for a relative path?
+<span class="pc bpc" id="L78" title="1 of 4 branches missed.">					if (isRelativePath &amp;&amp; succesfulMatches == 0)</span>
+<span class="nc" id="L79">						elementsSkipped++; // Yes, skip one more</span>
+					else
+<span class="fc" id="L81">						failedMatches++; // No, record failed match</span>
+				}
+<span class="fc" id="L83">			}</span>
+
+			/**
+			 * A close tag was found; go back up one level.
+			 *
+			 * @return false if we're at level 0 now, true otherwise
+			 */
+			public boolean endElement() {
+<span class="fc bfc" id="L91" title="All 2 branches covered.">				if (failedMatches &gt; 0) {</span>
+					// Unmatched; decrement the unmatched level, so it may become matched again
+<span class="fc" id="L93">					failedMatches--;</span>
+				} else {
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">					if (succesfulMatches &gt; 0) {</span>
+						// Just decrement the matched level.
+<span class="fc" id="L97">						succesfulMatches--;</span>
+					} else {
+						// We're in the skipping phase for a relative path.
+<span class="nc" id="L100">						elementsSkipped--;</span>
+					}
+				}
+<span class="pc bpc" id="L103" title="1 of 6 branches missed.">				return failedMatches &gt; 0 || succesfulMatches &gt; 0 || elementsSkipped &gt; 0;</span>
+			}
+
+			/**
+			 * Check if the current element matched the path expression.
+			 * @return true iff the current element matched
+			 */
+			public boolean currentElementMatched() {
+<span class="fc bfc" id="L111" title="All 4 branches covered.">				return succesfulMatches == elementNames.size() &amp;&amp; failedMatches == 0</span>
+						/*&amp;&amp; attributeName == null*/;
+			}
+
+			/**
+			 * Check if one of our ancestors matched the path expression.
+			 *
+			 * @return true iff one of our ancestors matched
+			 */
+			public boolean ancestorOrSelfMatched() {
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">				return succesfulMatches == elementNames.size() /*&amp;&amp; attributeName == null*/;</span>
+			}
+
+		}
+
+		/** Is this a non-absolute path, i.e. starting with &quot;//&quot; instead of &quot;/&quot;? */
+		boolean isRelativePath;
+
+		/** The element names to match */
+		List&lt;String&gt; elementNames;
+
+		/** Current matching status */
+<span class="fc" id="L133">		private List&lt;ExprMatcher&gt; matchers = new ArrayList&lt;&gt;();</span>
+
+		/** Current parsing depth */
+<span class="fc" id="L136">		private int depth = 0;</span>
+
+		/**
+		 * Constructs the object from the string representation (xpath subset).
+		 *
+		 * @param expr
+		 *            the expression
+		 */
+		public SaxPathExpressionChecker(String expr) {
+<span class="fc" id="L145">			super();</span>
+
+			// See if it's a relative or absolute path
+<span class="pc bpc" id="L148" title="1 of 4 branches missed.">			if (expr.length() &gt; 0 &amp;&amp; expr.charAt(0) != '/') {</span>
+				// Doesn't start with &quot;/&quot;: relative path
+<span class="fc" id="L150">				isRelativePath = true;</span>
+			} else {
+<span class="pc bpc" id="L152" title="1 of 4 branches missed.">				if (expr.length() &gt; 1 &amp;&amp; expr.charAt(1) == '/') {</span>
+					// Starts with &quot;//&quot;: relative path
+<span class="fc" id="L154">					isRelativePath = true;</span>
+<span class="fc" id="L155">					expr = expr.substring(2);</span>
+				} else {
+					// Starts with &quot;/&quot;: absolute path
+<span class="fc" id="L158">					expr = expr.substring(1);</span>
+				}
+			}
+
+			// Split into parts
+<span class="fc" id="L163">			String[] parts = expr.split(&quot;/&quot;);</span>
+<span class="fc" id="L164">			int numberOfElementParts = parts.length;</span>
+<span class="pc bpc" id="L165" title="1 of 2 branches missed.">			if (parts[numberOfElementParts - 1].length() == 0) {</span>
+<span class="nc" id="L166">				throw new IllegalArgumentException(&quot;Double slash in simple-xpath expression&quot;);</span>
+			}
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">			if (parts[numberOfElementParts - 1].charAt(0) == '@') {</span>
+<span class="nc" id="L169">				throw new IllegalArgumentException(&quot;Cannot match on attribute&quot;);</span>
+			}
+<span class="fc" id="L171">			elementNames = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">			for (int i = 0; i &lt; numberOfElementParts; i++) {</span>
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">				if (parts[i].length() == 0) {</span>
+<span class="nc" id="L174">					throw new IllegalArgumentException(&quot;Double slash in simple-xpath expression&quot;);</span>
+				}
+<span class="pc bpc" id="L176" title="1 of 2 branches missed.">				if (parts[i].charAt(0) == '@') {</span>
+					//throw new RuntimeException(&quot;Attribute can only be last path part&quot;);
+<span class="nc" id="L178">					throw new IllegalArgumentException(&quot;Cannot match on attribute&quot;);</span>
+				}
+<span class="fc" id="L180">				elementNames.add(parts[i]);</span>
+			}
+<span class="fc" id="L182">		}</span>
+
+		@Override
+		public String toString() {
+<span class="nc bnc" id="L186" title="All 2 branches missed.">			return (isRelativePath ? &quot;&quot; : &quot;/&quot;) + StringUtil.join(elementNames, &quot;/&quot;);</span>
+		}
+
+		public void startElement(String localName) {
+			// Should we start a new matcher here?
+<span class="pc bpc" id="L191" title="1 of 8 branches missed.">			if ((isRelativePath || depth == 0) &amp;&amp; (elementNames.isEmpty() || localName.equals(elementNames.get(0)))) {</span>
+				// Yes, start a new matcher
+<span class="fc" id="L193">				matchers.add(new ExprMatcher());</span>
+			}
+
+			// Call each of the matchers to signal the start of this element
+<span class="fc bfc" id="L197" title="All 2 branches covered.">			for (ExprMatcher m: matchers) {</span>
+<span class="fc" id="L198">				m.startElement(localName);</span>
+<span class="fc" id="L199">			}</span>
+
+<span class="fc" id="L201">			depth++;</span>
+<span class="fc" id="L202">		}</span>
+
+		public void endElement() {
+<span class="fc" id="L205">			depth--;</span>
+
+			// Call each of the matchers to signal the end of this element
+<span class="fc" id="L208">			Set&lt;ExprMatcher&gt; toRemove = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L209" title="All 2 branches covered.">			for (ExprMatcher m: matchers) {</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">				if (!m.endElement())</span>
+<span class="fc" id="L211">					toRemove.add(m); // This matcher is done</span>
+<span class="fc" id="L212">			}</span>
+<span class="fc bfc" id="L213" title="All 2 branches covered.">			for (ExprMatcher m: toRemove) {</span>
+<span class="fc" id="L214">				matchers.remove(m);</span>
+<span class="fc" id="L215">			}</span>
+<span class="fc" id="L216">		}</span>
+
+		public boolean currentElementMatches() {
+<span class="fc bfc" id="L219" title="All 2 branches covered.">			for (ExprMatcher m: matchers) {</span>
+<span class="fc bfc" id="L220" title="All 2 branches covered.">				if (m.currentElementMatched())</span>
+<span class="fc" id="L221">					return true;</span>
+<span class="fc" id="L222">			}</span>
+<span class="fc" id="L223">			return false;</span>
+		}
+
+		public boolean ancestorOrSelfMatched() {
+<span class="pc bpc" id="L227" title="1 of 2 branches missed.">			for (ExprMatcher m: matchers) {</span>
+<span class="pc bpc" id="L228" title="1 of 2 branches missed.">				if (m.ancestorOrSelfMatched())</span>
+<span class="fc" id="L229">					return true;</span>
+<span class="nc" id="L230">			}</span>
+<span class="nc" id="L231">			return false;</span>
+		}
+
+	}
+
+	/**
+	 * Represents a handler for when a SAX path condition matches
+	 */
+<span class="fc" id="L239">	public static class ElementHandler {</span>
+		public void startElement(String uri, String localName, String qName, Attributes attributes) {
+			// To be implemented by child class
+<span class="fc" id="L242">		}</span>
+
+		public void endElement(String uri, String localName, String qName) {
+			// To be implemented by child class
+<span class="fc" id="L246">		}</span>
+
+		public void characters(char[] ch, int start, int length) {
+			// To be implemented by child class
+<span class="fc" id="L250">		}</span>
+
+<span class="fc" id="L252">		boolean insideElement = false;</span>
+
+		public boolean insideElement() {
+<span class="nc" id="L255">			return insideElement;</span>
+		}
+
+		public void setInsideElement(boolean b) {
+<span class="fc" id="L259">			insideElement = b;</span>
+<span class="fc" id="L260">		}</span>
+	}
+
+	/**
+	 * A SAX parser hook handler that captures the element's character content
+	 * for processing in the endElement() method.
+	 */
+<span class="nc" id="L267">	public static class ContentCapturingHandler extends ElementHandler {</span>
+
+<span class="nc" id="L269">		private StringBuilder elementContent = new StringBuilder();</span>
+
+		public String getElementContent() {
+<span class="nc" id="L272">			return elementContent.toString();</span>
+		}
+
+		@Override
+		public void startElement(String uri, String localName, String qName, Attributes attributes) {
+<span class="nc" id="L277">			elementContent.setLength(0);</span>
+<span class="nc" id="L278">		}</span>
+
+		@Override
+		public void characters(char[] ch, int start, int length) {
+<span class="nc" id="L282">			elementContent.append(ch, start, length);</span>
+<span class="nc" id="L283">		}</span>
+
+	}
+
+	/**
+	 * Evaluates the condition and calls the handler if if matches
+	 */
+	private static class SaxParserHook {
+		/** The path to check for */
+		private SaxPathExpressionChecker expression;
+
+		/** The handler for this hook */
+		private ElementHandler handler;
+
+		/** Whether or not to call the handler for all descendants of the matched element */
+		private boolean callHandlerForDescendants;
+
+		/**
+		 * Constructs the object.
+		 * @param expression the expression to check for
+		 * @param handler the handler to call for matches
+		 * @param callHandlerForDescendants whether or not to call handler for all descendants
+		 *   of a matched element
+		 */
+		public SaxParserHook(SaxPathExpressionChecker expression, ElementHandler handler,
+				boolean callHandlerForDescendants) {
+<span class="fc" id="L309">			super();</span>
+<span class="fc" id="L310">			this.expression = expression;</span>
+<span class="fc" id="L311">			this.handler = handler;</span>
+<span class="fc" id="L312">			this.callHandlerForDescendants = callHandlerForDescendants;</span>
+<span class="fc" id="L313">		}</span>
+
+		/** Should we call the handler for our current place in the document?
+		 * @return true iff we should
+		 */
+		private boolean shouldCallHandler() {
+<span class="fc bfc" id="L319" title="All 2 branches covered.">			if (callHandlerForDescendants)</span>
+<span class="fc" id="L320">				return expression.ancestorOrSelfMatched();</span>
+<span class="fc" id="L321">			return expression.currentElementMatches();</span>
+		}
+
+		/**
+		 * Open tag: pass on to expression checked, and call handler if the
+		 * element matches or any of the attributes match.
+		 * @param uri namespace uri
+		 * @param localName element local name
+		 * @param qName element qualified name
+		 * @param attributes element attributes
+		 */
+		public void startElement(String uri, String localName, String qName, Attributes attributes) {
+<span class="fc" id="L333">			expression.startElement(localName);</span>
+<span class="fc bfc" id="L334" title="All 2 branches covered.">			if (shouldCallHandler()) {</span>
+<span class="fc" id="L335">				handler.setInsideElement(true);</span>
+<span class="fc" id="L336">				handler.startElement(uri, localName, qName, attributes);</span>
+			}
+<span class="fc" id="L338">		}</span>
+
+		/**
+		 * Close tag: call handler if the element matched, and pass the tag
+		 * on to the expression checker.
+		 * @param uri namespace uri
+		 * @param localName element local name
+		 * @param qName element qualified name
+		 */
+		public void endElement(String uri, String localName, String qName) {
+<span class="fc bfc" id="L348" title="All 2 branches covered.">			if (shouldCallHandler()) {</span>
+<span class="fc" id="L349">				handler.endElement(uri, localName, qName);</span>
+<span class="fc" id="L350">				handler.setInsideElement(false);</span>
+			}
+<span class="fc" id="L352">			expression.endElement();</span>
+<span class="fc" id="L353">		}</span>
+
+		/**
+		 * Character content: call handler if the expression is currently matched.
+		 * @param ch character buffer
+		 * @param start start of content in buffer
+		 * @param length length of content in buffer
+		 */
+		public void characters(char[] ch, int start, int length) {
+<span class="fc bfc" id="L362" title="All 2 branches covered.">			if (shouldCallHandler())</span>
+<span class="fc" id="L363">				handler.characters(ch, start, length);</span>
+<span class="fc" id="L364">		}</span>
+
+		@Override
+		public String toString() {
+<span class="nc" id="L368">			return expression.toString();</span>
+		}
+	}
+
+	/** The list of hooks into our parser */
+<span class="fc" id="L373">	private List&lt;SaxParserHook&gt; hooks = new ArrayList&lt;&gt;();</span>
+
+	/** To keep track of the position within the document */
+	protected Locator locator;
+
+<span class="fc" id="L378">	public HookableSaxHandler() {</span>
+		//
+<span class="fc" id="L380">	}</span>
+
+	/**
+	 * Add a hook to the parser.
+	 *
+	 * @param condition
+	 *            when to invoke the handler
+	 * @param handler
+	 *            what to do when the condition matches
+	 * @param callHandlerForAllDescendants
+	 *            whether or not to call the handler for all descendants of the matched element
+	 */
+	private void addHook(SaxPathExpressionChecker condition, ElementHandler handler,
+			boolean callHandlerForAllDescendants) {
+<span class="fc" id="L394">		hooks.add(new SaxParserHook(condition, handler, callHandlerForAllDescendants));</span>
+<span class="fc" id="L395">	}</span>
+
+	/**
+	 * Add a hook to the parser.
+	 *
+	 * @param condition
+	 *            when to invoke the handler (xpath subset expression)
+	 * @param handler
+	 *            what to do when the condition matches
+	 * @param callHandlerForAllDescendants
+	 *            whether or not to call the handler for all descendants of the matched element
+	 */
+	public void addHook(String condition, ElementHandler handler, boolean callHandlerForAllDescendants) {
+<span class="fc" id="L408">		addHook(new SaxPathExpressionChecker(condition), handler, callHandlerForAllDescendants);</span>
+<span class="fc" id="L409">	}</span>
+
+	/**
+	 * Add a hook to the parser.
+	 *
+	 * The hook is called only for the matched element itself, not all its descendants.
+	 *
+	 * @param condition
+	 *            when to invoke the handler (xpath subset expression)
+	 * @param handler
+	 *            what to do when the condition matches
+	 */
+	public void addHook(String condition, ElementHandler handler) {
+<span class="fc" id="L422">		addHook(condition, handler, false);</span>
+<span class="fc" id="L423">	}</span>
+
+	@Override
+	public void setDocumentLocator(Locator locator) {
+<span class="fc" id="L427">		this.locator = locator;</span>
+<span class="fc" id="L428">	}</span>
+
+	/**
+	 * Describe current parsing position
+	 * @return the description
+	 */
+	public String describePosition() {
+<span class="nc" id="L435">		return &quot;line &quot; + locator.getLineNumber() + &quot;, position &quot; + locator.getColumnNumber();</span>
+	}
+
+	/**
+	 * Called when character content (not a tag) is encountered in the XML.
+	 */
+	@Override
+	public void characters(char[] ch, int start, int length) {
+<span class="fc bfc" id="L443" title="All 2 branches covered.">		for (SaxParserHook hook: hooks) {</span>
+<span class="fc" id="L444">			hook.characters(ch, start, length);</span>
+<span class="fc" id="L445">		}</span>
+<span class="fc" id="L446">	}</span>
+
+	/**
+	 * Called when an end tag (element close tag) is encountered in the XML.
+	 */
+	@Override
+	public void endElement(String uri, String localName, String qName) {
+<span class="fc bfc" id="L453" title="All 2 branches covered.">		for (SaxParserHook hook: hooks) {</span>
+<span class="fc" id="L454">			hook.endElement(uri, localName, qName);</span>
+<span class="fc" id="L455">		}</span>
+<span class="fc" id="L456">	}</span>
+
+	/**
+	 * Called when an start tag (element open tag) is encountered in the XML.
+	 */
+	@Override
+	public void startElement(String uri, String localName, String qName, Attributes attributes) {
+<span class="fc bfc" id="L463" title="All 2 branches covered.">		for (SaxParserHook hook: hooks) {</span>
+<span class="fc" id="L464">			hook.startElement(uri, localName, qName, attributes);</span>
+<span class="fc" id="L465">		}</span>
+<span class="fc" id="L466">	}</span>
+
+	/**
+	 * Test program
+	 *
+	 * @param args
+	 * @throws ParserConfigurationException
+	 * @throws SAXException
+	 * @throws IOException
+	 */
+	public static void main(String[] args) throws ParserConfigurationException, SAXException,
+			IOException {
+<span class="nc" id="L478">		String xml = &quot;&lt;root&gt;&quot;</span>
+				+ &quot;&lt;child&gt;&lt;name&gt;A&lt;/name&gt;&lt;child att='123'&gt;&lt;name&gt;C&lt;/name&gt;&lt;/child&gt;&lt;/child&gt;&quot;
+				+ &quot;&lt;child&gt;&lt;name&gt;B&lt;/name&gt;&lt;child att='456'&gt;&lt;name&gt;D&lt;/name&gt;&lt;/child&gt;&lt;/child&gt;&quot;
+				+ &quot;&lt;/root&gt;&quot;;
+<span class="nc" id="L482">		HookableSaxHandler hookableHandler = new HookableSaxHandler();</span>
+<span class="nc" id="L483">		hookableHandler.addHook(&quot;/root/child&quot;, new ElementHandler() {</span>
+			@Override
+			public void startElement(String uri, String localName, String qName,
+					Attributes attributes) {
+<span class="nc" id="L487">				System.out.println(&quot;Found an element: &quot; + localName);</span>
+<span class="nc" id="L488">			}</span>
+
+			@Override
+			public void endElement(String uri, String localName, String qName) {
+<span class="nc" id="L492">				System.out.println(&quot;End of element: &quot; + localName);</span>
+<span class="nc" id="L493">			}</span>
+		}, true);
+<span class="nc" id="L495">		hookableHandler.addHook(&quot;//child/name&quot;, new ElementHandler() {</span>
+			@Override
+			public void characters(char[] ch, int start, int length) {
+<span class="nc" id="L498">				System.out.println(&quot;Child name: &quot; + new String(ch, start, length));</span>
+<span class="nc" id="L499">			}</span>
+		}, true);
+
+<span class="nc" id="L502">		SAXParserFactory factory = SAXParserFactory.newInstance();</span>
+<span class="nc" id="L503">		factory.setNamespaceAware(true);</span>
+		try {
+<span class="nc" id="L505">			SAXParser parser = factory.newSAXParser();</span>
+<span class="nc" id="L506">			parser.parse(new InputSource(new StringReader(xml)), hookableHandler);</span>
+<span class="nc" id="L507">		} catch (Exception e) {</span>
+<span class="nc" id="L508">			throw new RuntimeException(e);</span>
+<span class="nc" id="L509">		}</span>
+<span class="nc" id="L510">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

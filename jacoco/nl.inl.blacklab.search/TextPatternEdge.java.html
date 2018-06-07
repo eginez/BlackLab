@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TextPatternEdge.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search</a> &gt; <span class="el_source">TextPatternEdge.java</span></div><h1>TextPatternEdge.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search;
+
+import nl.inl.blacklab.search.lucene.BLSpanQuery;
+import nl.inl.blacklab.search.lucene.SpanQueryEdge;
+
+/**
+ * Returns either the left edge or right edge of the specified query.
+ *
+ * Note that the results of this query are zero-length spans.
+ */
+public class TextPatternEdge extends TextPatternCombiner {
+
+	private boolean rightEdge;
+
+	public TextPatternEdge(TextPattern clause, boolean rightEdge) {
+<span class="fc" id="L31">		super(clause);</span>
+<span class="fc" id="L32">		this.rightEdge = rightEdge;</span>
+<span class="fc" id="L33">	}</span>
+
+	@Override
+	public BLSpanQuery translate(QueryExecutionContext context) {
+<span class="fc" id="L37">		return new SpanQueryEdge(clauses.get(0).translate(context), rightEdge);</span>
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+<span class="nc bnc" id="L42" title="All 2 branches missed.">		if (obj instanceof TextPatternEdge) {</span>
+<span class="nc bnc" id="L43" title="All 4 branches missed.">			return super.equals(obj) &amp;&amp; ((TextPatternEdge)obj).rightEdge == rightEdge;</span>
+		}
+<span class="nc" id="L45">		return false;</span>
+	}
+
+	public boolean isRightEdge() {
+<span class="nc" id="L49">		return rightEdge;</span>
+	}
+
+	public String getElementName() {
+<span class="nc" id="L53">		TextPattern cl = getClause();</span>
+<span class="nc bnc" id="L54" title="All 2 branches missed.">		if (cl instanceof TextPatternTags) {</span>
+<span class="nc" id="L55">			return ((TextPatternTags)cl).getElementName();</span>
+		}
+<span class="nc" id="L57">		return null;</span>
+	}
+
+	public TextPattern getClause() {
+<span class="nc" id="L61">		return clauses.get(0);</span>
+	}
+
+	@Override
+	public int hashCode() {
+<span class="nc bnc" id="L66" title="All 2 branches missed.">		return super.hashCode() + (rightEdge ? 13 : 0);</span>
+	}
+
+	@Deprecated
+	@Override
+	public String toString(QueryExecutionContext context) {
+<span class="nc bnc" id="L72" title="All 2 branches missed.">		return &quot;EDGE(&quot; + clauses.get(0).toString(context) + &quot;, &quot; + (rightEdge ? &quot;R&quot; : &quot;L&quot;) + &quot;)&quot;;</span>
+	}
+
+	@Override
+	public String toString() {
+<span class="nc bnc" id="L77" title="All 2 branches missed.">		return &quot;EDGE(&quot; + clauses.get(0).toString() + &quot;, &quot; + (rightEdge ? &quot;R&quot; : &quot;L&quot;) + &quot;)&quot;;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

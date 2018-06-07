@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HitsSettings.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search</a> &gt; <span class="el_source">HitsSettings.java</span></div><h1>HitsSettings.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.search;
+
+import java.util.Collection;
+
+public class HitsSettings {
+
+	/**
+	 * Stop retrieving hits after this number.
+	 * (NO_LIMIT = -1 = don't stop retrieving)
+	 */
+	private int maxHitsToRetrieve;
+
+	/**
+	 * Stop counting hits after this number.
+	 * (NO_LIMIT = -1 = don't stop counting)
+	 */
+	private int maxHitsToCount;
+
+	/** What to use to make concordances: forward index or content store */
+	private ConcordanceType concsType;
+
+	/**
+	 * The default field to use for retrieving concordance information.
+	 */
+	private String concordanceFieldName;
+
+	/** Forward index to use as text context of &amp;lt;w/&amp;gt; tags in concordances (words; null = no text content) */
+	private String concWordProps;
+
+	/** Forward index to use as text context between &amp;lt;w/&amp;gt; tags in concordances (punctuation+whitespace; null = just a space) */
+	private String concPunctProps;
+
+	/** Forward indices to use as attributes of &amp;lt;w/&amp;gt; tags in concordances (null = the rest) */
+	private Collection&lt;String&gt; concAttrProps; // all other FIs are attributes
+
+	/** Our desired context size */
+	private int desiredContextSize;
+
+	@SuppressWarnings(&quot;deprecation&quot;)
+<span class="fc" id="L40">	public HitsSettings(HitsSettings defaults, boolean staticHitsFieldsOverrideDefaults) {</span>
+<span class="fc" id="L41">		concordanceFieldName = defaults.concordanceFieldName;</span>
+<span class="pc bpc" id="L42" title="1 of 4 branches missed.">		maxHitsToRetrieve = (staticHitsFieldsOverrideDefaults &amp;&amp; Hits.defaultMaxHitsToRetrieveChanged) ? Hits.defaultMaxHitsToRetrieve : defaults.maxHitsToRetrieve;</span>
+<span class="pc bpc" id="L43" title="1 of 4 branches missed.">		maxHitsToCount = (staticHitsFieldsOverrideDefaults &amp;&amp; Hits.defaultMaxHitsToCountChanged) ? Hits.defaultMaxHitsToCount : defaults.maxHitsToCount;</span>
+<span class="fc" id="L44">		concsType = defaults.concsType;</span>
+<span class="fc" id="L45">		concWordProps = defaults.concWordProps;</span>
+<span class="fc" id="L46">		concPunctProps = defaults.concPunctProps;</span>
+<span class="fc" id="L47">		concAttrProps = defaults.concAttrProps;</span>
+<span class="fc" id="L48">		desiredContextSize = defaults.desiredContextSize;</span>
+<span class="fc" id="L49">	}</span>
+
+<span class="fc" id="L51">	public HitsSettings() {</span>
+<span class="fc" id="L52">		this.concordanceFieldName = Searcher.DEFAULT_CONTENTS_FIELD_NAME;</span>
+<span class="fc" id="L53">		maxHitsToRetrieve = Searcher.DEFAULT_MAX_RETRIEVE;</span>
+<span class="fc" id="L54">		maxHitsToCount = Searcher.DEFAULT_MAX_COUNT;</span>
+<span class="fc" id="L55">		concsType = Searcher.DEFAULT_CONC_TYPE;</span>
+<span class="fc" id="L56">		concWordProps = Searcher.DEFAULT_CONC_WORD_PROP;</span>
+<span class="fc" id="L57">		concPunctProps = Searcher.DEFAULT_CONC_PUNCT_PROP;</span>
+<span class="fc" id="L58">		concAttrProps = Searcher.DEFAULT_CONC_ATTR_PROP;</span>
+<span class="fc" id="L59">		desiredContextSize = Searcher.DEFAULT_CONTEXT_SIZE;</span>
+<span class="fc" id="L60">	}</span>
+
+	/** @return the maximum number of hits to retrieve. */
+	public int maxHitsToRetrieve() {
+<span class="fc" id="L64">		return maxHitsToRetrieve;</span>
+	}
+
+	/** Set the maximum number of hits to retrieve
+	 * @param n the number of hits, or HitsSettings.UNLIMITED for no limit
+	 */
+	public void setMaxHitsToRetrieve(int n) {
+<span class="nc" id="L71">		this.maxHitsToRetrieve = n;</span>
+<span class="nc" id="L72">	}</span>
+
+	/** @return the maximum number of hits to count. */
+	public int maxHitsToCount() {
+<span class="fc" id="L76">		return maxHitsToCount;</span>
+	}
+
+	/** Set the maximum number of hits to count
+	 * @param n the number of hits, or HitsSettings.UNLIMITED for no limit
+	 */
+	public void setMaxHitsToCount(int n) {
+<span class="nc" id="L83">		this.maxHitsToCount = n;</span>
+<span class="nc" id="L84">	}</span>
+
+	/**
+	 * Are we making concordances using the forward index (true) or using
+	 * the content store (false)? Forward index is more efficient but returns
+	 * concordances that don't include XML tags.
+	 *
+	 * @return true iff we use the forward index for making concordances.
+	 */
+	public ConcordanceType concordanceType() {
+<span class="fc" id="L94">		return concsType;</span>
+	}
+
+	/**
+	 * Do we want to retrieve concordances from the forward index or from the
+	 * content store? Forward index is more efficient but doesn't exactly reproduces the
+	 * original XML.
+	 *
+	 * The default type can be set by calling Searcher.setDefaultConcordanceType().
+	 *
+	 * @param type the type of concordances to make
+	 */
+	public void setConcordanceType(ConcordanceType type) {
+<span class="fc" id="L107">		this.concsType = type;</span>
+<span class="fc" id="L108">	}</span>
+
+	/**
+	 * Returns the field to use for retrieving concordances.
+	 *
+	 * @return the field name
+	 */
+	public String concordanceField() {
+<span class="fc" id="L116">		return concordanceFieldName;</span>
+	}
+
+	/**
+	 * Sets the field to use for retrieving concordances.
+	 *
+	 * @param concordanceFieldName
+	 *            the field name
+	 */
+	public void setConcordanceField(String concordanceFieldName) {
+<span class="fc" id="L126">		this.concordanceFieldName = concordanceFieldName;</span>
+<span class="fc" id="L127">	}</span>
+
+	/**
+	 * Indicate what properties to use to build concordances.
+	 *
+	 * This configuration is only valid when using forward indices to build concordances.
+	 *
+	 * @param wordFI FI to use as the text content of the &amp;lt;w/&amp;gt; tags (default &quot;word&quot;; null for no text content)
+	 * @param punctFI FI to use as the text content between &amp;lt;w/&amp;gt; tags (default &quot;punct&quot;; null for just a space)
+	 * @param attrFI FIs to use as the attributes of the &amp;lt;w/&amp;gt; tags (null for all other FIs)
+	 */
+	public void setConcordanceProperties(String wordFI, String punctFI, Collection&lt;String&gt; attrFI) {
+<span class="nc" id="L139">		concWordProps = wordFI;</span>
+<span class="nc" id="L140">		concPunctProps = punctFI;</span>
+<span class="nc" id="L141">		concAttrProps = attrFI;</span>
+<span class="nc" id="L142">	}</span>
+
+	public String concWordProp() {
+<span class="fc" id="L145">		return concWordProps;</span>
+	}
+
+	public String concPunctProp() {
+<span class="fc" id="L149">		return concPunctProps;</span>
+	}
+
+	public Collection&lt;String&gt; concAttrProps() {
+<span class="fc" id="L153">		return concAttrProps;</span>
+	}
+
+	public int contextSize() {
+<span class="fc" id="L157">		return desiredContextSize;</span>
+	}
+
+	public void setContextSize(int n) {
+<span class="fc" id="L161">		desiredContextSize = n;</span>
+<span class="fc" id="L162">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

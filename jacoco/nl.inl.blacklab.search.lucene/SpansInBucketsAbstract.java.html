@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SpansInBucketsAbstract.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">SpansInBucketsAbstract.java</span></div><h1>SpansInBucketsAbstract.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.lucene;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.search.spans.Spans;
+import nl.inl.blacklab.search.Hit;
+import nl.inl.blacklab.search.Span;
+
+/**
+ * Wrap a Spans to retrieve sequences of certain matches (in &quot;buckets&quot;), so we can process the
+ * sequence efficiently.
+ *
+ * Examples of sequences of hits might be:
+ * * all hits in a document
+ * * all consecutive hits in a document
+ *
+ * This way we can retrieve hits and perform some operation on them (like sorting or retrieving some
+ * extra information).
+ *
+ * Note that with this class, &quot;bucketing&quot; is only possible with consecutive hits from the Spans
+ * object. If you want other kinds of hit buckets (containing non-consecutive spans), you should
+ * just implement the SpansInBuckets interface, not extend SpansInBucketsAbstract.
+ *
+ * Also, SpansInBuckets assumes all hits in a bucket are from a single document.
+ *
+ */
+abstract class SpansInBucketsAbstract implements SpansInBuckets {
+	protected BLSpans source;
+
+<span class="fc" id="L52">	protected int currentDoc = -1;</span>
+
+<span class="fc" id="L54">	private List&lt;Hit&gt; bucket = new ArrayList&lt;&gt;();</span>
+
+	/**
+	 * For each hit we fetched, store the captured groups, so we don't
+	 * lose this information.
+	 */
+<span class="fc" id="L60">	private Map&lt;Hit, Span[]&gt; capturedGroupsPerHit = new HashMap&lt;&gt;();</span>
+
+	/**
+	 * Size of the current bucket, or -1 if we're not at a valid bucket.
+	 */
+<span class="fc" id="L65">	private int bucketSize = -1;</span>
+
+	private HitQueryContext hitQueryContext;
+
+	/** Is there captured group information for each hit that we need to store? */
+	private boolean doCapturedGroups;
+
+	/** Does our clause capture any groups? If not, we don't need to mess with those */
+<span class="fc" id="L73">	protected boolean clauseCapturesGroups = true;</span>
+
+	protected void addHitFromSource() {
+<span class="fc" id="L76">		Hit hit = source.getHit();</span>
+<span class="fc" id="L77">		bucket.add(hit);</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">		if (doCapturedGroups) {</span>
+			// Store captured group information
+<span class="fc" id="L80">			Span[] capturedGroups = new Span[hitQueryContext.numberOfCapturedGroups()];</span>
+<span class="fc" id="L81">			source.getCapturedGroups(capturedGroups);</span>
+<span class="fc" id="L82">			capturedGroupsPerHit.put(hit, capturedGroups);</span>
+		}
+<span class="fc" id="L84">		bucketSize++;</span>
+<span class="fc" id="L85">	}</span>
+
+	protected void sortHits(Comparator&lt;Hit&gt; hitComparator) {
+<span class="fc" id="L88">		Collections.sort(bucket, hitComparator);</span>
+<span class="fc" id="L89">	}</span>
+
+	@Override
+	public int bucketSize() {
+<span class="fc" id="L93">		return bucketSize;</span>
+	}
+
+	@Override
+	public int startPosition(int indexInBucket) {
+<span class="fc" id="L98">		return bucket.get(indexInBucket).start;</span>
+	}
+
+	@Override
+	public int endPosition(int indexInBucket) {
+<span class="fc" id="L103">		return bucket.get(indexInBucket).end;</span>
+	}
+
+	@Override
+	public Hit getHit(int indexInBucket) {
+<span class="fc" id="L108">		return bucket.get(indexInBucket);</span>
+	}
+
+<span class="fc" id="L111">	public SpansInBucketsAbstract(BLSpans source) {</span>
+<span class="fc" id="L112">		this.source = source;</span>
+<span class="fc" id="L113">	}</span>
+
+	@Override
+	public int nextDoc() throws IOException {
+<span class="fc" id="L117">		bucketSize = -1; // not at a valid bucket anymore</span>
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">		if (currentDoc != DocIdSetIterator.NO_MORE_DOCS) {</span>
+<span class="fc" id="L119">			currentDoc = source.nextDoc();</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">			if (currentDoc != DocIdSetIterator.NO_MORE_DOCS) {</span>
+<span class="fc" id="L121">				source.nextStartPosition(); // start gathering at the first hit</span>
+				//gatherHitsInternal();
+			}
+		}
+<span class="fc" id="L125">		return currentDoc;</span>
+	}
+
+	@Override
+	public int nextBucket() throws IOException {
+<span class="pc bpc" id="L130" title="1 of 2 branches missed.">		if (currentDoc &lt; 0) {</span>
+			// Not nexted yet, no bucket
+<span class="nc" id="L132">			return -1;</span>
+		}
+<span class="pc bpc" id="L134" title="1 of 4 branches missed.">		if (currentDoc == DocIdSetIterator.NO_MORE_DOCS || source.startPosition() == Spans.NO_MORE_POSITIONS)</span>
+<span class="fc" id="L135">			return NO_MORE_BUCKETS;</span>
+<span class="fc" id="L136">		return gatherHitsInternal();</span>
+	}
+
+	/**
+	 * Subclasses should override this to gather the hits they wish to put in the next bucket.
+	 *
+	 * Upon entering this method, the source spans is at the last unused hit (or the first hit in a
+	 * new document). At the end, it should be at the first hit that doesn't fit in the bucket (or
+	 * beyond the last hit, i.e. Spans.NO_MORE_POSITIONS).
+	 *
+	 * @throws IOException
+	 */
+	protected abstract void gatherHits() throws IOException;
+
+	@Override
+	public int advance(int target) throws IOException {
+<span class="fc" id="L152">		bucketSize = -1; // not at a valid bucket anymore</span>
+<span class="pc bpc" id="L153" title="1 of 2 branches missed.">		if (currentDoc != DocIdSetIterator.NO_MORE_DOCS) {</span>
+<span class="pc bpc" id="L154" title="1 of 2 branches missed.">			if (currentDoc &gt;= target)</span>
+<span class="nc" id="L155">				nextDoc();</span>
+			else {
+<span class="fc" id="L157">				currentDoc = source.advance(target);</span>
+<span class="fc bfc" id="L158" title="All 2 branches covered.">				if (currentDoc != DocIdSetIterator.NO_MORE_DOCS) {</span>
+<span class="fc" id="L159">					source.nextStartPosition(); // start gathering at the first hit</span>
+					//gatherHitsInternal();
+				}
+			}
+		}
+<span class="fc" id="L164">		return currentDoc;</span>
+	}
+
+	private int gatherHitsInternal() throws IOException {
+		// NOTE: we could call .clear() here, but we don't want to hold on to
+		// a lot of memory indefinitely after encountering one huge bucket.
+<span class="pc bpc" id="L170" title="1 of 2 branches missed.">		if (bucket.size() &lt; ARRAYLIST_REALLOC_THRESHOLD) {</span>
+			// Not a huge amount of memory, so don't reallocate
+<span class="fc" id="L172">			bucket.clear();</span>
+<span class="fc" id="L173">			capturedGroupsPerHit.clear();</span>
+		} else {
+			// Reallocate in this case to avoid holding on to a lot of memory
+<span class="nc" id="L176">			bucket = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L177">			capturedGroupsPerHit = new HashMap&lt;&gt;();</span>
+		}
+
+<span class="fc" id="L180">		bucketSize = 0;</span>
+<span class="pc bpc" id="L181" title="1 of 6 branches missed.">		doCapturedGroups = clauseCapturesGroups &amp;&amp; hitQueryContext != null &amp;&amp; hitQueryContext.numberOfCapturedGroups() &gt; 0;</span>
+<span class="fc" id="L182">		gatherHits();</span>
+<span class="fc" id="L183">		return currentDoc;</span>
+	}
+
+	@Override
+	public int docID() {
+<span class="fc" id="L188">		return currentDoc;</span>
+	}
+
+	@Override
+	public String toString() {
+<span class="nc" id="L193">		return source.toString();</span>
+	}
+
+	@Override
+	public void setHitQueryContext(HitQueryContext context) {
+<span class="fc" id="L198">		this.hitQueryContext = context;</span>
+<span class="fc" id="L199">		int before = context.getCaptureRegisterNumber();</span>
+<span class="fc" id="L200">		source.setHitQueryContext(context);</span>
+<span class="fc bfc" id="L201" title="All 2 branches covered.">		if (context.getCaptureRegisterNumber() == before) {</span>
+			// Our clause doesn't capture any groups; optimize
+<span class="fc" id="L203">			clauseCapturesGroups = false;</span>
+		}
+<span class="fc" id="L205">	}</span>
+
+	@Override
+	public void getCapturedGroups(int indexInBucket, Span[] capturedGroups) {
+<span class="fc bfc" id="L209" title="All 2 branches covered.">		if (!doCapturedGroups)</span>
+<span class="fc" id="L210">			return;</span>
+<span class="fc" id="L211">		Span[] previouslyCapturedGroups = capturedGroupsPerHit.get(bucket.get(indexInBucket));</span>
+<span class="pc bpc" id="L212" title="1 of 2 branches missed.">		if (previouslyCapturedGroups != null) {</span>
+<span class="fc bfc" id="L213" title="All 2 branches covered.">			for (int i = 0; i &lt; capturedGroups.length; i++) {</span>
+<span class="fc bfc" id="L214" title="All 2 branches covered.">				if (previouslyCapturedGroups[i] != null)</span>
+<span class="fc" id="L215">					capturedGroups[i] = previouslyCapturedGroups[i];</span>
+			}
+		}
+<span class="fc" id="L218">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

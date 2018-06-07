@@ -1,0 +1,357 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SpansSequenceRaw.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">SpansSequenceRaw.java</span></div><h1>SpansSequenceRaw.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.lucene;
+
+import java.io.IOException;
+
+import org.apache.lucene.search.spans.SpanCollector;
+import nl.inl.blacklab.search.Span;
+
+/**
+ * Combines spans, keeping only combinations of hits that occur one after the other. The order is
+ * significant: a hit from the first span must be followed by a hit from the second.
+ *
+ * This is a fairly involved process.
+ *
+ * The Spans for the left clause is sorted by hit end point instead of by hit start point, because
+ * this is necessary for efficient sequential hit generation.
+ *
+ * The Spans for the right clause is wrapped in EndPointsPerStartPoint because we need to combine
+ * all left hits with end point X with all right hits with start point X. Note that this Spans
+ * should already be start point sorted, but this is the default in Lucene.
+ *
+ * It has to take the following problem into account, which might arise with more complex sequences
+ * with overlapping hits (&quot;1234&quot; are token positions in the document, A-C are hits in spans1, D-F
+ * are hits in spans2, &quot;AD&quot;, &quot;AE&quot; and &quot;BF&quot; are resulting sequence hits):
+ *
+ * &lt;pre&gt;
+ *  spans1       1234
+ *       A(1-2)  -
+ *       B(1-3)  --
+ *       C(2-4)   --
+ *
+ *  spans2       1234
+ *       D(2-4)   --
+ *       E(2-5)   ---
+ *       F(3-4)    -
+ *
+ *  seq(1,2)     1234
+ *       AD(1-4) ---
+ *       AE(1-5) ----
+ *       BF(1-4) ---
+ * &lt;/pre&gt;
+ *
+ * Note that the sequence of the two spans contains duplicates (AD and BF are identical) and
+ * out-of-order endpoints (AE ends at 5 but BF ends at 4). Both are undesirable; the user doesn't
+ * want to see duplicates, and out-of-order endpoints may cause problems when combining this spans
+ * with other spans (although that is not certain; should be checked).
+ *
+ * Therefore, objects of this class should be wrapped in a class that sort the matches per document
+ * and eliminates duplicates.
+ */
+class SpansSequenceRaw extends BLSpans {
+	private BLSpans left;
+
+	private BLSpans origRight;
+
+	private SpansInBucketsPerStartPoint right;
+
+<span class="fc" id="L72">	int indexInBucket = -2; // -2 == not started yet; -1 == just started a bucket</span>
+
+<span class="fc" id="L74">	int currentDoc = -1;</span>
+
+<span class="fc" id="L76">	int leftStart = -1;</span>
+
+<span class="fc" id="L78">	int rightEnd = -1;</span>
+
+	/**
+	 * Are we already a the first match in the document, even if .nextStartPosition() hasn't been called?
+	 * Required because we need to test for matches in the document in .nextDoc()/.advance().
+	 */
+<span class="fc" id="L84">	private boolean alreadyAtFirstMatch = false;</span>
+
+	/**
+	 * Construct SpansSequenceRaw.
+	 *
+	 * @param leftClause (endpoint-sorted) left clause
+	 * @param rightClause (startpoint-sorted) right clause
+	 */
+<span class="fc" id="L92">	public SpansSequenceRaw(BLSpans leftClause, BLSpans rightClause) {</span>
+		// Sort the left spans by (1) document (2) end point (3) start point
+<span class="fc" id="L94">		left = leftClause; //new PerDocumentSortedSpans(leftClause, PerDocumentSortedSpans.cmpEndPoint, false);</span>
+
+		// From the right spans, let us extract all end points belonging with a start point.
+		// Already start point sorted.
+<span class="fc" id="L98">		origRight = rightClause; //Sort</span>
+<span class="fc" id="L99">		right = new SpansInBucketsPerStartPoint(origRight);</span>
+<span class="fc" id="L100">	}</span>
+
+	@Override
+	public int docID() {
+<span class="fc" id="L104">		return currentDoc;</span>
+	}
+
+	@Override
+	public int endPosition() {
+<span class="fc bfc" id="L109" title="All 2 branches covered.">		if (alreadyAtFirstMatch)</span>
+<span class="fc" id="L110">			return -1; // .nextStartPosition() not called yet</span>
+<span class="fc" id="L111">		return rightEnd;</span>
+	}
+
+	@Override
+	public int nextDoc() throws IOException {
+<span class="fc" id="L116">		alreadyAtFirstMatch = false;</span>
+<span class="pc bpc" id="L117" title="1 of 2 branches missed.">		if (currentDoc != NO_MORE_DOCS) {</span>
+<span class="fc" id="L118">			currentDoc = left.nextDoc();</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">			if (currentDoc != NO_MORE_DOCS) {</span>
+<span class="fc" id="L120">				right.nextDoc();</span>
+<span class="fc" id="L121">				rightEnd = -1;</span>
+<span class="fc" id="L122">				indexInBucket = -2;</span>
+<span class="fc" id="L123">				realignDoc();</span>
+			}
+		}
+<span class="fc" id="L126">		return currentDoc;</span>
+	}
+
+	@Override
+	public int nextStartPosition() throws IOException {
+<span class="fc bfc" id="L131" title="All 2 branches covered.">		if (alreadyAtFirstMatch) {</span>
+<span class="fc" id="L132">			alreadyAtFirstMatch = false;</span>
+<span class="fc" id="L133">			return leftStart;</span>
+		}
+
+		/*
+		 * Go to the next match.
+		 *
+		 * This is done around the 'mid point', the word position where the left match ends and the
+		 * right match begins.
+		 *
+		 * The left Spans are sorted by end point. The matches from this Spans are iterated through, and
+		 * for each match, the end point will be the 'mid point' of the resulting match. Note that there
+		 * may be multiple matches from the left with the same end point.
+		 *
+		 * The right Spans are sorted by start point (no sorting required, as this is Lucene's default).
+		 * For each 'mid point', all matches starting at that point are collected from the right spans.
+		 *
+		 * Each match from the left is then combined with all the collected matches from the right. The
+		 * collected matches from the right may be used for multiple matches from the left (if there are
+		 * multiple matches from the left with the same end point).
+		 */
+
+<span class="pc bpc" id="L154" title="2 of 4 branches missed.">		if (currentDoc == NO_MORE_DOCS || leftStart == NO_MORE_POSITIONS) {</span>
+<span class="nc" id="L155">			leftStart = rightEnd = NO_MORE_POSITIONS;</span>
+<span class="nc" id="L156">			return NO_MORE_POSITIONS;</span>
+		}
+
+<span class="pc bpc" id="L159" title="1 of 4 branches missed.">		if (indexInBucket == -2 || indexInBucket == right.bucketSize() - 1) {</span>
+			// We're out of end points (right matches). Advance the left Spans and realign both
+			// spans to the mid point.
+<span class="fc" id="L162">			leftStart = left.nextStartPosition();</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">			if (leftStart == NO_MORE_POSITIONS) {</span>
+<span class="fc" id="L164">				rightEnd = NO_MORE_POSITIONS;</span>
+			} else {
+<span class="pc bpc" id="L166" title="1 of 4 branches missed.">				if (right.bucketSize() &gt; 0 &amp;&amp; left.endPosition() &gt; right.startPosition(0)) {</span>
+					// We have a new left end position, so need a new bucket
+<span class="fc bfc" id="L168" title="All 2 branches covered.">					if (right.advanceBucket(left.endPosition()) == SpansInBuckets.NO_MORE_BUCKETS)</span>
+<span class="fc" id="L169">						leftStart = rightEnd = NO_MORE_POSITIONS;</span>
+				} else {
+					// Same left end position, so reuse this bucket
+					// (nothing to do)
+				}
+<span class="fc bfc" id="L174" title="All 2 branches covered.">				if (leftStart != NO_MORE_POSITIONS){</span>
+					// Reset the bucket and realign.
+<span class="fc" id="L176">					rightEnd = -1;</span>
+<span class="fc" id="L177">					indexInBucket = -1;</span>
+<span class="fc" id="L178">					realignPos();</span>
+				}
+			}
+		} else {
+			// Go to the next end point
+<span class="fc" id="L183">			indexInBucket++;</span>
+<span class="fc" id="L184">			rightEnd = right.endPosition(indexInBucket);</span>
+		}
+<span class="fc" id="L186">		return leftStart;</span>
+	}
+
+	/**
+	 * Puts both spans in the next doc (possibly the current one)
+	 * that has a match in it.
+	 *
+	 * @return docID if we're on a valid match, NO_MORE_DOCS if we're done.
+	 * @throws IOException
+	 */
+	private int realignDoc() throws IOException {
+		while (true) {
+			// Put in same doc if necessary
+<span class="fc bfc" id="L199" title="All 2 branches covered.">			while (currentDoc != right.docID()) {</span>
+<span class="pc bpc" id="L200" title="1 of 2 branches missed.">				while (currentDoc &lt; right.docID()) {</span>
+<span class="nc" id="L201">					currentDoc = left.advance(right.docID());</span>
+<span class="nc bnc" id="L202" title="All 2 branches missed.">					if (currentDoc == NO_MORE_DOCS)</span>
+<span class="nc" id="L203">						return NO_MORE_DOCS;</span>
+				}
+<span class="fc bfc" id="L205" title="All 2 branches covered.">				while (right.docID() &lt; currentDoc) {</span>
+<span class="fc" id="L206">					int rightDoc = right.advance(currentDoc);</span>
+<span class="pc bpc" id="L207" title="1 of 2 branches missed.">					if (rightDoc == NO_MORE_DOCS) {</span>
+<span class="nc" id="L208">						currentDoc = NO_MORE_DOCS;</span>
+<span class="nc" id="L209">						return NO_MORE_DOCS;</span>
+					}
+<span class="fc" id="L211">					rightEnd = -1;</span>
+<span class="fc" id="L212">					indexInBucket = -2;</span>
+<span class="fc" id="L213">				}</span>
+			}
+
+			// See if this doc has any matches
+<span class="fc" id="L217">			leftStart = left.nextStartPosition();</span>
+<span class="pc bpc" id="L218" title="1 of 2 branches missed.">			if (leftStart != NO_MORE_POSITIONS) {</span>
+<span class="pc bpc" id="L219" title="1 of 2 branches missed.">				if (right.nextBucket() == SpansInBuckets.NO_MORE_BUCKETS)</span>
+<span class="nc" id="L220">					leftStart = rightEnd = NO_MORE_POSITIONS;</span>
+				else {
+<span class="fc" id="L222">					rightEnd = -1;</span>
+<span class="fc" id="L223">					indexInBucket = -1;</span>
+<span class="fc" id="L224">					realignPos();</span>
+				}
+			}
+<span class="fc bfc" id="L227" title="All 2 branches covered.">			if (leftStart == NO_MORE_POSITIONS) {</span>
+<span class="fc" id="L228">				rightEnd = NO_MORE_POSITIONS;</span>
+			} else {
+				// Reset the end point iterator (end points of right matches starting at this mid point)
+				// and save current end position.
+<span class="fc" id="L232">				alreadyAtFirstMatch = true;</span>
+<span class="fc" id="L233">				return currentDoc;</span>
+			}
+
+			// No matches in this doc; on to the next
+<span class="fc" id="L237">			currentDoc = left.nextDoc();</span>
+<span class="pc bpc" id="L238" title="1 of 2 branches missed.">			if (currentDoc == NO_MORE_DOCS) {</span>
+<span class="nc" id="L239">				leftStart = rightEnd = NO_MORE_POSITIONS;</span>
+<span class="nc" id="L240">				return NO_MORE_DOCS;</span>
+			}
+		}
+	}
+
+	/**
+	 * Restores the property that the current left match ends where the current right matches begin.
+	 *
+	 * The spans are assumed to be already in the same doc.
+	 *
+	 * If they're already aligned, this function does nothing. If they're out of alignment (that is,
+	 * left.end() != right.start()), advance the spans that is lagging. Repeat until they are
+	 * aligned, or one of the spans run out.
+	 *
+	 * After this function, we're on the first valid match found, or we're out of matches for this document.
+	 *
+	 * @throws IOException
+	 */
+	private void realignPos() throws IOException {
+		// Synchronize within doc
+<span class="fc" id="L260">		int leftEnd = left.endPosition();</span>
+<span class="fc" id="L261">		int rightStart = right.startPosition(0);</span>
+<span class="fc" id="L262">		rightEnd = right.endPosition(0);</span>
+<span class="fc" id="L263">		indexInBucket = 0;</span>
+<span class="fc bfc" id="L264" title="All 2 branches covered.">		while (leftEnd != rightStart) {</span>
+<span class="fc bfc" id="L265" title="All 2 branches covered.">			if (rightStart &lt; leftEnd) {</span>
+				// Advance right if necessary
+<span class="fc bfc" id="L267" title="All 2 branches covered.">				while (rightStart &lt; leftEnd) {</span>
+<span class="fc" id="L268">					int rightDoc = right.advanceBucket(leftEnd);</span>
+<span class="pc bpc" id="L269" title="1 of 2 branches missed.">					if (rightDoc == SpansInBuckets.NO_MORE_BUCKETS) {</span>
+<span class="nc" id="L270">						leftStart = rightEnd = NO_MORE_POSITIONS;</span>
+<span class="nc" id="L271">						return;</span>
+					}
+<span class="fc" id="L273">					rightStart = right.startPosition(0);</span>
+<span class="fc" id="L274">					rightEnd = right.endPosition(0);</span>
+<span class="fc" id="L275">					indexInBucket = 0;</span>
+<span class="fc" id="L276">				}</span>
+			} else {
+				// Advance left if necessary
+<span class="fc bfc" id="L279" title="All 2 branches covered.">				while (leftEnd &lt; rightStart) {</span>
+<span class="fc" id="L280">					leftStart = left.nextStartPosition();</span>
+<span class="fc" id="L281">					leftEnd = left.endPosition();</span>
+<span class="fc bfc" id="L282" title="All 2 branches covered.">					if (leftStart == NO_MORE_POSITIONS) {</span>
+<span class="fc" id="L283">						rightEnd = NO_MORE_POSITIONS;</span>
+<span class="fc" id="L284">						return;</span>
+					}
+				}
+			}
+		}
+<span class="fc" id="L289">	}</span>
+
+	@Override
+	public int advance(int doc) throws IOException {
+<span class="nc" id="L293">		alreadyAtFirstMatch = false;</span>
+<span class="nc bnc" id="L294" title="All 2 branches missed.">		if (currentDoc != NO_MORE_DOCS) {</span>
+<span class="nc" id="L295">			currentDoc = left.advance(doc);</span>
+<span class="nc bnc" id="L296" title="All 2 branches missed.">			if (currentDoc != NO_MORE_DOCS) {</span>
+<span class="nc" id="L297">				int rightDoc = right.advance(doc);</span>
+<span class="nc bnc" id="L298" title="All 2 branches missed.">				if (rightDoc == NO_MORE_DOCS)</span>
+<span class="nc" id="L299">					currentDoc = NO_MORE_DOCS;</span>
+				else {
+<span class="nc" id="L301">					rightEnd = -1;</span>
+<span class="nc" id="L302">					indexInBucket = -2;</span>
+<span class="nc" id="L303">					realignDoc();</span>
+				}
+			}
+		}
+<span class="nc" id="L307">		return currentDoc;</span>
+	}
+
+	/**
+	 * @return start of the current hit
+	 */
+	@Override
+	public int startPosition() {
+<span class="fc bfc" id="L315" title="All 2 branches covered.">		if (alreadyAtFirstMatch)</span>
+<span class="fc" id="L316">			return -1; // .nextStartPosition() not called yet</span>
+<span class="fc" id="L317">		return leftStart;</span>
+	}
+
+	@Override
+	public String toString() {
+<span class="nc" id="L322">		return &quot;SpansSequence(&quot; + left + &quot;, &quot; + right + &quot;)&quot;;</span>
+	}
+
+	@Override
+	public void passHitQueryContextToClauses(HitQueryContext context) {
+<span class="fc" id="L327">		left.setHitQueryContext(context);</span>
+<span class="fc" id="L328">		right.setHitQueryContext(context);</span>
+<span class="fc" id="L329">	}</span>
+
+	@Override
+	public void getCapturedGroups(Span[] capturedGroups) {
+<span class="pc bpc" id="L333" title="1 of 2 branches missed.">		if (!childClausesCaptureGroups)</span>
+<span class="nc" id="L334">			return;</span>
+<span class="fc" id="L335">		left.getCapturedGroups(capturedGroups);</span>
+<span class="fc" id="L336">		right.getCapturedGroups(indexInBucket, capturedGroups);</span>
+<span class="fc" id="L337">	}</span>
+
+	@Override
+	public int width() {
+<span class="nc" id="L341">		return left.width(); // should be + right.width(); but not implemented for now and we don't use .width()</span>
+	}
+
+	@Override
+	public void collect(SpanCollector collector) throws IOException {
+<span class="nc" id="L346">		left.collect(collector);</span>
+		//right.collect(collector); should probably be called as well, but not implemented, and not necessary for now
+		// (we only use payloads in SpansTags)
+<span class="nc" id="L349">	}</span>
+
+	@Override
+	public float positionsCost() {
+<span class="nc" id="L353">		return left.positionsCost();</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

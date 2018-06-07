@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HitPropValueInt.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.grouping</a> &gt; <span class="el_source">HitPropValueInt.java</span></div><h1>HitPropValueInt.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.search.grouping;
+
+import java.util.Arrays;
+import java.util.List;
+
+public class HitPropValueInt extends HitPropValue {
+	int value;
+
+	public int getValue() {
+<span class="nc" id="L10">		return value;</span>
+	}
+
+<span class="fc" id="L13">	public HitPropValueInt(int value) {</span>
+<span class="fc" id="L14">		this.value = value;</span>
+<span class="fc" id="L15">	}</span>
+
+	@Override
+	public int compareTo(Object o) {
+<span class="nc" id="L19">		return value - ((HitPropValueInt)o).value;</span>
+	}
+
+	@Override
+	public int hashCode() {
+<span class="fc" id="L24">		return ((Integer)value).hashCode();</span>
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+<span class="pc bpc" id="L29" title="1 of 2 branches missed.">		return value == ((HitPropValueInt)obj).value;</span>
+	}
+
+	public static HitPropValue deserialize(String info) {
+		int v;
+		try {
+<span class="nc" id="L35">			v = Integer.parseInt(info);</span>
+<span class="nc" id="L36">		} catch (NumberFormatException e) {</span>
+<span class="nc" id="L37">			v = 0;</span>
+<span class="nc" id="L38">		}</span>
+<span class="nc" id="L39">		return new HitPropValueInt(v);</span>
+	}
+
+	@Override
+	public String toString() {
+<span class="nc" id="L44">		return value + &quot;&quot;;</span>
+	}
+
+	@Override
+	public String serialize() {
+<span class="nc" id="L49">		return PropValSerializeUtil.combineParts(&quot;int&quot;, &quot;&quot; + value);</span>
+	}
+
+	@Override
+	public List&lt;String&gt; getPropValues() {
+<span class="nc" id="L54">		return Arrays.asList(Integer.toString(value));</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

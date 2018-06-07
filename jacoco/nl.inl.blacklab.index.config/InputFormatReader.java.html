@@ -1,0 +1,465 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>InputFormatReader.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.index.config</a> &gt; <span class="el_source">InputFormatReader.java</span></div><h1>InputFormatReader.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.index.config;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.Reader;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Optional;
+import java.util.function.Function;
+
+import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
+import nl.inl.blacklab.index.DocIndexerFactory.Format;
+import nl.inl.blacklab.index.DocumentFormats;
+import nl.inl.blacklab.index.complex.ComplexFieldProperty.SensitivitySetting;
+import nl.inl.blacklab.index.config.ConfigCorpus.TextDirection;
+import nl.inl.blacklab.index.config.ConfigInputFormat.FileType;
+import nl.inl.blacklab.index.config.ConfigLinkedDocument.MissingLinkPathAction;
+import nl.inl.blacklab.search.indexstructure.FieldType;
+import nl.inl.blacklab.search.indexstructure.MetadataFieldDesc.UnknownCondition;
+import nl.inl.util.FileUtil;
+import nl.inl.util.Json;
+import nl.inl.util.StringUtil;
+
+/**
+ * Reads ConfigInputFormat from a YAML or JSON source.
+ */
+<span class="nc" id="L36">public class InputFormatReader extends YamlJsonReader {</span>
+    public interface BaseFormatFinder extends Function&lt;String, Optional&lt;ConfigInputFormat&gt;&gt; {}
+
+    /**
+     *
+     * @param r
+     * @param isJson
+     * @param cfg
+     * @param finder responsible for getting (optionally locating/loading) other configs that this config depends on. (for config keys &quot;baseFormat&quot; and &quot;inputFormat&quot;)
+     * @throws IOException
+     * @throws InputFormatConfigException if the file is not a valid config
+     */
+    public static void read(Reader r, boolean isJson, ConfigInputFormat cfg, Function&lt;String, Optional&lt;ConfigInputFormat&gt;&gt; finder) throws IOException {
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">        ObjectMapper mapper = isJson ? Json.getJsonObjectMapper() : Json.getYamlObjectMapper();</span>
+
+        JsonNode root;
+        try {
+<span class="fc" id="L53">            root = mapper.readTree(r);</span>
+<span class="fc" id="L54">        } catch (JsonParseException e) {</span>
+<span class="fc" id="L55">            throw new InputFormatConfigException(&quot;Could not parse config file: &quot; + e.getMessage());</span>
+<span class="fc" id="L56">        }</span>
+<span class="fc" id="L57">        read(root, cfg, finder);</span>
+<span class="fc" id="L58">    }</span>
+
+    /**
+     *
+     * @param file
+     * @param cfg
+     * @param finder responsible for getting (optionally locating/loading) other configs that this config depends on. (&quot;baseFormat&quot; and &quot;inputFormat&quot;)
+     * @throws IOException
+     * @throws InputFormatConfigException if the file is not a valid config
+     */
+    public static void read(File file, ConfigInputFormat cfg, Function&lt;String, Optional&lt;ConfigInputFormat&gt;&gt; finder) throws IOException {
+<span class="fc" id="L69">        read(FileUtil.openForReading(file), file.getName().endsWith(&quot;.json&quot;), cfg, finder);</span>
+<span class="fc" id="L70">        cfg.setReadFromFile(file);</span>
+<span class="fc" id="L71">    }</span>
+
+    protected static void read(JsonNode root, ConfigInputFormat cfg, Function&lt;String, Optional&lt;ConfigInputFormat&gt;&gt; finder) {
+<span class="fc" id="L74">        obj(root, &quot;root node&quot;);</span>
+<span class="fc" id="L75">        Iterator&lt;Entry&lt;String, JsonNode&gt;&gt; it = root.fields();</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">        while (it.hasNext()) {</span>
+<span class="fc" id="L77">            Entry&lt;String, JsonNode&gt; e = it.next();</span>
+<span class="pc bpc" id="L78" title="24 of 78 branches missed.">            switch (e.getKey()) {</span>
+<span class="fc" id="L79">            case &quot;displayName&quot;: cfg.setDisplayName(str(e)); break;</span>
+<span class="fc" id="L80">            case &quot;description&quot;: cfg.setDescription(str(e)); break;</span>
+<span class="fc" id="L81">            case &quot;helpUrl&quot;: cfg.setHelpUrl(str(e)); break;</span>
+            case &quot;baseFormat&quot;: {
+<span class="fc" id="L83">                String formatIdentifier = str(e);</span>
+<span class="pc bpc" id="L84" title="1 of 2 branches missed.">                if (finder == null)</span>
+<span class="nc" id="L85">                    throw new InputFormatConfigException(&quot;Format depends on base format &quot; + formatIdentifier + &quot; but no BaseFormatFinder provided.&quot;);</span>
+
+<span class="fc" id="L87">                ConfigInputFormat baseFormat = finder</span>
+<span class="fc" id="L88">                        .apply(formatIdentifier)</span>
+<span class="fc" id="L89">                        .orElseThrow(() -&gt;</span>
+<span class="nc" id="L90">                            new InputFormatConfigException(&quot;Base format &quot; + formatIdentifier + &quot; not found for format &quot; + cfg.getName()));</span>
+
+<span class="fc" id="L92">                cfg.setBaseFormat(baseFormat);</span>
+<span class="fc" id="L93">                break;</span>
+            }
+<span class="fc" id="L95">            case &quot;type&quot;: cfg.setType(str(e)); break;</span>
+<span class="fc" id="L96">            case &quot;fileType&quot;: cfg.setFileType(FileType.fromStringValue(str(e))); break;</span>
+<span class="fc" id="L97">            case &quot;fileTypeOptions&quot;: readFileTypeOptions(e, cfg); break;</span>
+//            case &quot;tabularOptions&quot;: cfg.setTabularOptions(readTabularOptions(e)); break;
+<span class="fc" id="L99">            case &quot;corpusConfig&quot;: readCorpusConfig(e, cfg.getCorpusConfig()); break;</span>
+<span class="fc" id="L100">            case &quot;namespaces&quot;: readStringMap(e, cfg.namespaces); break;</span>
+<span class="fc" id="L101">            case &quot;documentPath&quot;: cfg.setDocumentPath(str(e)); break;</span>
+<span class="fc" id="L102">            case &quot;store&quot;: cfg.setStore(bool(e)); break;</span>
+<span class="fc" id="L103">            case &quot;indexFieldAs&quot;: readStringMap(e, cfg.indexFieldAs); break;</span>
+<span class="fc" id="L104">            case &quot;annotatedFields&quot;: readAnnotatedFields(e, cfg); break;</span>
+<span class="nc" id="L105">            case &quot;metadataDefaultAnalyzer&quot;: cfg.setMetadataDefaultAnalyzer(str(e)); break;</span>
+<span class="fc" id="L106">            case &quot;metadata&quot;: readMetadata(e, cfg); break;</span>
+<span class="fc" id="L107">            case &quot;linkedDocuments&quot;: readLinkedDocuments(e, cfg); break;</span>
+<span class="fc" id="L108">            case &quot;convertPlugin&quot;: cfg.setConvertPluginId(str(e)); break;</span>
+<span class="fc" id="L109">            case &quot;tagPlugin&quot;: cfg.setTagPluginId(str(e)); break;</span>
+<span class="fc" id="L110">            case &quot;isVisible&quot;: cfg.setVisible(bool(e)); break;</span>
+            default:
+<span class="nc" id="L112">                throw new InputFormatConfigException(&quot;Unknown top-level key &quot; + e.getKey());</span>
+            }
+<span class="fc" id="L114">        }</span>
+<span class="fc" id="L115">    }</span>
+
+    private static void readCorpusConfig(Entry&lt;String, JsonNode&gt; ccEntry, ConfigCorpus corpusConfig) {
+<span class="fc" id="L118">        ObjectNode node = obj(ccEntry.getValue(), &quot;&quot;);</span>
+<span class="fc" id="L119">        Iterator&lt;Entry&lt;String, JsonNode&gt;&gt; it = node.fields();</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">        while (it.hasNext()) {</span>
+<span class="fc" id="L121">            Entry&lt;String, JsonNode&gt; e = it.next();</span>
+<span class="pc bpc" id="L122" title="11 of 26 branches missed.">            switch(e.getKey()) {</span>
+<span class="fc" id="L123">            case &quot;displayName&quot;: corpusConfig.setDisplayName(str(e)); break;</span>
+<span class="fc" id="L124">            case &quot;description&quot;: corpusConfig.setDescription(str(e)); break;</span>
+<span class="fc" id="L125">            case &quot;contentViewable&quot;: corpusConfig.setContentViewable(bool(e)); break;</span>
+<span class="fc" id="L126">            case &quot;textDirection&quot;: corpusConfig.setTextDirection(TextDirection.fromCode(str(e))); break;</span>
+<span class="fc" id="L127">            case &quot;specialFields&quot;: readStringMap(e, corpusConfig.specialFields); break;</span>
+<span class="nc" id="L128">            case &quot;metadataFieldGroups&quot;: readMetadataFieldGroups(e, corpusConfig); break;</span>
+            default:
+<span class="nc" id="L130">                throw new InputFormatConfigException(&quot;Unknown key &quot; + e.getKey() + &quot; in corpusConfig&quot;);</span>
+            }
+<span class="fc" id="L132">        }</span>
+
+<span class="fc" id="L134">    }</span>
+
+    private static void readFileTypeOptions(Entry&lt;String, JsonNode&gt; ftOptEntry, ConfigInputFormat cfg) {
+<span class="fc" id="L137">        ObjectNode node = obj(ftOptEntry);</span>
+<span class="fc" id="L138">        Iterator&lt;Entry&lt;String, JsonNode&gt;&gt; it = node.fields();</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">        while (it.hasNext()) {</span>
+<span class="fc" id="L140">            Entry&lt;String, JsonNode&gt; e = it.next();</span>
+<span class="fc" id="L141">            cfg.addFileTypeOption(e.getKey(), str(e));</span>
+<span class="fc" id="L142">        }</span>
+<span class="fc" id="L143">    }</span>
+
+    private static void readStringMap(Entry&lt;String, JsonNode&gt; strMapEntry, Map&lt;String, String&gt; addToMap) {
+<span class="fc" id="L146">        ObjectNode node = obj(strMapEntry.getValue(), null);</span>
+<span class="fc" id="L147">        Iterator&lt;Entry&lt;String, JsonNode&gt;&gt; it = node.fields();</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">        while (it.hasNext()) {</span>
+<span class="fc" id="L149">            Entry&lt;String, JsonNode&gt; e = it.next();</span>
+<span class="fc" id="L150">            addToMap.put(e.getKey(), str(e));</span>
+<span class="fc" id="L151">        }</span>
+<span class="fc" id="L152">    }</span>
+
+    private static void readStringList(Entry&lt;String, JsonNode&gt; strListEntry, List&lt;String&gt; addToList) {
+<span class="nc" id="L155">        Iterator&lt;JsonNode&gt; it = array(strListEntry).elements();</span>
+<span class="nc bnc" id="L156" title="All 2 branches missed.">        while (it.hasNext())</span>
+<span class="nc" id="L157">            addToList.add(str(it.next(), strListEntry.getKey() + &quot; element&quot;));</span>
+<span class="nc" id="L158">    }</span>
+
+    private static void readMetadataFieldGroups(Entry&lt;String, JsonNode&gt; mfgEntry, ConfigCorpus cfg) {
+<span class="nc" id="L161">        Iterator&lt;JsonNode&gt; itGroups = array(mfgEntry).elements();</span>
+<span class="nc bnc" id="L162" title="All 2 branches missed.">        while (itGroups.hasNext()) {</span>
+<span class="nc" id="L163">            JsonNode group = itGroups.next();</span>
+<span class="nc" id="L164">            Iterator&lt;Entry&lt;String, JsonNode&gt;&gt; itGroup = obj(group, &quot;metadata field group&quot;).fields();</span>
+<span class="nc" id="L165">            ConfigMetadataFieldGroup g = new ConfigMetadataFieldGroup();</span>
+<span class="nc" id="L166">            List&lt;String&gt; fields = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L167" title="All 2 branches missed.">            while (itGroup.hasNext()) {</span>
+<span class="nc" id="L168">                Entry&lt;String, JsonNode&gt; e = itGroup.next();</span>
+<span class="nc bnc" id="L169" title="All 14 branches missed.">                switch (e.getKey()) {</span>
+<span class="nc" id="L170">                case &quot;name&quot;: g.setName(str(e)); break;</span>
+                case &quot;fields&quot;:
+<span class="nc" id="L172">                    readStringList(e, fields);</span>
+<span class="nc" id="L173">                    g.addFields(fields);</span>
+<span class="nc" id="L174">                    break;</span>
+                case &quot;addRemainingFields&quot;:
+<span class="nc" id="L176">                    g.setAddRemainingFields(bool(e));</span>
+<span class="nc" id="L177">                    break;</span>
+                default:
+<span class="nc" id="L179">                    throw new InputFormatConfigException(&quot;Unknown key &quot; + e.getKey() + &quot; in metadata field group &quot; + g.getName());</span>
+                }
+<span class="nc" id="L181">            }</span>
+<span class="nc" id="L182">            cfg.addMetadataFieldGroup(g);</span>
+<span class="nc" id="L183">        }</span>
+<span class="nc" id="L184">    }</span>
+
+    private static void readAnnotatedFields(Entry&lt;String, JsonNode&gt; afsEntry, ConfigInputFormat cfg) {
+<span class="fc" id="L187">        Iterator&lt;Entry&lt;String, JsonNode&gt;&gt; itFields = obj(afsEntry).fields();</span>
+<span class="fc bfc" id="L188" title="All 2 branches covered.">        while (itFields.hasNext()) {</span>
+<span class="fc" id="L189">            Entry&lt;String, JsonNode&gt; field = itFields.next();</span>
+<span class="fc" id="L190">            String fieldName = field.getKey();</span>
+<span class="fc" id="L191">            Iterator&lt;Entry&lt;String, JsonNode&gt;&gt; itField = obj(field).fields();</span>
+<span class="fc" id="L192">            ConfigAnnotatedField af = cfg.getOrCreateAnnotatedField(fieldName);</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">            while (itField.hasNext()) {</span>
+<span class="fc" id="L194">                Entry&lt;String, JsonNode&gt; e = itField.next();</span>
+<span class="pc bpc" id="L195" title="11 of 38 branches missed.">                switch (e.getKey()) {</span>
+<span class="fc" id="L196">                case &quot;displayName&quot;: af.setDisplayName(str(e)); break;</span>
+<span class="fc" id="L197">                case &quot;description&quot;: af.setDescription(str(e)); break;</span>
+<span class="fc" id="L198">                case &quot;containerPath&quot;: af.setContainerPath(str(e)); break;</span>
+<span class="fc" id="L199">                case &quot;wordPath&quot;: af.setWordPath(str(e)); break;</span>
+<span class="fc" id="L200">                case &quot;tokenPositionIdPath&quot;: af.setTokenPositionIdPath(str(e)); break;</span>
+<span class="fc" id="L201">                case &quot;punctPath&quot;: af.setPunctPath(str(e)); break;</span>
+<span class="fc" id="L202">                case &quot;annotations&quot;: readAnnotations(e, af); break;</span>
+<span class="fc" id="L203">                case &quot;standoffAnnotations&quot;: readStandoffAnnotations(e, af); break;</span>
+<span class="fc" id="L204">                case &quot;inlineTags&quot;: readInlineTags(e, af); break;</span>
+                default:
+<span class="nc" id="L206">                    throw new InputFormatConfigException(&quot;Unknown key &quot; + e.getKey() + &quot; in annotated field &quot; + fieldName);</span>
+                }
+<span class="fc" id="L208">            }</span>
+<span class="fc" id="L209">        }</span>
+<span class="fc" id="L210">    }</span>
+
+    private static void readAnnotations(Entry&lt;String, JsonNode&gt; annotsEntry, ConfigWithAnnotations af) {
+<span class="fc" id="L213">        Iterator&lt;JsonNode&gt; itAnnotations = array(annotsEntry).elements();</span>
+<span class="fc bfc" id="L214" title="All 2 branches covered.">        while (itAnnotations.hasNext()) {</span>
+<span class="fc" id="L215">            af.addAnnotation(readAnnotation(false, itAnnotations.next()));</span>
+        }
+<span class="fc" id="L217">    }</span>
+
+    private static void readSubAnnotations(Entry&lt;String, JsonNode&gt; saEntry, ConfigAnnotation annot) {
+<span class="fc" id="L220">        Iterator&lt;JsonNode&gt; itAnnotations = array(saEntry).elements();</span>
+<span class="fc bfc" id="L221" title="All 2 branches covered.">        while (itAnnotations.hasNext()) {</span>
+<span class="fc" id="L222">            annot.addSubAnnotation(readAnnotation(true, itAnnotations.next()));</span>
+        }
+<span class="fc" id="L224">    }</span>
+
+    protected static ConfigAnnotation readAnnotation(boolean isSubAnnotation, JsonNode a) {
+<span class="fc" id="L227">        Iterator&lt;Entry&lt;String, JsonNode&gt;&gt; itAnnotation = obj(a, &quot;annotation&quot;).fields();</span>
+<span class="fc" id="L228">        ConfigAnnotation annot = new ConfigAnnotation();</span>
+<span class="fc bfc" id="L229" title="All 2 branches covered.">        while (itAnnotation.hasNext()) {</span>
+<span class="fc" id="L230">            Entry&lt;String, JsonNode&gt; e = itAnnotation.next();</span>
+<span class="pc bpc" id="L231" title="32 of 62 branches missed.">            switch (e.getKey()) {</span>
+<span class="fc" id="L232">            case &quot;name&quot;: annot.setName(str(e)); break;</span>
+<span class="nc" id="L233">            case &quot;value&quot;: annot.setValuePath(fixedStringToXpath(str(e))); break;</span>
+<span class="fc" id="L234">            case &quot;valuePath&quot;: annot.setValuePath(str(e)); break;</span>
+            case &quot;captureValuePaths&quot;:
+<span class="fc" id="L236">                ArrayNode paths = (ArrayNode) e.getValue();</span>
+<span class="fc" id="L237">                paths.iterator().forEachRemaining((t) -&gt; {</span>
+<span class="fc" id="L238">                    annot.addCaptureValuePath(t.asText());</span>
+<span class="fc" id="L239">                });</span>
+<span class="fc" id="L240">                break;</span>
+            case &quot;forEachPath&quot;:
+<span class="pc bpc" id="L242" title="1 of 2 branches missed.">                if (!isSubAnnotation)</span>
+<span class="nc" id="L243">                    throw new InputFormatConfigException(&quot;Only subannotations may have forEachPath/namePath&quot;);</span>
+<span class="fc" id="L244">                annot.setForEachPath(str(e)); break;</span>
+            case &quot;namePath&quot;:
+<span class="pc bpc" id="L246" title="1 of 2 branches missed.">                if (!isSubAnnotation)</span>
+<span class="nc" id="L247">                    throw new InputFormatConfigException(&quot;Only subannotations may have forEachPath/namePath&quot;);</span>
+<span class="fc" id="L248">                annot.setName(str(e)); break;</span>
+<span class="fc" id="L249">            case &quot;process&quot;: annot.setProcess(readProcess(e)); break;</span>
+<span class="fc" id="L250">            case &quot;displayName&quot;: annot.setDisplayName(str(e)); break;</span>
+<span class="nc" id="L251">            case &quot;description&quot;: annot.setDescription(str(e)); break;</span>
+<span class="fc" id="L252">            case &quot;basePath&quot;: annot.setBasePath(str(e)); break;</span>
+            case &quot;sensitivity&quot;:
+<span class="nc bnc" id="L254" title="All 2 branches missed.">                if (isSubAnnotation)</span>
+<span class="nc" id="L255">                    throw new InputFormatConfigException(&quot;Subannotations may not have their own sensitivity settings&quot;);</span>
+<span class="nc" id="L256">                annot.setSensitivity(SensitivitySetting.fromStringValue(str(e))); break;</span>
+<span class="nc" id="L257">            case &quot;uiType&quot;: annot.setUiType(str(e)); break;</span>
+            case &quot;subAnnotations&quot;:
+<span class="pc bpc" id="L259" title="1 of 2 branches missed.">                if (isSubAnnotation)</span>
+<span class="nc" id="L260">                    throw new InputFormatConfigException(&quot;Subannotations may not have their own subannotations&quot;);</span>
+<span class="fc" id="L261">                readSubAnnotations(e, annot); break;</span>
+<span class="nc" id="L262">            case &quot;forwardIndex&quot;: annot.setForwardIndex(bool(e)); break;</span>
+<span class="fc" id="L263">            case &quot;multipleValues&quot;: annot.setMultipleValues(bool(e)); break;</span>
+            default:
+<span class="nc" id="L265">                throw new InputFormatConfigException(&quot;Unknown key &quot; + e.getKey() + &quot; in annotation &quot; + StringUtil.nullToEmpty(annot.getName()));</span>
+            }
+<span class="fc" id="L267">        }</span>
+<span class="fc" id="L268">        return annot;</span>
+    }
+
+    /**
+     * Convert a fixed string value to an XPath expression yielding that value.
+     * @param s fixed string the XPath should evaluate to
+     * @return XPath expression
+     */
+    public static String fixedStringToXpath(String s) {
+<span class="fc" id="L277">        return &quot;\&quot;&quot; + s.replaceAll(&quot;\\\\&quot;, &quot;\\\\&quot;).replaceAll(&quot;\&quot;&quot;, &quot;\\\&quot;&quot;) + &quot;\&quot;&quot;;</span>
+    }
+
+    private static void readStandoffAnnotations(Entry&lt;String, JsonNode&gt; sasEntry, ConfigAnnotatedField af) {
+<span class="fc" id="L281">        Iterator&lt;JsonNode&gt; itAnnotations = array(sasEntry).elements();</span>
+<span class="fc bfc" id="L282" title="All 2 branches covered.">        while (itAnnotations.hasNext()) {</span>
+<span class="fc" id="L283">            JsonNode as = itAnnotations.next();</span>
+<span class="fc" id="L284">            ConfigStandoffAnnotations s = new ConfigStandoffAnnotations();</span>
+<span class="fc" id="L285">            Iterator&lt;Entry&lt;String, JsonNode&gt;&gt; it = obj(as, &quot;standoffAnnotation&quot;).fields();</span>
+<span class="fc bfc" id="L286" title="All 2 branches covered.">            while (it.hasNext()) {</span>
+<span class="fc" id="L287">                Entry&lt;String, JsonNode&gt; e = it.next();</span>
+<span class="pc bpc" id="L288" title="5 of 14 branches missed.">                switch(e.getKey()) {</span>
+<span class="fc" id="L289">                case &quot;path&quot;: s.setPath(str(e)); break;</span>
+<span class="fc" id="L290">                case &quot;refTokenPositionIdPath&quot;: s.setRefTokenPositionIdPath(str(e)); break;</span>
+<span class="fc" id="L291">                case &quot;annotations&quot;: readAnnotations(e, s); break;</span>
+                default:
+<span class="nc" id="L293">                    throw new InputFormatConfigException(&quot;Unknown key &quot; + e.getKey() + &quot; in standoff annotations block&quot;);</span>
+                }
+<span class="fc" id="L295">            }</span>
+<span class="fc" id="L296">            af.addStandoffAnnotation(s);</span>
+<span class="fc" id="L297">        }</span>
+<span class="fc" id="L298">    }</span>
+
+    private static void readInlineTags(Entry&lt;String, JsonNode&gt; itsEntry, ConfigAnnotatedField af) {
+<span class="fc" id="L301">        Iterator&lt;JsonNode&gt; itTags = array(itsEntry).elements();</span>
+<span class="fc bfc" id="L302" title="All 2 branches covered.">        while (itTags.hasNext()) {</span>
+<span class="fc" id="L303">            JsonNode as = itTags.next();</span>
+<span class="fc" id="L304">            ConfigInlineTag t = new ConfigInlineTag();</span>
+<span class="fc" id="L305">            Iterator&lt;Entry&lt;String, JsonNode&gt;&gt; itTag = obj(as, &quot;inlineTag&quot;).fields();</span>
+<span class="fc bfc" id="L306" title="All 2 branches covered.">            while (itTag.hasNext()) {</span>
+<span class="fc" id="L307">                Entry&lt;String, JsonNode&gt; e = itTag.next();</span>
+<span class="pc bpc" id="L308" title="7 of 10 branches missed.">                switch(e.getKey()) {</span>
+<span class="fc" id="L309">                case &quot;path&quot;: t.setPath(str(e)); break;</span>
+<span class="nc" id="L310">                case &quot;displayAs&quot;: t.setDisplayAs(str(e)); break;</span>
+                default:
+<span class="nc" id="L312">                    throw new InputFormatConfigException(&quot;Unknown key &quot; + e.getKey() + &quot; in inline tag &quot; + t.getPath());</span>
+                }
+<span class="fc" id="L314">            }</span>
+<span class="fc" id="L315">            af.addInlineTag(t);</span>
+<span class="fc" id="L316">        }</span>
+<span class="fc" id="L317">    }</span>
+
+    private static void readMetadata(Entry&lt;String, JsonNode&gt; mdEntry, ConfigInputFormat cfg) {
+<span class="fc" id="L320">        JsonNode node = mdEntry.getValue();</span>
+<span class="fc bfc" id="L321" title="All 2 branches covered.">        if (node instanceof ObjectNode) {</span>
+            // Single metadata block
+<span class="fc" id="L323">            readMetadataBlock(node, cfg);</span>
+<span class="pc bpc" id="L324" title="1 of 2 branches missed.">        } else if (node instanceof ArrayNode) {</span>
+            // List of metadata blocks
+<span class="fc" id="L326">            Iterator&lt;JsonNode&gt; itAnnotations = node.elements();</span>
+<span class="fc bfc" id="L327" title="All 2 branches covered.">            while (itAnnotations.hasNext()) {</span>
+<span class="fc" id="L328">                JsonNode as = itAnnotations.next();</span>
+<span class="fc" id="L329">                readMetadataBlock(as, cfg);</span>
+<span class="fc" id="L330">            }</span>
+<span class="fc" id="L331">        } else {</span>
+<span class="nc" id="L332">            throw new InputFormatConfigException(&quot;Wrong node type for metadata (must be object or array)&quot;);</span>
+        }
+<span class="fc" id="L334">    }</span>
+
+    private static void readMetadataBlock(JsonNode as, ConfigInputFormat cfg) {
+<span class="fc" id="L337">        ConfigMetadataBlock b = cfg.createMetadataBlock();</span>
+<span class="fc" id="L338">        Iterator&lt;Entry&lt;String, JsonNode&gt;&gt; it = obj(as, &quot;metadata block&quot;).fields();</span>
+<span class="fc bfc" id="L339" title="All 2 branches covered.">        while (it.hasNext()) {</span>
+<span class="fc" id="L340">            Entry&lt;String, JsonNode&gt; e = it.next();</span>
+<span class="pc bpc" id="L341" title="8 of 14 branches missed.">            switch(e.getKey()) {</span>
+<span class="fc" id="L342">            case &quot;containerPath&quot;: b.setContainerPath(str(e)); break;</span>
+<span class="nc" id="L343">            case &quot;defaultAnalyzer&quot;: b.setDefaultAnalyzer(str(e)); break;</span>
+<span class="fc" id="L344">            case &quot;fields&quot;: readMetadataFields(e, b); break;</span>
+            default:
+<span class="nc" id="L346">                throw new InputFormatConfigException(&quot;Unknown key &quot; + e.getKey() + &quot; in metadata block&quot;);</span>
+            }
+<span class="fc" id="L348">        }</span>
+<span class="fc" id="L349">    }</span>
+
+    private static void readMetadataFields(Entry&lt;String, JsonNode&gt; mfsEntry, ConfigMetadataBlock b) {
+<span class="fc" id="L352">        Iterator&lt;JsonNode&gt; itFields = array(mfsEntry).elements();</span>
+<span class="fc bfc" id="L353" title="All 2 branches covered.">        while (itFields.hasNext()) {</span>
+<span class="fc" id="L354">            JsonNode fld = itFields.next();</span>
+<span class="fc" id="L355">            Iterator&lt;Entry&lt;String, JsonNode&gt;&gt; itField = obj(fld, &quot;metadata field&quot;).fields();</span>
+<span class="fc" id="L356">            ConfigMetadataField f = new ConfigMetadataField();</span>
+<span class="fc bfc" id="L357" title="All 2 branches covered.">            while (itField.hasNext()) {</span>
+<span class="fc" id="L358">                Entry&lt;String, JsonNode&gt; e = itField.next();</span>
+<span class="pc bpc" id="L359" title="38 of 61 branches missed.">                switch (e.getKey()) {</span>
+<span class="fc" id="L360">                case &quot;name&quot;: case &quot;namePath&quot;: f.setName(str(e)); break;</span>
+<span class="fc" id="L361">                case &quot;value&quot;: f.setValuePath(fixedStringToXpath(str(e))); break;</span>
+<span class="fc" id="L362">                case &quot;valuePath&quot;: f.setValuePath(str(e)); break;</span>
+<span class="fc" id="L363">                case &quot;forEachPath&quot;: f.setForEachPath(str(e)); break;</span>
+<span class="fc" id="L364">                case &quot;process&quot;: f.setProcess(readProcess(e)); break;</span>
+<span class="nc" id="L365">                case &quot;displayName&quot;: f.setDisplayName(str(e)); break;</span>
+<span class="nc" id="L366">                case &quot;description&quot;: f.setDescription(str(e)); break;</span>
+<span class="fc" id="L367">                case &quot;type&quot;: f.setType(FieldType.fromStringValue(str(e))); break;</span>
+<span class="nc" id="L368">                case &quot;uiType&quot;: f.setUiType(str(e)); break;</span>
+<span class="fc" id="L369">                case &quot;unknownCondition&quot;: f.setUnknownCondition(UnknownCondition.fromStringValue(str(e))); break;</span>
+<span class="nc" id="L370">                case &quot;unknownValue&quot;: f.setUiType(str(e)); break;</span>
+<span class="nc" id="L371">                case &quot;analyzer&quot;: f.setAnalyzer(str(e)); break;</span>
+                case &quot;displayOrder&quot;:
+<span class="nc" id="L373">                    List&lt;String&gt; fields = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L374">                    readStringList(e, fields);</span>
+<span class="nc" id="L375">                    f.addDisplayOrder(fields);</span>
+<span class="nc" id="L376">                    break;</span>
+                case &quot;displayValues&quot;:
+<span class="nc" id="L378">                    Map&lt;String,String&gt; values = new HashMap&lt;&gt;();</span>
+<span class="nc" id="L379">                    readStringMap(e, values);</span>
+<span class="nc" id="L380">                    f.addDisplayValues(values);</span>
+<span class="nc" id="L381">                    break;</span>
+                default:
+<span class="nc" id="L383">                    throw new InputFormatConfigException(&quot;Unknown key &quot; + e.getKey() + &quot; in metadata field &quot; + f.getName());</span>
+                }
+<span class="fc" id="L385">            }</span>
+<span class="fc" id="L386">            b.addMetadataField(f);</span>
+<span class="fc" id="L387">        }</span>
+<span class="fc" id="L388">    }</span>
+
+    private static void readLinkedDocuments(Entry&lt;String, JsonNode&gt; ldsEntry, ConfigInputFormat cfg) {
+<span class="fc" id="L391">        Iterator&lt;Entry&lt;String, JsonNode&gt;&gt; itLinkedDocs = obj(ldsEntry).fields();</span>
+<span class="fc bfc" id="L392" title="All 2 branches covered.">        while (itLinkedDocs.hasNext()) {</span>
+<span class="fc" id="L393">            Entry&lt;String, JsonNode&gt; linkedDoc = itLinkedDocs.next();</span>
+<span class="fc" id="L394">            ConfigLinkedDocument ld = cfg.getOrCreateLinkedDocument(linkedDoc.getKey());</span>
+<span class="fc" id="L395">            Iterator&lt;Entry&lt;String, JsonNode&gt;&gt; itLinkedDoc = obj(linkedDoc).fields();</span>
+<span class="fc bfc" id="L396" title="All 2 branches covered.">            while (itLinkedDoc.hasNext()) {</span>
+<span class="fc" id="L397">                Entry&lt;String, JsonNode&gt; e = itLinkedDoc.next();</span>
+<span class="pc bpc" id="L398" title="15 of 30 branches missed.">                switch (e.getKey()) {</span>
+<span class="fc" id="L399">                case &quot;store&quot;: ld.setStore(bool(e)); break;</span>
+<span class="fc" id="L400">                case &quot;linkValues&quot;: readLinkValues(e, ld); break;</span>
+<span class="nc" id="L401">                case &quot;ifLinkPathMissing&quot;: ld.setIfLinkPathMissing(MissingLinkPathAction.fromStringValue(str(e))); break;</span>
+<span class="fc" id="L402">                case &quot;inputFile&quot;: ld.setInputFile(str(e)); break;</span>
+<span class="fc" id="L403">                case &quot;pathInsideArchive&quot;: ld.setPathInsideArchive(str(e)); break;</span>
+<span class="nc" id="L404">                case &quot;documentPath&quot;: ld.setDocumentPath(str(e)); break;</span>
+<span class="fc" id="L405">                case &quot;inputFormat&quot;: readInputFormat(ld, e); break;</span>
+                default:
+<span class="nc" id="L407">                    throw new InputFormatConfigException(&quot;Unknown key &quot; + e.getKey() + &quot; in linked document &quot; + ld.getName());</span>
+                }
+<span class="fc" id="L409">            }</span>
+<span class="fc" id="L410">        }</span>
+<span class="fc" id="L411">    }</span>
+
+    protected static void readInputFormat(ConfigLinkedDocument ld, Entry&lt;String, JsonNode&gt; e) {
+        // Resolve the inputFormat right now, instead of potentially failing later when the format is actually needed at some point during indexing
+<span class="fc" id="L415">        String formatIdentifier = str(e);</span>
+<span class="fc" id="L416">        Format format = DocumentFormats.getFormat(formatIdentifier);</span>
+<span class="pc bpc" id="L417" title="1 of 2 branches missed.">        if (format == null)</span>
+<span class="nc" id="L418">            throw new InputFormatConfigException(&quot;Unknown input format &quot; + str(e) + &quot; in linked document &quot; + ld.getName());</span>
+
+<span class="fc" id="L420">        ld.setInputFormatIdentifier(formatIdentifier);</span>
+<span class="fc" id="L421">    }</span>
+
+    private static void readLinkValues(Entry&lt;String, JsonNode&gt; lvsEntry, ConfigLinkedDocument ld) {
+<span class="fc" id="L424">        Iterator&lt;JsonNode&gt; itLinkValues = array(lvsEntry).elements();</span>
+<span class="fc bfc" id="L425" title="All 2 branches covered.">        while (itLinkValues.hasNext()) {</span>
+<span class="fc" id="L426">            JsonNode linkValue = itLinkValues.next();</span>
+<span class="fc" id="L427">            ConfigLinkValue lv = new ConfigLinkValue();</span>
+<span class="fc" id="L428">            Iterator&lt;Entry&lt;String, JsonNode&gt;&gt; itLinkValue = obj(linkValue, &quot;link value&quot;).fields();</span>
+<span class="fc bfc" id="L429" title="All 2 branches covered.">            while (itLinkValue.hasNext()) {</span>
+<span class="fc" id="L430">                Entry&lt;String, JsonNode&gt; e = itLinkValue.next();</span>
+<span class="pc bpc" id="L431" title="12 of 18 branches missed.">                switch (e.getKey()) {</span>
+<span class="nc" id="L432">                case &quot;value&quot;: lv.setValuePath(fixedStringToXpath(str(e))); break;</span>
+<span class="nc" id="L433">                case &quot;valuePath&quot;: lv.setValuePath(str(e)); break;</span>
+<span class="fc" id="L434">                case &quot;valueField&quot;: lv.setValueField(str(e)); break;</span>
+<span class="fc" id="L435">                case &quot;process&quot;: lv.setProcess(readProcess(e)); break;</span>
+                default:
+<span class="nc" id="L437">                    throw new InputFormatConfigException(&quot;Unknown key &quot; + e.getKey() + &quot; in linked document &quot; + ld.getName());</span>
+                }
+<span class="fc" id="L439">            }</span>
+<span class="fc" id="L440">            ld.addLinkValue(lv);</span>
+<span class="fc" id="L441">        }</span>
+<span class="fc" id="L442">    }</span>
+
+    private static List&lt;ConfigProcessStep&gt; readProcess(Entry&lt;String, JsonNode&gt; prEntry) {
+<span class="fc" id="L445">        Iterator&lt;JsonNode&gt; itSteps = array(prEntry).elements();</span>
+<span class="fc" id="L446">        List&lt;ConfigProcessStep&gt; p = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L447" title="All 2 branches covered.">        while (itSteps.hasNext()) {</span>
+<span class="fc" id="L448">            JsonNode step = itSteps.next();</span>
+<span class="fc" id="L449">            ConfigProcessStep s = new ConfigProcessStep();</span>
+<span class="fc" id="L450">            Iterator&lt;Entry&lt;String, JsonNode&gt;&gt; itStep = obj(step, &quot;processing step&quot;).fields();</span>
+<span class="fc bfc" id="L451" title="All 2 branches covered.">            while (itStep.hasNext()) {</span>
+<span class="fc" id="L452">                Entry&lt;String, JsonNode&gt; e = itStep.next();</span>
+<span class="pc bpc" id="L453" title="1 of 6 branches missed.">                switch(e.getKey()) {</span>
+<span class="fc" id="L454">                case &quot;action&quot;: s.setMethod(str(e)); break;</span>
+<span class="fc" id="L455">                default: s.addParam(e.getKey(), str(e)); break;</span>
+                }
+<span class="fc" id="L457">            }</span>
+<span class="fc" id="L458">            p.add(s);</span>
+<span class="fc" id="L459">        }</span>
+<span class="fc" id="L460">        return p;</span>
+    }
+
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

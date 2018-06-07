@@ -1,0 +1,434 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ConfigInputFormat.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.index.config</a> &gt; <span class="el_source">ConfigInputFormat.java</span></div><h1>ConfigInputFormat.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.index.config;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.apache.commons.lang3.StringUtils;
+
+import nl.inl.blacklab.index.DocIndexerAbstract;
+import nl.inl.blacklab.index.DocIndexerFactory.Format;
+import nl.inl.blacklab.index.DocumentFormats;
+import nl.inl.blacklab.index.config.InputFormatReader.BaseFormatFinder;
+import nl.inl.blacklab.indexers.preprocess.ConvertPlugin;
+import nl.inl.blacklab.indexers.preprocess.TagPlugin;
+import nl.inl.util.FileUtil;
+
+/**
+ * Configuration for an input format (either contents, or metadata, or a mix of both).
+ */
+public class ConfigInputFormat {
+
+    /** Basic file types we support */
+<span class="fc" id="L31">    public enum FileType {</span>
+<span class="fc" id="L32">        XML,</span>
+<span class="fc" id="L33">        TABULAR,  // csv, tsv</span>
+<span class="fc" id="L34">        TEXT,     // plain text</span>
+<span class="fc" id="L35">    	CHAT;     // CHILDES CHAT format</span>
+
+        public static FileType fromStringValue(String str) {
+<span class="fc" id="L38">            return valueOf(str.toUpperCase());</span>
+        }
+
+        public String stringValue() {
+<span class="nc" id="L42">            return toString().toLowerCase();</span>
+        }
+    }
+
+    /** This format's name, final to ensure consistency within DocIndexerFactories */
+    private final String name;
+
+    /** This format's display name (optional) */
+<span class="pc" id="L50">    private String displayName = &quot;&quot;;</span>
+
+    /** This format's description (optional) */
+<span class="pc" id="L53">    private String description = &quot;&quot;;</span>
+
+    /** Link to a help page, e.g. showing an example of a correct input file (optional) */
+<span class="pc" id="L56">    private String helpUrl = &quot;&quot;;</span>
+
+    /**
+     * Should this format be marked as hidden? Mirrors {@link DocIndexerAbstract#isVisible(Class)}.
+     * Used to set {@link Format#isVisible()}, to indicate internal formats to client applications,
+     * but has no other internal meaning.
+     */
+<span class="pc" id="L63">    private boolean visible = true;</span>
+
+    /** This format's type indicator (optional, not used by BlackLab. usually 'contents' or 'metadata') */
+<span class="pc" id="L66">    private String type = &quot;&quot;;</span>
+
+    /** What type of file is this (e.g. xml, tabular, plaintext)? Determines subclass of DocIndexerConfig to instantiate */
+<span class="pc" id="L69">    private FileType fileType = FileType.XML;</span>
+
+    /** Options for the file type (i.e. separator in case of tabular, etc.) */
+<span class="pc" id="L72">    private Map&lt;String, String&gt; fileTypeOptions = new HashMap&lt;&gt;();</span>
+
+    /** Configuration that will be added to indexmetadata when creating a corpus */
+<span class="pc" id="L75">    private ConfigCorpus corpusConfig = new ConfigCorpus();</span>
+
+    /** XML namespace declarations */
+<span class="pc" id="L78">    Map&lt;String, String&gt; namespaces = new LinkedHashMap&lt;&gt;();</span>
+
+    /** How to find our documents */
+<span class="pc" id="L81">    private String documentPath = &quot;/&quot;;</span>
+
+    /** Should we store the document in the content store? (default: yes) */
+<span class="pc" id="L84">    private boolean store = true;</span>
+
+    /** Before adding metadata fields to the document, this name mapping is applied. */
+<span class="pc" id="L87">    Map&lt;String, String&gt; indexFieldAs = new LinkedHashMap&lt;&gt;();</span>
+
+    /** What default analyzer to use if not overridden */
+<span class="pc" id="L90">    private String metadataDefaultAnalyzer = &quot;default&quot;;</span>
+
+    /** Blocks of embedded metadata */
+<span class="pc" id="L93">    private List&lt;ConfigMetadataBlock&gt; metadataBlocks = new ArrayList&lt;&gt;();</span>
+
+    /** Annotated fields (usually just &quot;contents&quot;) */
+<span class="pc" id="L96">    private Map&lt;String, ConfigAnnotatedField&gt; annotatedFields = new LinkedHashMap&lt;&gt;();</span>
+
+    /** Linked document(s), e.g. containing our metadata */
+<span class="pc" id="L99">    private Map&lt;String, ConfigLinkedDocument&gt; linkedDocuments = new LinkedHashMap&lt;&gt;();</span>
+
+    /** id of a {@link ConvertPlugin} to run files through prior to indexing */
+    private String convertPluginId;
+
+    /** id of a {@link TagPlugin} to run files through prior to indexing, this happens after converting (if applicable) */
+    private String tagPluginId;
+
+    /** What file was this format read from? Useful if we want to display it in BLS. */
+    private File readFromFile;
+
+<span class="fc" id="L110">    public ConfigInputFormat(String name) {</span>
+<span class="fc" id="L111">        this.name = name;</span>
+<span class="fc" id="L112">    }</span>
+
+    /**
+     *
+     * @param file the file to read, the name of this file (minus the .blf.* extension) will be used as this format's name.
+     * @param baseFormatFinder finder to locate the baseFormat of this config, if set, may be null if no baseFormat is required
+     * @throws IOException
+     */
+<span class="nc" id="L120">    public ConfigInputFormat(File file, BaseFormatFinder finder) throws IOException {</span>
+<span class="nc" id="L121">        this.readFromFile = file;</span>
+<span class="nc" id="L122">        this.name = ConfigInputFormat.stripExtensions(file.getName());</span>
+<span class="nc" id="L123">        InputFormatReader.read(file, this, finder);</span>
+<span class="nc" id="L124">    }</span>
+
+    /**
+     *
+     * @param name
+     * @param reader
+     * @param isJson
+     * @param baseFormatFinder finder to locate the baseFormat of this config, if set, may be null if no baseFormat is required
+     * @throws IOException
+     */
+<span class="nc" id="L134">    public ConfigInputFormat(String name, Reader reader, boolean isJson, BaseFormatFinder finder) throws IOException {</span>
+<span class="nc" id="L135">        this.name = name;</span>
+<span class="nc" id="L136">        InputFormatReader.read(reader, isJson, this, finder);</span>
+<span class="nc" id="L137">    }</span>
+
+    /**
+     * Copy everything except name, displayName and description from the specified format.
+     * @param baseFormat format to copy from
+     */
+    public void setBaseFormat(ConfigInputFormat baseFormat) {
+<span class="fc" id="L144">        type = baseFormat.getType();</span>
+<span class="fc" id="L145">        fileType = baseFormat.getFileType();</span>
+<span class="pc bpc" id="L146" title="1 of 2 branches missed.">        if (baseFormat.getFileTypeOptions() != null)</span>
+<span class="fc" id="L147">            fileTypeOptions.putAll(baseFormat.getFileTypeOptions());</span>
+//        if (baseFormat.getTabularOptions() != null)
+//            tabularOptions = baseFormat.getTabularOptions().copy();
+<span class="fc" id="L150">        corpusConfig = baseFormat.corpusConfig.copy();</span>
+<span class="fc" id="L151">        namespaces.putAll(baseFormat.getNamespaces());</span>
+<span class="fc" id="L152">        documentPath = baseFormat.getDocumentPath();</span>
+<span class="fc" id="L153">        store = baseFormat.shouldStore();</span>
+<span class="fc" id="L154">        indexFieldAs.putAll(baseFormat.getIndexFieldAs());</span>
+<span class="fc" id="L155">        metadataDefaultAnalyzer = baseFormat.getMetadataDefaultAnalyzer();</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">        for (ConfigMetadataBlock b: baseFormat.getMetadataBlocks()) {</span>
+<span class="fc" id="L157">            addMetadataBlock(b.copy());</span>
+<span class="fc" id="L158">        }</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">        for (ConfigAnnotatedField f: baseFormat.getAnnotatedFields().values()) {</span>
+<span class="fc" id="L160">            addAnnotatedField(f.copy());</span>
+<span class="fc" id="L161">        }</span>
+<span class="fc" id="L162">        linkedDocuments.putAll(baseFormat.getLinkedDocuments());</span>
+<span class="fc" id="L163">        setVisible(baseFormat.isVisible());</span>
+<span class="fc" id="L164">    }</span>
+
+    /**
+     * Validate this configuration.
+     */
+    public void validate() {
+<span class="fc" id="L170">        String t = &quot;input format&quot;;</span>
+<span class="fc" id="L171">        req(name, t, &quot;name&quot;);</span>
+<span class="fc" id="L172">        req(documentPath, t, &quot;documentPath&quot;);</span>
+//        if (tabularOptions != null)
+//            tabularOptions.validate();
+<span class="fc bfc" id="L175" title="All 2 branches covered.">        for (ConfigMetadataBlock b: metadataBlocks)</span>
+<span class="fc" id="L176">            b.validate();</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">        for (ConfigAnnotatedField af: annotatedFields.values()) {</span>
+<span class="fc bfc" id="L178" title="All 2 branches covered.">            if (fileType != FileType.XML)</span>
+<span class="fc" id="L179">                af.setWordPath(&quot;N/A&quot;); // prevent validation error</span>
+<span class="fc" id="L180">            af.validate();</span>
+<span class="fc" id="L181">        }</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">        for (ConfigLinkedDocument ld: linkedDocuments.values())</span>
+<span class="fc" id="L183">            ld.validate();</span>
+<span class="fc" id="L184">    }</span>
+
+    static void req(String value, String type, String name) {
+<span class="pc bpc" id="L187" title="2 of 4 branches missed.">        if (value == null || value.isEmpty())</span>
+<span class="nc" id="L188">            throw new InputFormatConfigException(StringUtils.capitalize(type) + &quot; must have a &quot; + name);</span>
+<span class="fc" id="L189">    }</span>
+
+    static void req(boolean test, String type, String mustMsg) {
+<span class="pc bpc" id="L192" title="1 of 2 branches missed.">        if (!test)</span>
+<span class="nc" id="L193">            throw new InputFormatConfigException(StringUtils.capitalize(type) + &quot; must &quot; + mustMsg);</span>
+<span class="fc" id="L194">    }</span>
+
+    public String getName() {
+<span class="fc" id="L197">        return name;</span>
+    }
+
+    public String getDisplayName() {
+<span class="fc" id="L201">        return displayName;</span>
+    }
+
+    public String getDescription() {
+<span class="fc" id="L205">        return description;</span>
+    }
+
+    public void setDescription(String description) {
+<span class="fc" id="L209">        this.description = description;</span>
+<span class="fc" id="L210">    }</span>
+
+    public void setDisplayName(String displayName) {
+<span class="fc" id="L213">        this.displayName = displayName;</span>
+<span class="fc" id="L214">    }</span>
+
+    public FileType getFileType() {
+<span class="fc" id="L217">        return fileType;</span>
+    }
+
+    public void setFileType(FileType fileType) {
+<span class="fc" id="L221">        this.fileType = fileType;</span>
+<span class="fc" id="L222">    }</span>
+
+    public boolean isVisible() {
+<span class="fc" id="L225">        return visible;</span>
+    }
+
+    public void setVisible(boolean listed) {
+<span class="fc" id="L229">        this.visible = listed;</span>
+<span class="fc" id="L230">    }</span>
+
+//    public ConfigTabularOptions getTabularOptions() {
+//        return tabularOptions;
+//    }
+//
+//    public void setTabularOptions(ConfigTabularOptions tabularOptions) {
+//        this.tabularOptions = tabularOptions;
+//    }
+
+    public void addNamespace(String name, String uri) {
+<span class="nc" id="L241">        namespaces.put(name, uri);</span>
+<span class="nc" id="L242">    }</span>
+
+    public void setDocumentPath(String documentPath) {
+<span class="fc" id="L245">        this.documentPath = documentPath;</span>
+<span class="fc" id="L246">    }</span>
+
+    void addMetadataBlock(ConfigMetadataBlock b) {
+<span class="pc bpc" id="L249" title="1 of 2 branches missed.">        if (b.getAnalyzer().isEmpty())</span>
+<span class="nc" id="L250">            b.setDefaultAnalyzer(metadataDefaultAnalyzer);</span>
+<span class="fc" id="L251">        metadataBlocks.add(b);</span>
+<span class="fc" id="L252">    }</span>
+
+    public ConfigMetadataBlock createMetadataBlock() {
+<span class="fc" id="L255">        ConfigMetadataBlock b = new ConfigMetadataBlock();</span>
+<span class="fc" id="L256">        b.setDefaultAnalyzer(metadataDefaultAnalyzer);</span>
+<span class="fc" id="L257">        metadataBlocks.add(b);</span>
+<span class="fc" id="L258">        return b;</span>
+    }
+
+    public List&lt;ConfigMetadataBlock&gt; getMetadataBlocks() {
+<span class="fc" id="L262">        return Collections.unmodifiableList(metadataBlocks);</span>
+    }
+
+    public void addAnnotatedField(ConfigAnnotatedField f) {
+<span class="fc" id="L266">        this.annotatedFields.put(f.getName(), f);</span>
+<span class="fc" id="L267">    }</span>
+
+    public void addLinkedDocument(ConfigLinkedDocument d) {
+<span class="nc" id="L270">        linkedDocuments.put(d.getName(), d);</span>
+<span class="nc" id="L271">    }</span>
+
+    public void setConvertPluginId(String id) {
+<span class="fc" id="L274">        this.convertPluginId = id;</span>
+<span class="fc" id="L275">    }</span>
+
+    public String getConvertPluginId() {
+<span class="nc" id="L278">        return convertPluginId;</span>
+    }
+
+    public void setTagPluginId(String id) {
+<span class="fc" id="L282">        this.tagPluginId = id;</span>
+<span class="fc" id="L283">    }</span>
+
+    public String getTagPluginId() {
+<span class="nc" id="L286">        return tagPluginId;</span>
+    }
+
+    public boolean isNamespaceAware() {
+<span class="nc bnc" id="L290" title="All 2 branches missed.">        return namespaces.size() &gt; 0;</span>
+    }
+
+    public Map&lt;String, String&gt; getNamespaces() {
+<span class="fc" id="L294">        return namespaces;</span>
+    }
+
+    public String getDocumentPath() {
+<span class="fc" id="L298">        return documentPath;</span>
+    }
+
+    public Map&lt;String, ConfigAnnotatedField&gt; getAnnotatedFields() {
+<span class="fc" id="L302">        return Collections.unmodifiableMap(annotatedFields);</span>
+    }
+
+    public ConfigAnnotatedField getAnnotatedField(String name) {
+<span class="nc" id="L306">        return getAnnotatedField(name, false);</span>
+    }
+
+    public ConfigAnnotatedField getOrCreateAnnotatedField(String name) {
+<span class="fc" id="L310">        return getAnnotatedField(name, true);</span>
+    }
+
+    private ConfigAnnotatedField getAnnotatedField(String name, boolean createIfNotFound) {
+<span class="fc" id="L314">        ConfigAnnotatedField f = annotatedFields.get(name);</span>
+<span class="pc bpc" id="L315" title="1 of 4 branches missed.">        if (f == null &amp;&amp; createIfNotFound) {</span>
+<span class="fc" id="L316">            f = new ConfigAnnotatedField(name);</span>
+<span class="fc" id="L317">            annotatedFields.put(name, f);</span>
+        }
+<span class="fc" id="L319">        return f;</span>
+    }
+
+    public Map&lt;String, ConfigLinkedDocument&gt; getLinkedDocuments() {
+<span class="fc" id="L323">        return Collections.unmodifiableMap(linkedDocuments);</span>
+    }
+
+    public ConfigLinkedDocument getLinkedDocument(String name) {
+<span class="nc" id="L327">        return getLinkedDocument(name, false);</span>
+    }
+
+    public ConfigLinkedDocument getOrCreateLinkedDocument(String name) {
+<span class="fc" id="L331">        return getLinkedDocument(name, true);</span>
+    }
+
+    private ConfigLinkedDocument getLinkedDocument(String name, boolean createIfNotFound) {
+<span class="fc" id="L335">        ConfigLinkedDocument ld = linkedDocuments.get(name);</span>
+<span class="pc bpc" id="L336" title="2 of 4 branches missed.">        if (ld == null &amp;&amp; createIfNotFound) {</span>
+<span class="fc" id="L337">            ld = new ConfigLinkedDocument(name);</span>
+<span class="fc" id="L338">            linkedDocuments.put(name, ld);</span>
+        }
+<span class="fc" id="L340">        return ld;</span>
+    }
+
+    public Map&lt;String, String&gt; getIndexFieldAs() {
+<span class="fc" id="L344">        return Collections.unmodifiableMap(indexFieldAs);</span>
+    }
+
+    public void addIndexFieldAs(String from, String to) {
+<span class="nc" id="L348">        indexFieldAs.put(from, to);</span>
+<span class="nc" id="L349">    }</span>
+
+    public boolean shouldStore() {
+<span class="fc" id="L352">        return store;</span>
+    }
+
+    public void setStore(boolean store) {
+<span class="fc" id="L356">        this.store = store;</span>
+<span class="fc" id="L357">    }</span>
+
+    public String getMetadataDefaultAnalyzer() {
+<span class="fc" id="L360">        return metadataDefaultAnalyzer;</span>
+    }
+
+    public void setMetadataDefaultAnalyzer(String metadataDefaultAnalyzer) {
+<span class="nc" id="L364">        this.metadataDefaultAnalyzer = metadataDefaultAnalyzer;</span>
+<span class="nc" id="L365">    }</span>
+
+    public String getType() {
+<span class="fc" id="L368">        return type;</span>
+    }
+
+    public void setType(String type) {
+<span class="fc" id="L372">        this.type = type;</span>
+<span class="fc" id="L373">    }</span>
+
+    public Map&lt;String, String&gt; getFileTypeOptions() {
+<span class="fc" id="L376">        return fileTypeOptions;</span>
+    }
+
+    public void addFileTypeOption(String key, String value) {
+<span class="fc" id="L380">        this.fileTypeOptions.put(key, value);</span>
+<span class="fc" id="L381">    }</span>
+
+    public ConfigCorpus getCorpusConfig() {
+<span class="fc" id="L384">        return corpusConfig;</span>
+    }
+
+    public ConfigMetadataField getMetadataField(String fieldname) {
+<span class="nc bnc" id="L388" title="All 2 branches missed.">        for (ConfigMetadataBlock bl: metadataBlocks) {</span>
+<span class="nc" id="L389">            ConfigMetadataField f = bl.getMetadataField(fieldname);</span>
+<span class="nc bnc" id="L390" title="All 2 branches missed.">            if (f != null)</span>
+<span class="nc" id="L391">                return f;</span>
+<span class="nc" id="L392">        }</span>
+<span class="nc" id="L393">        return null;</span>
+    }
+
+    public static String stripExtensions(String fileName) {
+<span class="fc" id="L397">        String name = fileName.replaceAll(&quot;\\.(ya?ml|json)$&quot;, &quot;&quot;);</span>
+<span class="pc bpc" id="L398" title="1 of 2 branches missed.">        if (name.endsWith(&quot;.blf&quot;))</span>
+<span class="fc" id="L399">            return name.substring(0, name.length() - 4);</span>
+<span class="nc" id="L400">        return name;</span>
+    }
+
+    public File getReadFromFile() {
+<span class="nc" id="L404">        return readFromFile;</span>
+    }
+
+	public BufferedReader getFormatFile() {
+<span class="nc bnc" id="L408" title="All 2 branches missed.">		if (readFromFile == null)</span>
+<span class="nc" id="L409">			return null;</span>
+
+<span class="nc bnc" id="L411" title="All 2 branches missed.">		if (readFromFile.getPath().startsWith(&quot;$BLACKLAB_JAR&quot;))</span>
+<span class="nc" id="L412">			return new BufferedReader(new InputStreamReader(DocumentFormats.class.getClassLoader().getResourceAsStream(&quot;formats/&quot; + getName() + &quot;.blf.yaml&quot;)));</span>
+<span class="nc" id="L413">		return FileUtil.openForReading(readFromFile);</span>
+	}
+
+
+    public void setReadFromFile(File readFromFile) {
+<span class="fc" id="L418">        this.readFromFile = readFromFile;</span>
+<span class="fc" id="L419">    }</span>
+
+    public boolean shouldResolveNamedEntityReferences() {
+<span class="nc bnc" id="L422" title="All 6 branches missed.">        return fileType == FileType.XML &amp;&amp; fileTypeOptions.containsKey(&quot;resolveNamedEntityReferences&quot;) &amp;&amp; fileTypeOptions.get(&quot;resolveNamedEntityReferences&quot;).equalsIgnoreCase(&quot;true&quot;);</span>
+    }
+
+    public String getHelpUrl() {
+<span class="fc" id="L426">        return helpUrl;</span>
+    }
+
+    public void setHelpUrl(String helpUrl) {
+<span class="fc" id="L430">        this.helpUrl = helpUrl;</span>
+<span class="fc" id="L431">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

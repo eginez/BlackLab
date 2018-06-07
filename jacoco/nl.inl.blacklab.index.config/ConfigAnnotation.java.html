@@ -1,0 +1,235 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ConfigAnnotation.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.index.config</a> &gt; <span class="el_source">ConfigAnnotation.java</span></div><h1>ConfigAnnotation.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.index.config;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+import nl.inl.blacklab.index.complex.ComplexFieldProperty.SensitivitySetting;
+
+/**
+ * Configuration for a single annotation (&quot;property&quot;) of an
+ * annotated field (&quot;complex field&quot;).
+ */
+public class ConfigAnnotation {
+
+	/** Annotation name, or forEach (or name XPath, if forEach) */
+    private String name;
+
+    /** If specified, all other XPath expression are relative to this */
+<span class="fc" id="L21">    private String basePath = null;</span>
+
+    /** Where to find body text */
+    private String valuePath;
+
+    /** If valuePath consists only of digits, this is the integer value. Otherwise, it is Integer.MAX_VALUE */
+<span class="fc" id="L27">    private int valuePathInt = Integer.MAX_VALUE;</span>
+
+    /** If null: regular annotation definition. Otherwise, find all nodes matching this XPath,
+     *  then evaluate name and valuePath as XPaths for each matching node, adding a subannotation
+     *  value for each.
+     *  NOTE: forEach is only supported for subannotations, because all main annotations (complex field
+     *  properties) need to be known from the start.
+     */
+    private String forEachPath;
+
+    /** How to process annotation values (if at all) */
+<span class="fc" id="L38">    private List&lt;ConfigProcessStep&gt; process = new ArrayList&lt;&gt;();</span>
+
+    /** What sensitivity setting to use to index this annotation
+     *  (optional, default depends on field name) */
+<span class="fc" id="L42">    private SensitivitySetting sensitivity = SensitivitySetting.DEFAULT;</span>
+
+    /** XPaths to capture the value of, to substitute for $1-$9 in valuePath */
+<span class="fc" id="L45">    private List&lt;String&gt; captureValuePaths = new ArrayList&lt;&gt;();</span>
+
+    /** Our subannotations. Note that only 1 level of subannotations is processed
+     *  (i.e. there's no subsubannotations), although we could process more levels if desired. */
+<span class="fc" id="L49">    private List&lt;ConfigAnnotation&gt; subAnnotations = new ArrayList&lt;&gt;();</span>
+
+    /** Our subannotations (except forEach's) by name. */
+<span class="fc" id="L52">    private Map&lt;String, ConfigAnnotation&gt; subAnnotationsByName = new LinkedHashMap&lt;&gt;();</span>
+
+    /** Should we create a forward index for this annotation? */
+<span class="fc" id="L55">    private boolean forwardIndex = true;</span>
+
+    /** How to display the field in the interface (optional) */
+<span class="fc" id="L58">    private String displayName = &quot;&quot;;</span>
+
+    /** How to describe the field in the interface (optional) */
+<span class="fc" id="L61">    private String description = &quot;&quot;;</span>
+
+    /** What UI element to show in the interface (optional) */
+<span class="fc" id="L64">    private String uiType = &quot;&quot;;</span>
+
+    /** Can this annotation have multiple values at one token position? [false] */
+<span class="fc" id="L67">    private boolean multipleValues = false;</span>
+
+<span class="fc" id="L69">    public ConfigAnnotation() {</span>
+<span class="fc" id="L70">    }</span>
+
+    public ConfigAnnotation(String name, String valuePath) {
+<span class="nc" id="L73">        this(name, valuePath, null);</span>
+<span class="nc" id="L74">    }</span>
+
+<span class="fc" id="L76">	public ConfigAnnotation(String name, String valuePath, String forEachPath) {</span>
+<span class="fc" id="L77">        setName(name);</span>
+<span class="fc" id="L78">        setValuePath(valuePath);</span>
+<span class="fc" id="L79">        setForEachPath(forEachPath);</span>
+<span class="fc" id="L80">    }</span>
+
+	public void validate() {
+<span class="fc" id="L83">	    String t = &quot;annotation&quot;;</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        ConfigInputFormat.req(name, t, isForEach() ? &quot;namePath&quot; : &quot;name&quot;);</span>
+<span class="fc" id="L85">        ConfigInputFormat.req(valuePath, t, &quot;valuePath&quot;);</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        for (ConfigAnnotation s: subAnnotations)</span>
+<span class="fc" id="L87">            s.validate();</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">        for (ConfigProcessStep step: process)</span>
+<span class="fc" id="L89">            step.validate();</span>
+<span class="fc" id="L90">    }</span>
+
+    public ConfigAnnotation copy() {
+<span class="fc" id="L93">        ConfigAnnotation result = new ConfigAnnotation(name, valuePath, forEachPath);</span>
+<span class="fc" id="L94">        result.setProcess(process);</span>
+<span class="fc" id="L95">        result.setDisplayName(displayName);</span>
+<span class="fc" id="L96">        result.setDescription(description);</span>
+<span class="fc" id="L97">        result.setSensitivity(sensitivity);</span>
+<span class="fc" id="L98">        result.setUiType(uiType);</span>
+<span class="fc" id="L99">        result.setBasePath(basePath);</span>
+<span class="fc" id="L100">        result.captureValuePaths.addAll(captureValuePaths);</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">        for (ConfigAnnotation a: subAnnotations) {</span>
+<span class="fc" id="L102">            result.addSubAnnotation(a.copy());</span>
+<span class="fc" id="L103">        }</span>
+<span class="fc" id="L104">        result.setForwardIndex(forwardIndex);</span>
+<span class="fc" id="L105">        result.setMultipleValues(multipleValues);</span>
+<span class="fc" id="L106">        return result;</span>
+    }
+
+    public String getName() {
+<span class="fc" id="L110">        return name;</span>
+    }
+
+    public String getValuePath() {
+<span class="nc" id="L114">        return valuePath;</span>
+    }
+
+    public void setName(String name) {
+<span class="fc" id="L118">        this.name = name;</span>
+<span class="fc" id="L119">    }</span>
+
+    public void setValuePath(String valuePath) {
+<span class="fc" id="L122">        this.valuePath = valuePath;</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        if (valuePath.matches(&quot;\\d+&quot;))</span>
+<span class="fc" id="L124">            valuePathInt = Integer.parseInt(valuePath);</span>
+<span class="fc" id="L125">    }</span>
+
+    public boolean isValuePathInteger() {
+<span class="nc bnc" id="L128" title="All 2 branches missed.">        return valuePathInt != Integer.MAX_VALUE;</span>
+    }
+
+    public int getValuePathInt() {
+<span class="nc" id="L132">        return valuePathInt;</span>
+    }
+
+    public List&lt;String&gt; getCaptureValuePaths() {
+<span class="nc" id="L136">        return Collections.unmodifiableList(captureValuePaths);</span>
+    }
+
+    public void addCaptureValuePath(String captureValuePath) {
+<span class="fc" id="L140">        captureValuePaths.add(captureValuePath);</span>
+<span class="fc" id="L141">    }</span>
+
+    public List&lt;ConfigAnnotation&gt; getSubAnnotations() {
+<span class="nc" id="L144">        return Collections.unmodifiableList(subAnnotations);</span>
+    }
+
+    public ConfigAnnotation getSubAnnotation(String name) {
+<span class="nc" id="L148">        return subAnnotationsByName.get(name);</span>
+    }
+
+    public void addSubAnnotation(ConfigAnnotation subAnnotation) {
+<span class="fc" id="L152">        subAnnotations.add(subAnnotation);</span>
+<span class="fc bfc" id="L153" title="All 2 branches covered.">        if (!subAnnotation.isForEach())</span>
+<span class="fc" id="L154">            subAnnotationsByName.put(subAnnotation.getName(), subAnnotation);</span>
+<span class="fc" id="L155">    }</span>
+
+    public String getForEachPath() {
+<span class="nc" id="L158">        return forEachPath;</span>
+    }
+
+    public void setForEachPath(String forEachPath) {
+<span class="fc" id="L162">        this.forEachPath = forEachPath;</span>
+<span class="fc" id="L163">    }</span>
+
+    public boolean isForEach() {
+<span class="fc bfc" id="L166" title="All 2 branches covered.">        return forEachPath != null;</span>
+    }
+
+    public String getBasePath() {
+<span class="nc" id="L170">        return basePath;</span>
+    }
+
+    public void setBasePath(String basePath) {
+<span class="fc" id="L174">        this.basePath = basePath;</span>
+<span class="fc" id="L175">    }</span>
+
+    public String getDisplayName() {
+<span class="nc" id="L178">        return displayName;</span>
+    }
+
+    public void setDisplayName(String displayName) {
+<span class="fc" id="L182">        this.displayName = displayName;</span>
+<span class="fc" id="L183">    }</span>
+
+    public String getDescription() {
+<span class="nc" id="L186">        return description;</span>
+    }
+
+    public void setDescription(String description) {
+<span class="fc" id="L190">        this.description = description;</span>
+<span class="fc" id="L191">    }</span>
+
+    public String getUiType() {
+<span class="nc" id="L194">        return uiType;</span>
+    }
+
+    public void setUiType(String uiType) {
+<span class="fc" id="L198">        this.uiType = uiType;</span>
+<span class="fc" id="L199">    }</span>
+
+    public SensitivitySetting getSensitivity() {
+<span class="nc" id="L202">        return sensitivity;</span>
+    }
+
+    public void setSensitivity(SensitivitySetting sensitivity) {
+<span class="fc" id="L206">        this.sensitivity = sensitivity;</span>
+<span class="fc" id="L207">    }</span>
+
+    public List&lt;ConfigProcessStep&gt; getProcess() {
+<span class="nc" id="L210">        return process;</span>
+    }
+
+    public void setProcess(List&lt;ConfigProcessStep&gt; process) {
+<span class="fc" id="L214">        this.process.clear();</span>
+<span class="fc" id="L215">        this.process.addAll(process);</span>
+<span class="fc" id="L216">    }</span>
+
+    public boolean createForwardIndex() {
+<span class="nc" id="L219">        return forwardIndex;</span>
+    }
+
+    public void setForwardIndex(boolean forwardIndex) {
+<span class="fc" id="L223">        this.forwardIndex = forwardIndex;</span>
+<span class="fc" id="L224">    }</span>
+
+    public boolean isMultipleValues() {
+<span class="nc" id="L227">        return multipleValues;</span>
+    }
+
+    public void setMultipleValues(boolean multipleValues) {
+<span class="fc" id="L231">        this.multipleValues = multipleValues;</span>
+<span class="fc" id="L232">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

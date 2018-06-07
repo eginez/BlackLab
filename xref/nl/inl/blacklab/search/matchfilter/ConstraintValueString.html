@@ -8,7 +8,7 @@
 <div id="overview"><a href="../../../../../../apidocs/nl/inl/blacklab/search/matchfilter/ConstraintValueString.html">View Javadoc</a></div><pre>
 <a class="jxr_linenumber" name="L1" href="#L1">1</a>   <strong class="jxr_keyword">package</strong> nl.inl.blacklab.search.matchfilter;
 <a class="jxr_linenumber" name="L2" href="#L2">2</a>   
-<a class="jxr_linenumber" name="L3" href="#L3">3</a>   <strong class="jxr_keyword">import</strong> org.apache.commons.lang3.StringUtils;
+<a class="jxr_linenumber" name="L3" href="#L3">3</a>   <strong class="jxr_keyword">import</strong> nl.inl.util.StringUtil;
 <a class="jxr_linenumber" name="L4" href="#L4">4</a>   
 <a class="jxr_linenumber" name="L5" href="#L5">5</a>   <strong class="jxr_keyword">public</strong> <strong class="jxr_keyword">class</strong> <a href="../../../../../nl/inl/blacklab/search/matchfilter/ConstraintValueString.html">ConstraintValueString</a> <strong class="jxr_keyword">extends</strong> <a href="../../../../../nl/inl/blacklab/search/matchfilter/ConstraintValue.html">ConstraintValue</a> {
 <a class="jxr_linenumber" name="L6" href="#L6">6</a>   
@@ -67,8 +67,8 @@
 <a class="jxr_linenumber" name="L59" href="#L59">59</a>  			b = b.toLowerCase();
 <a class="jxr_linenumber" name="L60" href="#L60">60</a>  		}
 <a class="jxr_linenumber" name="L61" href="#L61">61</a>  		<strong class="jxr_keyword">if</strong> (!diacSensitive) {
-<a class="jxr_linenumber" name="L62" href="#L62">62</a>  			a = StringUtils.stripAccents(a);
-<a class="jxr_linenumber" name="L63" href="#L63">63</a>  			b = StringUtils.stripAccents(b);
+<a class="jxr_linenumber" name="L62" href="#L62">62</a>  			a = StringUtil.stripAccents(a);
+<a class="jxr_linenumber" name="L63" href="#L63">63</a>  			b = StringUtil.stripAccents(b);
 <a class="jxr_linenumber" name="L64" href="#L64">64</a>  		}
 <a class="jxr_linenumber" name="L65" href="#L65">65</a>  		<strong class="jxr_keyword">return</strong> ConstraintValue.get(a.equals(b));
 <a class="jxr_linenumber" name="L66" href="#L66">66</a>  	}
@@ -76,6 +76,6 @@
 <a class="jxr_linenumber" name="L68" href="#L68">68</a>  }
 </pre>
 <hr/>
-<div id="footer">Copyright &#169; 2017 <a href="http://www.inl.nl">Instituut voor Nederlandse Taal (INT)</a>. All rights reserved.</div>
+<div id="footer">Copyright &#169; 2018 <a href="http://www.inl.nl">Instituut voor Nederlandse Taal (INT)</a>. All rights reserved.</div>
 </body>
 </html>

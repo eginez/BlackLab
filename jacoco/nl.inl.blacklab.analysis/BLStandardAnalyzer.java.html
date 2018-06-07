@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BLStandardAnalyzer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.analysis</a> &gt; <span class="el_source">BLStandardAnalyzer.java</span></div><h1>BLStandardAnalyzer.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+/**
+ *
+ */
+package nl.inl.blacklab.analysis;
+
+import java.io.IOException;
+import java.io.StringReader;
+import java.util.Collections;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.Tokenizer;
+import org.apache.lucene.analysis.core.LowerCaseFilter;
+import org.apache.lucene.analysis.standard.StandardTokenizerFactory;
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
+
+import nl.inl.blacklab.filter.RemoveAllAccentsFilter;
+import nl.inl.blacklab.filter.RemovePunctuationFilter;
+import nl.inl.blacklab.index.complex.ComplexFieldUtil;
+
+/**
+ * A simple analyzer based on StandardTokenizer that isn't limited to Latin.
+ *
+ * Has the option of analyzing case-/accent-sensitive or -insensitive, depending on the field name.
+ */
+<span class="fc" id="L43">public class BLStandardAnalyzer extends Analyzer {</span>
+
+	@Override
+	protected TokenStreamComponents createComponents(String fieldName) {
+<span class="nc" id="L47">		Tokenizer source = new StandardTokenizerFactory(Collections.&lt;String,String&gt;emptyMap()).create();</span>
+<span class="nc" id="L48">		TokenStream filter = source;</span>
+<span class="nc" id="L49">		boolean caseSensitive = ComplexFieldUtil.isCaseSensitive(fieldName);</span>
+<span class="nc bnc" id="L50" title="All 2 branches missed.">		if (!caseSensitive)</span>
+		{
+<span class="nc" id="L52">			filter = new LowerCaseFilter(filter);// lowercase all</span>
+		}
+<span class="nc" id="L54">		boolean diacSensitive = ComplexFieldUtil.isDiacriticsSensitive(fieldName);</span>
+<span class="nc bnc" id="L55" title="All 2 branches missed.">		if (!diacSensitive)</span>
+		{
+<span class="nc" id="L57">			filter = new RemoveAllAccentsFilter(filter); // remove accents</span>
+		}
+<span class="nc bnc" id="L59" title="All 4 branches missed.">		if (!(caseSensitive &amp;&amp; diacSensitive))</span>
+		{
+			// Is this necessary and does it do what we want?
+			// e.g. do we want &quot;zon&quot; to ever match &quot;zo'n&quot;? Or are there examples
+			//      where this is useful/required?
+<span class="nc" id="L64">			filter = new RemovePunctuationFilter(filter); // remove punctuation</span>
+		}
+<span class="nc" id="L66">		return new TokenStreamComponents(source, filter);</span>
+	}
+
+	public static void main(String[] args) throws IOException {
+<span class="nc" id="L70">		String TEST_STR = &quot;Hé jij И!  раскази и повѣсти. Ст]' Дѣдо  	Нисторъ. Ива&quot;;</span>
+
+<span class="nc" id="L72">		try (Analyzer a = new BLStandardAnalyzer()) {</span>
+<span class="nc" id="L73">			TokenStream ts = a.tokenStream(&quot;test&quot;, new StringReader(TEST_STR));</span>
+<span class="nc" id="L74">			CharTermAttribute ta = ts.addAttribute(CharTermAttribute.class);</span>
+<span class="nc bnc" id="L75" title="All 2 branches missed.">			while (ts.incrementToken()) {</span>
+<span class="nc" id="L76">				System.out.println(new String(ta.buffer(), 0, ta.length()));</span>
+			}
+<span class="nc" id="L78">			TokenStream ts2 = a.tokenStream(ComplexFieldUtil.propertyField(&quot;test&quot;, null, &quot;s&quot;),</span>
+					new StringReader(TEST_STR));
+<span class="nc" id="L80">			ta = ts2.addAttribute(CharTermAttribute.class);</span>
+<span class="nc bnc" id="L81" title="All 2 branches missed.">			while (ts2.incrementToken()) {</span>
+<span class="nc" id="L82">				System.out.println(new String(ta.buffer(), 0, ta.length()));</span>
+			}
+<span class="nc bnc" id="L84" title="All 8 branches missed.">		}</span>
+<span class="nc" id="L85">	}</span>
+
+	/* CODE JESSE: */
+<span class="fc" id="L88">	static Pattern prePunctuationPattern = Pattern.compile(&quot;(^|\\s)\\p{P}+&quot;);</span>
+<span class="fc" id="L89">	static Pattern postPunctuationPattern = Pattern.compile(&quot;\\p{P}+($|\\s)&quot;);</span>
+
+<span class="fc" id="L91">	public String prePunctuation = &quot;&quot;;</span>
+<span class="fc" id="L92">	public String postPunctuation = &quot;&quot;;</span>
+<span class="fc" id="L93">	public String trimmedToken = &quot;&quot;;</span>
+
+	public void tokenize(String t) {
+<span class="nc" id="L96">		Matcher m1 = prePunctuationPattern.matcher(t);</span>
+<span class="nc" id="L97">		Matcher m2 = postPunctuationPattern.matcher(t);</span>
+
+<span class="nc" id="L99">		int s = 0;</span>
+<span class="nc" id="L100">		int e = t.length();</span>
+
+<span class="nc bnc" id="L102" title="All 2 branches missed.">		if (m1.find())</span>
+<span class="nc" id="L103">			s = m1.end();</span>
+<span class="nc bnc" id="L104" title="All 2 branches missed.">		if (m2.find())</span>
+<span class="nc" id="L105">			e = m2.start();</span>
+
+<span class="nc bnc" id="L107" title="All 2 branches missed.">		if (e &lt; s)</span>
+<span class="nc" id="L108">			e = s;</span>
+<span class="nc" id="L109">		trimmedToken = t.substring(s, e);</span>
+<span class="nc" id="L110">		prePunctuation = t.substring(0, s);</span>
+<span class="nc" id="L111">		postPunctuation = t.substring(e, t.length());</span>
+<span class="nc" id="L112">	}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

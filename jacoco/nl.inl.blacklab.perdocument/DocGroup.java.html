@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DocGroup.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.perdocument</a> &gt; <span class="el_source">DocGroup.java</span></div><h1>DocGroup.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.perdocument;
+
+import java.util.List;
+
+import nl.inl.blacklab.search.Searcher;
+import nl.inl.blacklab.search.grouping.HitPropValue;
+
+/**
+ * A group of DocResult objects, plus the &quot;group identity&quot;. For example, if you're grouping on
+ * author name, the group identity might be the string &quot;Harry Mulisch&quot;.
+ */
+public class DocGroup {
+	protected HitPropValue groupIdentity;
+
+	private DocResults results;
+
+<span class="nc" id="L32">	public DocGroup(Searcher searcher, HitPropValue groupIdentity) {</span>
+<span class="nc" id="L33">		this.groupIdentity = groupIdentity;</span>
+<span class="nc" id="L34">		results = new DocResults(searcher);</span>
+<span class="nc" id="L35">	}</span>
+
+<span class="nc" id="L37">	public DocGroup(Searcher searcher, HitPropValue groupIdentity, List&lt;DocResult&gt; resultList) {</span>
+<span class="nc" id="L38">		this.groupIdentity = groupIdentity;</span>
+<span class="nc" id="L39">		results = new DocResults(searcher, resultList);</span>
+<span class="nc" id="L40">	}</span>
+
+	public HitPropValue getIdentity() {
+<span class="nc" id="L43">		return groupIdentity;</span>
+	}
+
+	public DocResults getResults() {
+<span class="nc" id="L47">		return results;</span>
+	}
+
+	public int size() {
+<span class="nc" id="L51">		return results.size();</span>
+	}
+
+	@Override
+	public String toString() {
+<span class="nc" id="L56">		return groupIdentity + &quot; (&quot; + size() + &quot;)&quot;;</span>
+	}
+
+
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

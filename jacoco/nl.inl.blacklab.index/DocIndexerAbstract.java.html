@@ -1,0 +1,237 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DocIndexerAbstract.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.index</a> &gt; <span class="el_source">DocIndexerAbstract.java</span></div><h1>DocIndexerAbstract.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.index;
+
+import java.io.IOException;
+import java.io.Reader;
+import java.lang.reflect.Method;
+
+import nl.inl.blacklab.externalstorage.ContentStore;
+import nl.inl.util.CountingReader;
+
+/**
+ * Abstract base class for a DocIndexer processing XML files.
+ */
+public abstract class DocIndexerAbstract extends DocIndexer {
+	/**
+	 * Write content chunks per 10M (i.e. don't keep all content in memory at all times)
+	 */
+	private static final long WRITE_CONTENT_CHUNK_SIZE = 10000000;
+
+<span class="pc" id="L34">	protected boolean skippingCurrentDocument = false;</span>
+
+	protected CountingReader reader;
+
+	/** Total words processed by this indexer. Used for reporting progress, do not reset except when finished with file. */
+<span class="pc" id="L39">	protected int wordsDone = 0;</span>
+<span class="pc" id="L40">	private int wordsDoneAtLastReport = 0;</span>
+
+	//protected ContentStore contentStore;
+
+<span class="pc" id="L44">	private StringBuilder content = new StringBuilder();</span>
+
+	/** Are we capturing the content of the document for indexing? */
+<span class="pc" id="L47">	private boolean captureContent = false;</span>
+
+	/** What field we're capturing content for */
+	private String captureContentFieldName;
+
+<span class="pc" id="L52">	private int charsContentAlreadyStored = 0;</span>
+
+<span class="pc" id="L54">	protected int nDocumentsSkipped = 0;</span>
+
+	public void startCaptureContent(String fieldName) {
+<span class="fc" id="L57">		captureContent = true;</span>
+<span class="fc" id="L58">		captureContentFieldName = fieldName;</span>
+
+		// Empty the StringBuilder object
+<span class="fc" id="L61">		content.setLength(0);</span>
+<span class="fc" id="L62">	}</span>
+
+	public int storeCapturedContent() {
+<span class="fc" id="L65">		captureContent = false;</span>
+<span class="fc" id="L66">		int id = -1;</span>
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">		if (!skippingCurrentDocument) {</span>
+<span class="fc" id="L68">			ContentStore contentStore = indexer.getContentStore(captureContentFieldName);</span>
+<span class="fc" id="L69">			id = contentStore.store(content.toString());</span>
+		}
+<span class="fc" id="L71">		content.setLength(0);</span>
+<span class="fc" id="L72">		charsContentAlreadyStored = 0;</span>
+<span class="fc" id="L73">		return id;</span>
+	}
+
+	public void storePartCapturedContent() {
+<span class="nc" id="L77">		charsContentAlreadyStored += content.length();</span>
+<span class="nc bnc" id="L78" title="All 2 branches missed.">		if (!skippingCurrentDocument) {</span>
+<span class="nc" id="L79">			ContentStore contentStore = indexer.getContentStore(captureContentFieldName);</span>
+<span class="nc" id="L80">			contentStore.storePart(content.toString());</span>
+		}
+<span class="nc" id="L82">		content.setLength(0);</span>
+<span class="nc" id="L83">	}</span>
+
+	private void appendContentInternal(String str) {
+<span class="fc" id="L86">		content.append(str);</span>
+<span class="fc" id="L87">	}</span>
+
+	public void appendContent(String str) {
+<span class="fc" id="L90">		appendContentInternal(str);</span>
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">		if (content.length() &gt;= WRITE_CONTENT_CHUNK_SIZE) {</span>
+<span class="nc" id="L92">			storePartCapturedContent();</span>
+		}
+<span class="fc" id="L94">	}</span>
+
+	public void appendContent(char[] buffer, int start, int length) {
+<span class="nc" id="L97">		appendContentInternal(new String(buffer, start, length));</span>
+<span class="nc bnc" id="L98" title="All 2 branches missed.">		if (content.length() &gt;= WRITE_CONTENT_CHUNK_SIZE) {</span>
+<span class="nc" id="L99">			storePartCapturedContent();</span>
+		}
+<span class="nc" id="L101">	}</span>
+
+	public void processContent(char[] buffer, int start, int length) {
+<span class="nc bnc" id="L104" title="All 2 branches missed.">		if (captureContent)</span>
+<span class="nc" id="L105">			appendContent(buffer, start, length);</span>
+<span class="nc" id="L106">	}</span>
+
+	public void processContent(String contentToProcess) {
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">		if (captureContent)</span>
+<span class="fc" id="L110">			appendContent(contentToProcess);</span>
+<span class="fc" id="L111">	}</span>
+
+	/**
+	 * Returns the current position in the original XML content in chars.
+	 * @return the current char position
+	 */
+	@Override
+	protected int getCharacterPosition() {
+<span class="fc" id="L119">		return charsContentAlreadyStored + content.length();</span>
+	}
+
+	/**
+	 * Provided for compatibility with Meertens' fork of BlackLab;
+	 * will eventually be removed in favor of an &quot;official&quot; way
+	 * to index content without storing in a ContentStore.
+	 *
+	 * Not sure if this will always give the correct position because
+	 * the original input is used for highlighting, not the reconstructed
+	 * XML in the content variable.
+	 *
+	 * @return the content length
+	 * @deprecated will be handled differently in the future.
+	 */
+	@Deprecated
+	public int getContentPositionNoStore(){
+<span class="nc" id="L136">		return content.length();</span>
+	}
+
+    /** NOTE: newer DocIndexers should only have a default constructor, and provide methods to set
+     * the Indexer object and the document being indexed (which are called by the Indexer). This
+     * allows us more flexibility in how we supply the document to this object (e.g. as a file, a
+     * byte array, an inputstream, a reader, ...), which helps if we want to use e.g. VTD-XML and
+     * could allow us to re-use DocIndexers in the future.
+     */
+<span class="nc" id="L145">    public DocIndexerAbstract() {</span>
+<span class="nc" id="L146">    }</span>
+
+<span class="fc" id="L148">	public DocIndexerAbstract(Indexer indexer, String fileName, Reader reader) {</span>
+<span class="fc" id="L149">		setIndexer(indexer);</span>
+<span class="fc" id="L150">		setDocumentName(fileName);</span>
+<span class="fc" id="L151">		setDocument(reader);</span>
+<span class="fc" id="L152">	}</span>
+
+    /**
+     * Set the document to index.
+     * @param reader document
+     */
+    @Override
+    public void setDocument(Reader reader) {
+<span class="fc" id="L160">        this.reader = new CountingReader(reader);</span>
+<span class="fc" id="L161">    }</span>
+
+    @Override
+    public void close() throws IOException {
+<span class="fc" id="L165">        reader.close();</span>
+<span class="fc" id="L166">    }</span>
+
+    @Override
+    public final void reportCharsProcessed() {
+<span class="fc" id="L170">		long charsProcessed = reader.getCharsReadSinceLastCall();</span>
+<span class="fc" id="L171">		indexer.getListener().charsDone(charsProcessed);</span>
+<span class="fc" id="L172">	}</span>
+
+    /**
+     * Report the change in wordsDone since the last report
+     */
+    @Override
+    public final void reportTokensProcessed() {
+<span class="fc" id="L179">    	int wordsDoneSinceLastReport = 0;</span>
+
+<span class="pc bpc" id="L181" title="1 of 2 branches missed.">    	if (wordsDoneAtLastReport &gt; wordsDone) // reset by child class?</span>
+<span class="nc" id="L182">    		wordsDoneSinceLastReport = wordsDone;</span>
+    	else
+<span class="fc" id="L184">    		wordsDoneSinceLastReport = wordsDone - wordsDoneAtLastReport;</span>
+
+<span class="fc" id="L186">    	indexer.getListener().tokensDone(wordsDoneSinceLastReport);</span>
+<span class="fc" id="L187">    	wordsDoneAtLastReport = wordsDone;</span>
+<span class="fc" id="L188">    }</span>
+
+    /**
+     * If the supplied class has a static getDisplayName() method, call it.
+     *
+     * @param docIndexerClass class to get the display name for
+     * @return display name, or empty string if method not found
+     */
+    public static String getDisplayName(Class&lt;? extends DocIndexer&gt; docIndexerClass) {
+        try {
+<span class="fc" id="L198">            Method m = docIndexerClass.getMethod(&quot;getDisplayName&quot;);</span>
+<span class="fc" id="L199">            return (String)m.invoke(null);</span>
+<span class="fc" id="L200">        } catch (ReflectiveOperationException e) {</span>
+<span class="fc" id="L201">            return &quot;&quot;;</span>
+        }
+    }
+
+    /**
+     * If the supplied class has a static getDescription() method, call it.
+     *
+     * @param docIndexerClass class to get the description for
+     * @return description, or empty string if method not found
+     */
+    public static String getDescription(Class&lt;? extends DocIndexer&gt; docIndexerClass) {
+        try {
+<span class="fc" id="L213">            Method m = docIndexerClass.getMethod(&quot;getDescription&quot;);</span>
+<span class="fc" id="L214">            return (String)m.invoke(null);</span>
+<span class="fc" id="L215">        } catch (ReflectiveOperationException e) {</span>
+<span class="fc" id="L216">            return &quot;&quot;;</span>
+        }
+    }
+
+    /**
+     * Should this docIndexer implementation be listed?
+     *
+     * A DocIndexer can be hidden by implementing a a static function named isVisible, returning false.
+     *
+     * @param docIndexerClass
+     * @return true if the format should be listed, false if it should be omitted. Defaults to true when the DocIndexer does not implement the method.
+     */
+    public static boolean isVisible(Class&lt;? extends DocIndexer&gt; docIndexerClass) {
+        try {
+<span class="nc" id="L230">            Method m = docIndexerClass.getMethod(&quot;isVisible&quot;);</span>
+<span class="nc" id="L231">            return (boolean)m.invoke(null);</span>
+<span class="fc" id="L232">        } catch (ReflectiveOperationException e) {</span>
+<span class="fc" id="L233">            return true;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

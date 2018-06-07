@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DocIndexerXmlSketch.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.indexers</a> &gt; <span class="el_source">DocIndexerXmlSketch.java</span></div><h1>DocIndexerXmlSketch.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.indexers;
+
+import java.io.Reader;
+
+import org.xml.sax.Attributes;
+
+import nl.inl.blacklab.index.DocIndexerXmlHandlers;
+import nl.inl.blacklab.index.HookableSaxHandler.ContentCapturingHandler;
+import nl.inl.blacklab.index.Indexer;
+import nl.inl.blacklab.index.complex.ComplexFieldProperty;
+
+/**
+ * Index a Sketch XML file.
+ *
+ * The Sketch XML format was created with a trivial transform of the Sketch Engine word-per-line
+ * input file, converting the data to well-formed XML. Using XML is useful because it allows us
+ * to later easily display it using XSLT.
+ *
+ * For information about the original Sketch Engine word-per-line format, see
+ * http://trac.sketchengine.co.uk/wiki/SkE/PrepareText .
+ *
+ * For the conversion tool, see nl.inl.blacklab.tools.SketchToXmlConverter.
+ */
+public class DocIndexerXmlSketch extends DocIndexerXmlHandlers {
+
+<span class="fc" id="L41">    public static String getDisplayName() { return &quot;Sketch Engine XML-from-WPL (deprecated)&quot;; }</span>
+<span class="fc" id="L42">    public static String getDescription() { return</span>
+            &quot;Older way of indexing Sketch Engine files, after converting them to XML. &quot; +
+            &quot;This is not necessary anymore, use sketch-wpl to index Sketch Engine WPL files directly.&quot;; }
+
+	/** Captures the punctuation so we can add it to the next word. */
+<span class="nc" id="L47">	StringBuilder punctuation = new StringBuilder();</span>
+
+	public DocIndexerXmlSketch(Indexer indexer, String fileName, Reader reader) {
+<span class="nc" id="L50">		super(indexer, fileName, reader);</span>
+
+		// Get handles to the default properties (the main one &amp; punct)
+<span class="nc" id="L53">		final ComplexFieldProperty propMain = getMainProperty();</span>
+<span class="nc" id="L54">		final ComplexFieldProperty propPunct = getPropPunct();</span>
+
+		// Add some extra properties
+<span class="nc" id="L57">		final ComplexFieldProperty propLemma = addProperty(&quot;lemma&quot;);</span>
+<span class="nc" id="L58">		final ComplexFieldProperty propPartOfSpeech = addProperty(&quot;pos&quot;);</span>
+<span class="nc" id="L59">		final ComplexFieldProperty propWordClass = addProperty(&quot;class&quot;);</span>
+
+		// Doc element: the individual documents to index (one or more per file)
+<span class="nc" id="L62">		addHandler(&quot;/docs/doc&quot;, new DocumentElementHandler() {</span>
+
+			@Override
+			public void startElement(String uri, String localName, String qName,
+					Attributes attributes) {
+<span class="nc" id="L67">				super.startElement(uri, localName, qName, attributes);</span>
+
+				// Make sure the punctuation buffer is empty
+<span class="nc" id="L70">				punctuation.setLength(0);</span>
+<span class="nc" id="L71">			}</span>
+
+			@Override
+			public void endElement(String uri, String localName, String qName) {
+
+				// Before ending the document, add the final bit of punctuation.
+<span class="nc" id="L77">				propPunct.addValue(punctuation.toString());</span>
+
+<span class="nc" id="L79">				super.endElement(uri, localName, qName);</span>
+<span class="nc" id="L80">			}</span>
+
+		});
+
+		// Word elements: index as main contents
+<span class="nc" id="L85">		addHandler(&quot;//w&quot;, new WordHandlerBase() {</span>
+
+			@Override
+			public void startElement(String uri, String localName, String qName,
+					Attributes attributes) {
+<span class="nc" id="L90">				super.startElement(uri, localName, qName, attributes);</span>
+
+				// Determine lemma, word class and part of speech from the attributes
+<span class="nc" id="L93">				String lemma = attributes.getValue(&quot;l&quot;);</span>
+<span class="nc bnc" id="L94" title="All 4 branches missed.">				if (lemma == null || lemma.length() &lt; 2) {</span>
+<span class="nc" id="L95">					lemma = &quot;???-?&quot;;</span>
+				}
+<span class="nc" id="L97">				propLemma.addValue(lemma.substring(0, lemma.length() - 2));</span>
+<span class="nc" id="L98">				propWordClass.addValue(lemma.substring(lemma.length() - 1));</span>
+<span class="nc" id="L99">				String pos = attributes.getValue(&quot;p&quot;);</span>
+<span class="nc bnc" id="L100" title="All 2 branches missed.">				if (pos == null)</span>
+<span class="nc" id="L101">					pos = &quot;?&quot;;</span>
+<span class="nc" id="L102">				propPartOfSpeech.addValue(pos);</span>
+
+				// Add punctuation value
+<span class="nc" id="L105">				propPunct.addValue(punctuation.toString());</span>
+<span class="nc" id="L106">				punctuation.setLength(0); // reset for next word</span>
+<span class="nc" id="L107">				punctuation.append(' '); // will be deleted if we find a glue tag</span>
+
+<span class="nc" id="L109">				consumeCharacterContent(); // empty content buffer so we catch only element content (i.e., the word)</span>
+<span class="nc" id="L110">			}</span>
+
+			@Override
+			public void endElement(String uri, String localName, String qName) {
+<span class="nc" id="L114">				super.endElement(uri, localName, qName);</span>
+<span class="nc" id="L115">				propMain.addValue(consumeCharacterContent());</span>
+<span class="nc" id="L116">			}</span>
+
+		});
+
+		// Punctuation elements: keep track of them so we can add them to the next word
+<span class="nc" id="L121">		addHandler(&quot;//pu&quot;, new ContentCapturingHandler() {</span>
+			@Override
+			public void endElement(String uri, String localName, String qName) {
+<span class="nc" id="L124">				super.endElement(uri, localName, qName);</span>
+
+				// Capture punctuation and add space by default (space will be deleted
+				// if we encounter a glue tag)
+<span class="nc" id="L128">				punctuation.append(getElementContent()).append(' ');</span>
+<span class="nc" id="L129">			}</span>
+		});
+
+		// Glue tag: delete last space from punctuation capturing buffer
+<span class="nc" id="L133">		addHandler(&quot;//g&quot;, new ContentCapturingHandler() {</span>
+			@Override
+			public void endElement(String uri, String localName, String qName) {
+<span class="nc" id="L136">				super.endElement(uri, localName, qName);</span>
+
+				// If last character in punctuation buffer is a space, delete it
+<span class="nc bnc" id="L139" title="All 4 branches missed.">				if (punctuation.length() &gt; 0 &amp;&amp; punctuation.charAt(punctuation.length() - 1) == ' ')</span>
+<span class="nc" id="L140">					punctuation.setLength(punctuation.length() - 1);</span>
+<span class="nc" id="L141">			}</span>
+		});
+
+		// Sentence tags: index as tags in the content
+<span class="nc" id="L145">		addHandler(&quot;//s&quot;, new InlineTagHandler());</span>
+
+<span class="nc" id="L147">	}</span>
+
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

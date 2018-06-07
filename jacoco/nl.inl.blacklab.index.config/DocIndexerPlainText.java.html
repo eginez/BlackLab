@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DocIndexerPlainText.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.index.config</a> &gt; <span class="el_source">DocIndexerPlainText.java</span></div><h1>DocIndexerPlainText.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.index.config;
+
+import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.nio.charset.Charset;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.apache.commons.io.input.BOMInputStream;
+
+import nl.inl.util.ExUtil;
+import nl.inl.util.FileUtil;
+
+/**
+ * An indexer for tabular file formats, such as tab-separated
+ * or comma-separated values.
+ */
+public class DocIndexerPlainText extends DocIndexerConfig {
+
+    private BufferedReader reader;
+
+    private StringBuilder fullText;
+
+<span class="nc" id="L29">    public DocIndexerPlainText() {</span>
+<span class="nc" id="L30">    }</span>
+
+    @Override
+    public void close() throws Exception {
+<span class="nc" id="L34">        reader.close();</span>
+<span class="nc" id="L35">    }</span>
+
+    @Override
+    public void setConfigInputFormat(ConfigInputFormat config) {
+<span class="nc bnc" id="L39" title="All 2 branches missed.">        if (config.getAnnotatedFields().size() &gt; 1)</span>
+<span class="nc" id="L40">            throw new InputFormatConfigException(&quot;Plain text type can only have 1 annotated field&quot;);</span>
+<span class="nc" id="L41">        super.setConfigInputFormat(config);</span>
+<span class="nc" id="L42">    }</span>
+
+    @Override
+    public void setDocument(File file, Charset defaultCharset) throws FileNotFoundException {
+<span class="nc" id="L46">        setDocument(FileUtil.openForReading(file, defaultCharset));</span>
+<span class="nc" id="L47">    }</span>
+
+    @Override
+    public void setDocument(byte[] contents, Charset defaultCharset) {
+<span class="nc" id="L51">        setDocument(new ByteArrayInputStream(contents), defaultCharset);</span>
+<span class="nc" id="L52">    }</span>
+
+    @Override
+    public void setDocument(InputStream is, Charset defaultCharset) {
+<span class="nc" id="L56">        setDocument(new InputStreamReader(new BOMInputStream(is), defaultCharset));</span>
+<span class="nc" id="L57">    }</span>
+
+    @Override
+    public void setDocument(Reader reader) {
+<span class="nc bnc" id="L61" title="All 2 branches missed.">        this.reader = reader instanceof BufferedReader ? (BufferedReader)reader : new BufferedReader(reader);</span>
+<span class="nc" id="L62">    }</span>
+
+<span class="nc" id="L64">    static final Pattern REGEX_WORD = Pattern.compile(&quot;\\b\\p{L}+\\b&quot;);</span>
+
+    @Override
+    public void index() throws Exception {
+<span class="nc" id="L68">        super.index();</span>
+
+<span class="nc" id="L70">        startDocument();</span>
+
+<span class="nc" id="L72">        fullText = new StringBuilder();</span>
+
+        // For the configured annotated field...
+<span class="nc bnc" id="L75" title="All 2 branches missed.">        if (config.getAnnotatedFields().size() &gt; 1)</span>
+<span class="nc" id="L76">        	throw new InputFormatConfigException(&quot;Plain text files can only have 1 annotated field&quot;);</span>
+<span class="nc bnc" id="L77" title="All 2 branches missed.">        for (ConfigAnnotatedField annotatedField: config.getAnnotatedFields().values()) {</span>
+<span class="nc" id="L78">            setCurrentComplexField(annotatedField.getName());</span>
+
+            // For each line
+<span class="nc" id="L81">            StringBuilder punct = new StringBuilder();</span>
+            while (true) {
+<span class="nc" id="L83">                String line = reader.readLine();</span>
+<span class="nc bnc" id="L84" title="All 2 branches missed.">                if (line == null)</span>
+<span class="nc" id="L85">                    break;</span>
+<span class="nc bnc" id="L86" title="All 2 branches missed.">                if (getStoreDocuments()) {</span>
+<span class="nc" id="L87">                    fullText.append(line);</span>
+                }
+
+                // For each word
+<span class="nc" id="L91">                Matcher m = REGEX_WORD.matcher(line);</span>
+<span class="nc" id="L92">                int i = 0;</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">                while (m.find()) {</span>
+<span class="nc" id="L94">                    beginWord();</span>
+
+                    // For each annotation
+<span class="nc" id="L97">                    String word = m.group();</span>
+<span class="nc" id="L98">                    punct.append(line.substring(i, m.start()));</span>
+<span class="nc" id="L99">                    i = m.end();</span>
+<span class="nc bnc" id="L100" title="All 2 branches missed.">                    for (ConfigAnnotation annotation: annotatedField.getAnnotations().values()) {</span>
+<span class="nc" id="L101">                        String processedWord = processString(word, annotation.getProcess());</span>
+<span class="nc bnc" id="L102" title="All 2 branches missed.">                        if (annotation.getValuePath().equals(&quot;.&quot;)) {</span>
+<span class="nc" id="L103">                            annotation(annotation.getName(), processedWord, 1, null);</span>
+                        } else {
+<span class="nc" id="L105">                            throw new InputFormatConfigException(&quot;Plain text annotation must have valuePath '.'&quot;);</span>
+                        }
+<span class="nc" id="L107">                    }</span>
+<span class="nc" id="L108">                    punctuation(punct.toString());</span>
+<span class="nc" id="L109">                    punct.setLength(0);</span>
+<span class="nc" id="L110">                    endWord();</span>
+<span class="nc" id="L111">                }</span>
+<span class="nc bnc" id="L112" title="All 2 branches missed.">                if (line.length() &gt; i) {</span>
+                    // Capture last bit of &quot;punctuation&quot; on this line and add it to first word on next line.
+<span class="nc" id="L114">                    punct.append(line.substring(i, line.length()));</span>
+                }
+<span class="nc" id="L116">            }</span>
+<span class="nc" id="L117">            punctuation(punct.toString()); // Put the last bit of punctuation (on the &quot;dummy token&quot; at the end)</span>
+<span class="nc" id="L118">            punct.setLength(0);</span>
+<span class="nc" id="L119">        }</span>
+
+<span class="nc" id="L121">        endDocument();</span>
+<span class="nc" id="L122">    }</span>
+
+    @Override
+    public void indexSpecificDocument(String documentExpr) {
+        // documentExpr is ignored because plain text files always contain 1 document
+        try {
+<span class="nc" id="L128">            index();</span>
+<span class="nc" id="L129">        } catch (Exception e) {</span>
+<span class="nc" id="L130">            throw ExUtil.wrapRuntimeException(e);</span>
+<span class="nc" id="L131">        }</span>
+<span class="nc" id="L132">    }</span>
+
+    @Override
+    protected void storeDocument() {
+<span class="nc" id="L136">        storeWholeDocument(fullText.toString());</span>
+<span class="nc" id="L137">    }</span>
+
+    @Override
+	protected int getCharacterPosition() {
+<span class="nc" id="L141">        return fullText.length();</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

@@ -36,32 +36,32 @@
 <a class="jxr_linenumber" name="L28" href="#L28">28</a>  <strong class="jxr_keyword">import</strong> java.util.Set;
 <a class="jxr_linenumber" name="L29" href="#L29">29</a>  <strong class="jxr_keyword">import</strong> java.util.TreeMap;
 <a class="jxr_linenumber" name="L30" href="#L30">30</a>  
-<a class="jxr_linenumber" name="L31" href="#L31">31</a>  <strong class="jxr_keyword">import</strong> org.apache.commons.lang3.StringUtils;
-<a class="jxr_linenumber" name="L32" href="#L32">32</a>  <strong class="jxr_keyword">import</strong> org.apache.logging.log4j.LogManager;
-<a class="jxr_linenumber" name="L33" href="#L33">33</a>  <strong class="jxr_keyword">import</strong> org.apache.logging.log4j.Logger;
-<a class="jxr_linenumber" name="L34" href="#L34">34</a>  <strong class="jxr_keyword">import</strong> org.apache.lucene.index.IndexReader;
-<a class="jxr_linenumber" name="L35" href="#L35">35</a>  <strong class="jxr_keyword">import</strong> org.apache.lucene.index.LeafReaderContext;
-<a class="jxr_linenumber" name="L36" href="#L36">36</a>  <strong class="jxr_keyword">import</strong> org.apache.lucene.index.Term;
-<a class="jxr_linenumber" name="L37" href="#L37">37</a>  <strong class="jxr_keyword">import</strong> org.apache.lucene.index.TermContext;
-<a class="jxr_linenumber" name="L38" href="#L38">38</a>  <strong class="jxr_keyword">import</strong> org.apache.lucene.search.BooleanQuery.TooManyClauses;
-<a class="jxr_linenumber" name="L39" href="#L39">39</a>  <strong class="jxr_keyword">import</strong> org.apache.lucene.search.DocIdSetIterator;
-<a class="jxr_linenumber" name="L40" href="#L40">40</a>  <strong class="jxr_keyword">import</strong> org.apache.lucene.search.spans.SpanQuery;
-<a class="jxr_linenumber" name="L41" href="#L41">41</a>  <strong class="jxr_keyword">import</strong> org.apache.lucene.search.spans.SpanWeight;
-<a class="jxr_linenumber" name="L42" href="#L42">42</a>  <strong class="jxr_keyword">import</strong> org.apache.lucene.search.spans.SpanWeight.Postings;
-<a class="jxr_linenumber" name="L43" href="#L43">43</a>  <strong class="jxr_keyword">import</strong> org.apache.lucene.search.spans.Spans;
-<a class="jxr_linenumber" name="L44" href="#L44">44</a>  <strong class="jxr_keyword">import</strong> org.eclipse.collections.api.map.primitive.MutableIntIntMap;
-<a class="jxr_linenumber" name="L45" href="#L45">45</a>  <strong class="jxr_keyword">import</strong> org.eclipse.collections.api.map.primitive.MutableIntObjectMap;
-<a class="jxr_linenumber" name="L46" href="#L46">46</a>  <strong class="jxr_keyword">import</strong> org.eclipse.collections.api.tuple.primitive.IntIntPair;
-<a class="jxr_linenumber" name="L47" href="#L47">47</a>  <strong class="jxr_keyword">import</strong> org.eclipse.collections.impl.factory.primitive.IntIntMaps;
-<a class="jxr_linenumber" name="L48" href="#L48">48</a>  <strong class="jxr_keyword">import</strong> org.eclipse.collections.impl.factory.primitive.IntObjectMaps;
-<a class="jxr_linenumber" name="L49" href="#L49">49</a>  
-<a class="jxr_linenumber" name="L50" href="#L50">50</a>  <strong class="jxr_keyword">import</strong> nl.inl.blacklab.forwardindex.ForwardIndex;
-<a class="jxr_linenumber" name="L51" href="#L51">51</a>  <strong class="jxr_keyword">import</strong> nl.inl.blacklab.forwardindex.Terms;
-<a class="jxr_linenumber" name="L52" href="#L52">52</a>  <strong class="jxr_keyword">import</strong> nl.inl.blacklab.highlight.XmlHighlighter;
-<a class="jxr_linenumber" name="L53" href="#L53">53</a>  <strong class="jxr_keyword">import</strong> nl.inl.blacklab.index.complex.ComplexFieldUtil;
-<a class="jxr_linenumber" name="L54" href="#L54">54</a>  <strong class="jxr_keyword">import</strong> nl.inl.blacklab.search.grouping.HitProperty;
-<a class="jxr_linenumber" name="L55" href="#L55">55</a>  <strong class="jxr_keyword">import</strong> nl.inl.blacklab.search.lucene.BLSpanQuery;
-<a class="jxr_linenumber" name="L56" href="#L56">56</a>  <strong class="jxr_keyword">import</strong> nl.inl.blacklab.search.lucene.BLSpans;
+<a class="jxr_linenumber" name="L31" href="#L31">31</a>  <strong class="jxr_keyword">import</strong> org.apache.logging.log4j.LogManager;
+<a class="jxr_linenumber" name="L32" href="#L32">32</a>  <strong class="jxr_keyword">import</strong> org.apache.logging.log4j.Logger;
+<a class="jxr_linenumber" name="L33" href="#L33">33</a>  <strong class="jxr_keyword">import</strong> org.apache.lucene.index.IndexReader;
+<a class="jxr_linenumber" name="L34" href="#L34">34</a>  <strong class="jxr_keyword">import</strong> org.apache.lucene.index.LeafReaderContext;
+<a class="jxr_linenumber" name="L35" href="#L35">35</a>  <strong class="jxr_keyword">import</strong> org.apache.lucene.index.Term;
+<a class="jxr_linenumber" name="L36" href="#L36">36</a>  <strong class="jxr_keyword">import</strong> org.apache.lucene.index.TermContext;
+<a class="jxr_linenumber" name="L37" href="#L37">37</a>  <strong class="jxr_keyword">import</strong> org.apache.lucene.search.BooleanQuery.TooManyClauses;
+<a class="jxr_linenumber" name="L38" href="#L38">38</a>  <strong class="jxr_keyword">import</strong> org.apache.lucene.search.DocIdSetIterator;
+<a class="jxr_linenumber" name="L39" href="#L39">39</a>  <strong class="jxr_keyword">import</strong> org.apache.lucene.search.spans.SpanQuery;
+<a class="jxr_linenumber" name="L40" href="#L40">40</a>  <strong class="jxr_keyword">import</strong> org.apache.lucene.search.spans.SpanWeight;
+<a class="jxr_linenumber" name="L41" href="#L41">41</a>  <strong class="jxr_keyword">import</strong> org.apache.lucene.search.spans.SpanWeight.Postings;
+<a class="jxr_linenumber" name="L42" href="#L42">42</a>  <strong class="jxr_keyword">import</strong> org.apache.lucene.search.spans.Spans;
+<a class="jxr_linenumber" name="L43" href="#L43">43</a>  <strong class="jxr_keyword">import</strong> org.eclipse.collections.api.map.primitive.MutableIntIntMap;
+<a class="jxr_linenumber" name="L44" href="#L44">44</a>  <strong class="jxr_keyword">import</strong> org.eclipse.collections.api.map.primitive.MutableIntObjectMap;
+<a class="jxr_linenumber" name="L45" href="#L45">45</a>  <strong class="jxr_keyword">import</strong> org.eclipse.collections.api.tuple.primitive.IntIntPair;
+<a class="jxr_linenumber" name="L46" href="#L46">46</a>  <strong class="jxr_keyword">import</strong> org.eclipse.collections.impl.factory.primitive.IntIntMaps;
+<a class="jxr_linenumber" name="L47" href="#L47">47</a>  <strong class="jxr_keyword">import</strong> org.eclipse.collections.impl.factory.primitive.IntObjectMaps;
+<a class="jxr_linenumber" name="L48" href="#L48">48</a>  
+<a class="jxr_linenumber" name="L49" href="#L49">49</a>  <strong class="jxr_keyword">import</strong> nl.inl.blacklab.forwardindex.ForwardIndex;
+<a class="jxr_linenumber" name="L50" href="#L50">50</a>  <strong class="jxr_keyword">import</strong> nl.inl.blacklab.forwardindex.Terms;
+<a class="jxr_linenumber" name="L51" href="#L51">51</a>  <strong class="jxr_keyword">import</strong> nl.inl.blacklab.highlight.XmlHighlighter;
+<a class="jxr_linenumber" name="L52" href="#L52">52</a>  <strong class="jxr_keyword">import</strong> nl.inl.blacklab.index.complex.ComplexFieldUtil;
+<a class="jxr_linenumber" name="L53" href="#L53">53</a>  <strong class="jxr_keyword">import</strong> nl.inl.blacklab.search.grouping.HitProperty;
+<a class="jxr_linenumber" name="L54" href="#L54">54</a>  <strong class="jxr_keyword">import</strong> nl.inl.blacklab.search.lucene.BLSpanQuery;
+<a class="jxr_linenumber" name="L55" href="#L55">55</a>  <strong class="jxr_keyword">import</strong> nl.inl.blacklab.search.lucene.BLSpans;
+<a class="jxr_linenumber" name="L56" href="#L56">56</a>  <strong class="jxr_keyword">import</strong> nl.inl.util.StringUtil;
 <a class="jxr_linenumber" name="L57" href="#L57">57</a>  <strong class="jxr_keyword">import</strong> nl.inl.util.ThreadPriority;
 <a class="jxr_linenumber" name="L58" href="#L58">58</a>  
 <a class="jxr_linenumber" name="L59" href="#L59">59</a>  <em class="jxr_javadoccomment">/**</em>
@@ -248,7 +248,7 @@
 <a class="jxr_linenumber" name="L240" href="#L240">240</a> <em class="jxr_javadoccomment">	 */</em>
 <a class="jxr_linenumber" name="L241" href="#L241">241</a> 	HitsImpl(<a href="../../../../nl/inl/blacklab/search/Searcher.html">Searcher</a> searcher, List&lt;Hit&gt; hits) {
 <a class="jxr_linenumber" name="L242" href="#L242">242</a> 		<strong class="jxr_keyword">super</strong>(searcher);
-<a class="jxr_linenumber" name="L243" href="#L243">243</a> 		<strong class="jxr_keyword">this</strong>.hits = hits == <strong class="jxr_keyword">null</strong> ? <strong class="jxr_keyword">new</strong> ArrayList&lt;Hit&gt;() : hits;
+<a class="jxr_linenumber" name="L243" href="#L243">243</a> 		<strong class="jxr_keyword">this</strong>.hits = hits == <strong class="jxr_keyword">null</strong> ? <strong class="jxr_keyword">new</strong> ArrayList&lt;&gt;() : hits;
 <a class="jxr_linenumber" name="L244" href="#L244">244</a> 		hitsCounted = <strong class="jxr_keyword">this</strong>.hits.size();
 <a class="jxr_linenumber" name="L245" href="#L245">245</a> 		currentContextSize = -1;
 <a class="jxr_linenumber" name="L246" href="#L246">246</a> 		<strong class="jxr_keyword">int</strong> prevDoc = -1;
@@ -1299,7 +1299,7 @@
 <a class="jxr_linenumber" name="L1291" href="#L1291">1291</a> 			<strong class="jxr_keyword">int</strong> value = e.getTwo();
 <a class="jxr_linenumber" name="L1292" href="#L1292">1292</a> 			String word = terms.get(key);
 <a class="jxr_linenumber" name="L1293" href="#L1293">1293</a> 			<strong class="jxr_keyword">if</strong> (!diacSensitive) {
-<a class="jxr_linenumber" name="L1294" href="#L1294">1294</a> 				word = StringUtils.stripAccents(word);
+<a class="jxr_linenumber" name="L1294" href="#L1294">1294</a> 				word = StringUtil.stripAccents(word);
 <a class="jxr_linenumber" name="L1295" href="#L1295">1295</a> 			}
 <a class="jxr_linenumber" name="L1296" href="#L1296">1296</a> 			<strong class="jxr_keyword">if</strong> (!caseSensitive) {
 <a class="jxr_linenumber" name="L1297" href="#L1297">1297</a> 				word = word.toLowerCase();
@@ -1730,9 +1730,14 @@
 <a class="jxr_linenumber" name="L1722" href="#L1722">1722</a> 		<strong class="jxr_keyword">this</strong>.maxHitsRetrieved = maxHitsRetrieved;
 <a class="jxr_linenumber" name="L1723" href="#L1723">1723</a> 	}
 <a class="jxr_linenumber" name="L1724" href="#L1724">1724</a> 
-<a class="jxr_linenumber" name="L1725" href="#L1725">1725</a> }
+<a class="jxr_linenumber" name="L1725" href="#L1725">1725</a> 	@Override
+<a class="jxr_linenumber" name="L1726" href="#L1726">1726</a> 	<strong class="jxr_keyword">public</strong> String toString() {
+<a class="jxr_linenumber" name="L1727" href="#L1727">1727</a> 	    <strong class="jxr_keyword">return</strong> <span class="jxr_string">"HitsImpl#"</span> + hitsObjId + <span class="jxr_string">" (fullyRead="</span> + sourceSpansFullyRead + <span class="jxr_string">", hits.size()="</span> + hits.size() + <span class="jxr_string">")"</span>;
+<a class="jxr_linenumber" name="L1728" href="#L1728">1728</a> 	}
+<a class="jxr_linenumber" name="L1729" href="#L1729">1729</a> 
+<a class="jxr_linenumber" name="L1730" href="#L1730">1730</a> }
 </pre>
 <hr/>
-<div id="footer">Copyright &#169; 2017 <a href="http://www.inl.nl">Instituut voor Nederlandse Taal (INT)</a>. All rights reserved.</div>
+<div id="footer">Copyright &#169; 2018 <a href="http://www.inl.nl">Instituut voor Nederlandse Taal (INT)</a>. All rights reserved.</div>
 </body>
 </html>

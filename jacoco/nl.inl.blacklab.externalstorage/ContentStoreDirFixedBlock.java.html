@@ -1,0 +1,928 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ContentStoreDirFixedBlock.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.externalstorage</a> &gt; <span class="el_source">ContentStoreDirFixedBlock.java</span></div><h1>ContentStoreDirFixedBlock.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.externalstorage;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FilenameFilter;
+import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.nio.ByteBuffer;
+import java.nio.IntBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileChannel.MapMode;
+import java.util.AbstractSet;
+import java.util.Arrays;
+import java.util.Iterator;
+import java.util.Set;
+import java.util.zip.DataFormatException;
+import java.util.zip.Deflater;
+import java.util.zip.Inflater;
+
+import org.eclipse.collections.api.iterator.IntIterator;
+import org.eclipse.collections.api.iterator.MutableIntIterator;
+import org.eclipse.collections.api.map.primitive.MutableIntObjectMap;
+import org.eclipse.collections.api.set.primitive.MutableIntSet;
+import org.eclipse.collections.impl.factory.primitive.IntObjectMaps;
+import org.eclipse.collections.impl.list.mutable.primitive.IntArrayList;
+
+import nl.inl.util.CollUtil;
+import nl.inl.util.ExUtil;
+import nl.inl.util.SimpleResourcePool;
+
+/**
+ * Store string content by id in a compound file and a TOC file. Quickly retrieve
+ * (parts of) the string content.
+ *
+ * Stores files in a file containing fixed-length (4K) blocks of zipped UTF-8.
+ * A file allocation table keeps track of each file's blocks as well as the
+ * character offset associated with each block so we can quickly access the data.
+ * Free blocks will be re-used to save space.
+ */
+public class ContentStoreDirFixedBlock extends ContentStoreDirAbstract {
+	//private static final Logger logger = LogManager.getLogger(ContentStoreDirFixedBlock.class);
+
+	/** The type of content store. Written to version file and detected when opening. */
+	private static final String CONTENT_STORE_TYPE_NAME = &quot;fixedblock&quot;;
+
+	/** Version of this type of content store. Written to version file and detected when opening. */
+	private static final String CURRENT_VERSION = &quot;1&quot;;
+
+	/** Name of the version file */
+	private static final String VERSION_FILE_NAME = &quot;version.dat&quot;;
+
+	/** Name of the table of contents file */
+	private static final String TOC_FILE_NAME = &quot;toc.dat&quot;;
+
+	/** Name of the file containing all the original file contents (zipped) */
+	private static final String CONTENTS_FILE_NAME = &quot;file-contents.dat&quot;;
+
+	/** How many bytes an int consists of (used when repositioning file pointers) */
+	private static final int BYTES_PER_INT = Integer.SIZE / Byte.SIZE;
+
+	/**
+	 * Block size for the contents file.
+	 *
+	 * Contributing factors for choosing block size:
+	 * - larger blocks improve compression ratio
+	 * - larger blocks decrease number of blocks you have to read
+	 * - smaller blocks decrease the decompression time
+	 * - smaller blocks increase the chance that we only have to read one disk block for a single concordance
+	 *   (disk blocks are generally 2 or 4K)
+	 * - consider OS I/O caching and memory mapping. Then it becomes the difference between reading
+	 *   a few bytes from memory and reading a few kilobytes and decompressing them. Right now,
+	 *   making concordances is often CPU-bound (because of decompression?)
+	 */
+	private static final int BLOCK_SIZE_BYTES = 4096;
+
+	/** How small a block can get without triggering a retry with more input characters */
+	private static final int MINIMUM_ACCEPTABLE_BLOCK_SIZE = BLOCK_SIZE_BYTES * 9 / 10;
+
+	/** The expected average compression factor */
+	private static final float AVERAGE_COMPRESSION_FACTOR = 4;
+
+	/** A conservative estimate to avoid our estimates going over the block size */
+	private static final float CONSERVATIVE_COMPRESSION_FACTOR = AVERAGE_COMPRESSION_FACTOR * 7 / 8;
+
+	/** How many characters we will usually be able to fit within a BLOCK_SIZE */
+	private static final int TYPICAL_BLOCK_SIZE_CHARACTERS = (int)(BLOCK_SIZE_BYTES * CONSERVATIVE_COMPRESSION_FACTOR);
+
+	/** The expected maximum compression factor */
+	private static final float MAX_COMPRESSION_FACTOR = 20;
+
+	/** Maximum byte size of unencoded block (we make the zip buffer one larger to detect when buffer space was insufficient) */
+	private static final int MAX_BLOCK_SIZE_BYTES = (int)(BLOCK_SIZE_BYTES * MAX_COMPRESSION_FACTOR);
+
+	/** How many available characters will trigger a block write. */
+	private static final int WRITE_BLOCK_WHEN_CHARACTERS_AVAILABLE = (int)(BLOCK_SIZE_BYTES * MAX_COMPRESSION_FACTOR);
+
+	/** Table of contents entry */
+	static class TocEntry {
+
+		/** content store id for this document */
+		public int id;
+
+		/** length of the encoded string in bytes */
+		public int entryLengthBytes;
+
+		/** length of the decoded string in characters */
+		public int entryLengthCharacters;
+
+		/** blocks this document is stored in */
+		public int[] blockIndices;
+
+		/** first character stored in each block */
+		public int[] blockCharOffsets;
+
+		/** was this entry deleted? (can be removed in next compacting run) */
+		public boolean deleted;
+
+		public TocEntry(int id, int length, int charLength, boolean deleted, int[] blockIndices, int[] blockCharOffsets) {
+<span class="fc" id="L135">			super();</span>
+<span class="fc" id="L136">			this.id = id;</span>
+<span class="fc" id="L137">			entryLengthBytes = length;</span>
+<span class="fc" id="L138">			entryLengthCharacters = charLength;</span>
+<span class="fc" id="L139">			this.deleted = deleted;</span>
+<span class="fc" id="L140">			this.blockIndices = blockIndices;</span>
+<span class="fc" id="L141">			this.blockCharOffsets = blockCharOffsets;</span>
+<span class="fc" id="L142">		}</span>
+
+		/**
+		 * Store TOC entry in the TOC file
+		 *
+		 * @param buf
+		 *            where to serialize to
+		 * @throws IOException
+		 *             on error
+		 */
+		public void serialize(ByteBuffer buf) throws IOException {
+<span class="fc" id="L153">			buf.putInt(id);</span>
+<span class="fc" id="L154">			buf.putInt(entryLengthBytes);</span>
+<span class="fc bfc" id="L155" title="All 2 branches covered.">			buf.putInt(deleted ? -1 : entryLengthCharacters);</span>
+<span class="fc" id="L156">			buf.putInt(blockIndices.length);</span>
+<span class="fc" id="L157">			IntBuffer ib = buf.asIntBuffer();</span>
+<span class="fc" id="L158">			ib.put(blockIndices);</span>
+<span class="fc" id="L159">			ib.put(blockCharOffsets);</span>
+<span class="fc" id="L160">			buf.position(buf.position() + blockIndices.length * BYTES_PER_INT * 2);</span>
+<span class="fc" id="L161">		}</span>
+
+		/**
+		 * Read TOC entry from the TOC file
+		 *
+		 * @param buf
+		 *            the buffer to read from
+		 * @return new TocEntry
+		 * @throws IOException
+		 *             on error
+		 */
+		public static TocEntry deserialize(ByteBuffer buf) throws IOException {
+<span class="fc" id="L173">			int id = buf.getInt();</span>
+<span class="fc" id="L174">			int length = buf.getInt();</span>
+<span class="fc" id="L175">			int charLength = buf.getInt();</span>
+<span class="pc bpc" id="L176" title="1 of 2 branches missed.">			boolean deleted = charLength &lt; 0;</span>
+<span class="fc" id="L177">			int nBlocks = buf.getInt();</span>
+<span class="fc" id="L178">			int[] blockIndices = new int[nBlocks];</span>
+<span class="fc" id="L179">			int[] blockCharOffsets = new int[nBlocks];</span>
+<span class="fc" id="L180">			IntBuffer ib = buf.asIntBuffer();</span>
+<span class="fc" id="L181">			ib.get(blockIndices);</span>
+<span class="fc" id="L182">			ib.get(blockCharOffsets);</span>
+<span class="fc" id="L183">			buf.position(buf.position() + blockIndices.length * BYTES_PER_INT * 2);</span>
+<span class="fc" id="L184">			return new TocEntry(id, length, charLength, deleted, blockIndices, blockCharOffsets);</span>
+		}
+
+		/**
+		 * Get the offset of the first byte of the specified block.
+		 *
+		 * @param blockNumber
+		 *            which block?
+		 * @return byte offset of the first byte in the file
+		 */
+		public int getBlockNumber(int blockNumber) {
+<span class="fc" id="L195">			return blockIndices[blockNumber];</span>
+		}
+
+		/**
+		 * Size of this entry serialized
+		 *
+		 * @return the size in bytes
+		 */
+		public int sizeBytes() {
+<span class="fc" id="L204">			return 4 * BYTES_PER_INT + blockIndices.length * BYTES_PER_INT * 2;</span>
+		}
+	}
+
+	/**
+	 * The TOC entries
+	 */
+	private MutableIntObjectMap&lt;TocEntry&gt; toc;
+
+	/**
+	 * The table of contents (TOC) file
+	 */
+	private File tocFile;
+
+	/**
+	 * Memory mapping of the TOC file
+	 */
+	private ByteBuffer tocFileBuffer;
+
+	/**
+	 * The TOC file channel.
+	 */
+	private FileChannel tocFileChannel;
+
+	/**
+	 * The TOC random access file
+	 */
+	private RandomAccessFile tocRaf;
+
+	/**
+	 * How much to reserve at the end of mapped file for writing
+	 */
+<span class="fc" id="L236">	private int writeMapReserve = 1000000; // 1M</span>
+
+	/**
+	 * Set the size of the write reserve (the amount of
+	 * space allocated at the end of the file). Larger reserves
+	 * means less re-mapping.
+	 *
+	 * The default is 1M bytes.
+	 *
+	 * @param writeMapReserve size of the reserve in bytes.
+	 */
+	public void setWriteMapReserve(int writeMapReserve) {
+<span class="nc" id="L248">		this.writeMapReserve = writeMapReserve;</span>
+<span class="nc" id="L249">	}</span>
+
+	/** Next content ID */
+<span class="fc" id="L252">	private int nextId = 1;</span>
+
+	/** The file containing all the original file contents */
+	File contentsFile;
+
+	/** Handle into the contents file */
+	RandomAccessFile rafContentsFile;
+
+	/** Channel into the contents file */
+	FileChannel fchContentsFile;
+
+	/** Keeps track of how many chars were in the blocks we've already written.
+	 *  Used by store() to calculate the total content length in chars.
+	 */
+<span class="fc" id="L266">	private int charsFromEntryWritten = 0;</span>
+
+	/**
+	 * If we're writing content in chunks, this keeps track of how many bytes were already written.
+	 * Used by store() to calculate the total content length in bytes.
+	 */
+<span class="fc" id="L272">	private int bytesWritten = 0;</span>
+
+	/** Keeps track of the block ids we've stored parts the current file in so far */
+	private IntArrayList blockIndicesWhileStoring;
+
+	/** Keeps track of the char offsets of the blocks of the current file so far */
+	private IntArrayList blockCharOffsetsWhileStoring;
+
+	/** If true, the toc file should be updated dat the end */
+<span class="fc" id="L281">	private boolean tocModified = false;</span>
+
+	/** Contents still waiting to be written to the contents file in blocks */
+<span class="fc" id="L284">	StringBuilder unwrittenContents = new StringBuilder(BLOCK_SIZE_BYTES * 10);</span>
+
+	/** Used to pad blocks that are less than BLOCK_SIZE long */
+<span class="fc" id="L287">	private byte[] blockPadding = new byte[BLOCK_SIZE_BYTES];</span>
+
+	/** Total number of blocks in the contents file */
+	private int totalBlocks;
+
+	/** The sorted list of free blocks in the contents file */
+<span class="fc" id="L293">	private IntArrayList freeBlocks = new IntArrayList();</span>
+
+	/**
+	 * @param dir content store dir
+	 * @param create if true, create a new content store
+	 */
+<span class="fc" id="L299">	public ContentStoreDirFixedBlock(File dir, boolean create) {</span>
+<span class="fc" id="L300">		this.dir = dir;</span>
+<span class="fc bfc" id="L301" title="All 2 branches covered.">		if (!dir.exists())</span>
+<span class="fc" id="L302">			dir.mkdir();</span>
+<span class="fc" id="L303">		tocFile = new File(dir, TOC_FILE_NAME);</span>
+<span class="fc" id="L304">		contentsFile = new File(dir, CONTENTS_FILE_NAME);</span>
+<span class="pc bpc" id="L305" title="1 of 4 branches missed.">		if (create &amp;&amp; tocFile.exists()) {</span>
+			// Delete the ContentStore files
+<span class="nc" id="L307">			tocFile.delete();</span>
+<span class="nc" id="L308">			new File(dir, VERSION_FILE_NAME).delete();</span>
+<span class="nc" id="L309">			new File(dir, CONTENTS_FILE_NAME).delete();</span>
+
+			// Also delete old content store format files if present
+<span class="nc" id="L312">			File[] dataFiles = dir.listFiles(new FilenameFilter() {</span>
+				@Override
+				public boolean accept(File dir_, String name) {
+<span class="nc" id="L315">					return name.matches(&quot;data\\d+.dat&quot;);</span>
+				}
+			});
+<span class="nc bnc" id="L318" title="All 2 branches missed.">			for (File f : dataFiles) {</span>
+<span class="nc" id="L319">				f.delete();</span>
+			}
+		}
+<span class="fc" id="L322">		toc = IntObjectMaps.mutable.empty();  //Maps.mutable.empty();</span>
+<span class="fc bfc" id="L323" title="All 2 branches covered.">		if (tocFile.exists())</span>
+<span class="fc" id="L324">			readToc();</span>
+<span class="fc" id="L325">		tocModified = false;</span>
+<span class="fc bfc" id="L326" title="All 2 branches covered.">		if (create) {</span>
+<span class="fc" id="L327">			clear();</span>
+<span class="pc bpc" id="L328" title="1 of 2 branches missed.">			if (tocFile.exists())</span>
+<span class="nc" id="L329">				tocFile.delete();</span>
+<span class="fc" id="L330">			setStoreType();</span>
+		}
+<span class="fc" id="L332">		blockIndicesWhileStoring = new IntArrayList();</span>
+<span class="fc" id="L333">		blockCharOffsetsWhileStoring = new IntArrayList();</span>
+
+<span class="fc" id="L335">		final int POOL_SIZE = 10;</span>
+<span class="fc" id="L336">		compresserPool = new SimpleResourcePool&lt;Deflater&gt;(POOL_SIZE){</span>
+			@Override
+			public Deflater createResource() {
+<span class="fc" id="L339">				return new Deflater();</span>
+			}
+
+			@Override
+			public void destroyResource(Deflater resource) {
+<span class="fc" id="L344">				resource.end();</span>
+<span class="fc" id="L345">			}</span>
+		};
+<span class="fc" id="L347">		decompresserPool = new SimpleResourcePool&lt;Inflater&gt;(POOL_SIZE){</span>
+			@Override
+			public Inflater createResource() {
+<span class="fc" id="L350">				return new Inflater();</span>
+			}
+
+			@Override
+			public void destroyResource(Inflater resource) {
+<span class="fc" id="L355">				resource.end();</span>
+<span class="fc" id="L356">			}</span>
+		};
+<span class="fc" id="L358">		zipbufPool = new SimpleResourcePool&lt;byte[]&gt;(POOL_SIZE){</span>
+			@Override
+			public byte[] createResource() {
+<span class="fc" id="L361">				return new byte[MAX_BLOCK_SIZE_BYTES+1]; // one larger to detect when buffer space was insufficient</span>
+			}
+		};
+<span class="fc" id="L364">	}</span>
+
+	/**
+	 * Delete all content in the document store
+	 */
+	@Override
+	public void clear() {
+<span class="fc" id="L371">		closeContentsFile();</span>
+
+		// delete contents file and empty TOC
+<span class="fc bfc" id="L374" title="All 2 branches covered.">		if (contentsFile.exists())</span>
+<span class="fc" id="L375">			contentsFile.delete();</span>
+<span class="fc" id="L376">		toc.clear();</span>
+<span class="fc" id="L377">		freeBlocks.clear();</span>
+<span class="fc" id="L378">		tocModified = true;</span>
+<span class="fc" id="L379">		nextId = 1;</span>
+<span class="fc" id="L380">	}</span>
+
+	private void mapToc(boolean writeable) throws IOException {
+<span class="fc bfc" id="L383" title="All 2 branches covered.">		tocRaf = new RandomAccessFile(tocFile, writeable ? &quot;rw&quot; : &quot;r&quot;);</span>
+<span class="fc" id="L384">		long fl = tocFile.length();</span>
+<span class="fc bfc" id="L385" title="All 2 branches covered.">		if (writeable) {</span>
+<span class="fc" id="L386">			fl += writeMapReserve;</span>
+		} // leave 1M room at the end
+<span class="fc" id="L388">		tocFileChannel = tocRaf.getChannel();</span>
+<span class="fc bfc" id="L389" title="All 2 branches covered.">		tocFileBuffer = tocFileChannel.map(writeable ? MapMode.READ_WRITE : MapMode.READ_ONLY, 0, fl);</span>
+<span class="fc" id="L390">	}</span>
+
+	private void closeMappedToc() {
+<span class="fc bfc" id="L393" title="All 2 branches covered.">		if (tocFileBuffer == null)</span>
+<span class="fc" id="L394">			return; // not mapped</span>
+		try {
+<span class="fc" id="L396">			tocFileChannel.close();</span>
+<span class="fc" id="L397">			tocFileChannel = null;</span>
+<span class="fc" id="L398">			tocRaf.close();</span>
+<span class="fc" id="L399">			tocRaf = null;</span>
+
+<span class="fc" id="L401">			tocFileBuffer = null;</span>
+
+<span class="nc" id="L403">		} catch (IOException e) {</span>
+<span class="nc" id="L404">			throw new RuntimeException(e);</span>
+<span class="fc" id="L405">		}</span>
+<span class="fc" id="L406">	}</span>
+
+	/**
+	 * Read the table of contents from the file
+	 */
+	private void readToc() {
+<span class="fc" id="L412">		toc.clear();</span>
+		try {
+<span class="fc" id="L414">			mapToc(false);</span>
+			try {
+<span class="fc" id="L416">				tocFileBuffer.position(0);</span>
+<span class="fc" id="L417">				int n = tocFileBuffer.getInt();</span>
+<span class="fc" id="L418">				totalBlocks = 0;</span>
+<span class="fc bfc" id="L419" title="All 2 branches covered.">				for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc" id="L420">					TocEntry e = TocEntry.deserialize(tocFileBuffer);</span>
+<span class="fc" id="L421">					toc.put(e.id, e);</span>
+
+					// Keep track of the number of blocks
+<span class="fc bfc" id="L424" title="All 2 branches covered.">					for (int bl: e.blockIndices) {</span>
+<span class="pc bpc" id="L425" title="1 of 2 branches missed.">						if (bl &gt; totalBlocks - 1)</span>
+<span class="fc" id="L426">							totalBlocks = bl + 1;</span>
+					}
+
+					// Keep track of what the next ID should be
+<span class="pc bpc" id="L430" title="1 of 2 branches missed.">					if (e.id + 1 &gt; nextId)</span>
+<span class="fc" id="L431">						nextId = e.id + 1;</span>
+				}
+			} finally {
+<span class="pc" id="L434">				closeMappedToc();</span>
+<span class="pc" id="L435">			}</span>
+
+			// Determine occupied blocks
+<span class="fc" id="L438">			boolean[] blockOccupied = new boolean[totalBlocks]; // automatically initialized to false</span>
+<span class="fc" id="L439">			int numOccupied = 0;</span>
+<span class="fc bfc" id="L440" title="All 2 branches covered.">			for (TocEntry e: toc) {</span>
+<span class="fc bfc" id="L441" title="All 2 branches covered.">				for (int bl: e.blockIndices) {</span>
+<span class="fc" id="L442">					blockOccupied[bl] = true;</span>
+<span class="fc" id="L443">					numOccupied++;</span>
+				}
+<span class="fc" id="L445">			}</span>
+			// Build the list of free blocks
+<span class="fc" id="L447">			freeBlocks.clear();</span>
+<span class="fc" id="L448">			freeBlocks.ensureCapacity(totalBlocks - numOccupied);</span>
+<span class="fc bfc" id="L449" title="All 2 branches covered.">			for (int i = 0; i &lt; totalBlocks; i++) {</span>
+<span class="pc bpc" id="L450" title="1 of 2 branches missed.">				if (!blockOccupied[i])</span>
+<span class="nc" id="L451">					freeBlocks.add(i);</span>
+			}
+
+<span class="nc" id="L454">		} catch (Exception e) {</span>
+<span class="nc" id="L455">			throw ExUtil.wrapRuntimeException(e);</span>
+<span class="fc" id="L456">		}</span>
+<span class="fc" id="L457">	}</span>
+
+	private void writeToc() {
+		try {
+<span class="fc" id="L461">			mapToc(true);</span>
+<span class="fc" id="L462">			tocFileBuffer.putInt(toc.size());</span>
+			try {
+<span class="fc bfc" id="L464" title="All 2 branches covered.">				for (TocEntry e : toc.values()) {</span>
+<span class="pc bpc" id="L465" title="1 of 2 branches missed.">					if (tocFileBuffer.remaining() &lt; e.sizeBytes()) {</span>
+						// Close and re-open with extra writing room
+<span class="nc" id="L467">						int p = tocFileBuffer.position();</span>
+<span class="nc" id="L468">						closeMappedToc();</span>
+<span class="nc" id="L469">						mapToc(true);</span>
+<span class="nc" id="L470">						tocFileBuffer.position(p);</span>
+					}
+<span class="fc" id="L472">					e.serialize(tocFileBuffer);</span>
+<span class="fc" id="L473">				}</span>
+			} finally {
+<span class="pc" id="L475">				closeMappedToc();</span>
+<span class="pc" id="L476">			}</span>
+<span class="nc" id="L477">		} catch (Exception e) {</span>
+<span class="nc" id="L478">			throw ExUtil.wrapRuntimeException(e);</span>
+<span class="fc" id="L479">		}</span>
+<span class="fc" id="L480">		tocModified = false;</span>
+<span class="fc" id="L481">	}</span>
+
+	/**
+	 * Close the content store. Writes the table of contents (if modified)
+	 */
+	@Override
+	public void close() {
+<span class="fc" id="L488">		compresserPool.close();</span>
+<span class="fc" id="L489">		decompresserPool.close();</span>
+<span class="fc" id="L490">		zipbufPool.close();</span>
+
+<span class="fc" id="L492">		closeContentsFile();</span>
+<span class="fc bfc" id="L493" title="All 2 branches covered.">		if (tocModified) {</span>
+<span class="fc" id="L494">			writeToc();</span>
+		}
+<span class="fc" id="L496">		closeMappedToc();</span>
+<span class="fc" id="L497">	}</span>
+
+	/**
+	 * Encode and write the block we've compiled so far and reset for next block
+	 * @param writeLastBlock if true, we'll write the last block too even if it's not full
+	 */
+	public void writeBlocks(boolean writeLastBlock) {
+<span class="fc" id="L504">		ensureContentsFileOpen();</span>
+
+		// Do we have a block to write?
+<span class="pc bpc" id="L507" title="1 of 6 branches missed.">		while (writeLastBlock &amp;&amp; unwrittenContents.length() &gt; 0 || unwrittenContents.length() &gt;= WRITE_BLOCK_WHEN_CHARACTERS_AVAILABLE) {</span>
+<span class="fc" id="L508">			int lenBefore = unwrittenContents.length();</span>
+<span class="fc" id="L509">			byte[] encoded = encodeBlock(); // encode a number of characters to produce a 4K block</span>
+<span class="fc" id="L510">			int lenAfter = unwrittenContents.length();</span>
+<span class="fc" id="L511">			int charLen = lenBefore - lenAfter;</span>
+<span class="fc" id="L512">			int blockIndex = writeToFreeBlock(encoded);</span>
+<span class="fc" id="L513">			blockIndicesWhileStoring.add(blockIndex);</span>
+<span class="fc" id="L514">			blockCharOffsetsWhileStoring.add(charsFromEntryWritten);</span>
+<span class="fc" id="L515">			charsFromEntryWritten += charLen;</span>
+<span class="fc" id="L516">			bytesWritten += encoded.length;</span>
+<span class="fc" id="L517">		}</span>
+<span class="fc" id="L518">	}</span>
+
+	/**
+	 * Writes the block data to a free block and returns the block number.
+	 *
+	 * @param encoded the block data
+	 * @return the block number
+	 */
+	private int writeToFreeBlock(byte[] encoded) {
+		int freeBlock;
+<span class="fc bfc" id="L528" title="All 2 branches covered.">		if (freeBlocks.size() == 0) {</span>
+			// Add a new one at the end
+<span class="fc" id="L530">			totalBlocks++;</span>
+<span class="fc" id="L531">			freeBlock = totalBlocks - 1;</span>
+		} else {
+			// Take the first from the list
+<span class="fc" id="L534">			freeBlock = freeBlocks.removeAtIndex(0);</span>
+		}
+<span class="fc" id="L536">		long offset = (long)freeBlock * BLOCK_SIZE_BYTES;</span>
+
+		// Write data to the block
+		try {
+<span class="fc" id="L540">			fchContentsFile.position(offset);</span>
+<span class="fc" id="L541">			ByteBuffer buf = ByteBuffer.wrap(encoded);</span>
+<span class="fc" id="L542">			fchContentsFile.write(buf);</span>
+			// pad block with garbage
+<span class="fc" id="L544">			buf = ByteBuffer.wrap(blockPadding, 0, BLOCK_SIZE_BYTES - encoded.length);</span>
+<span class="fc" id="L545">			fchContentsFile.write(buf);</span>
+<span class="fc" id="L546">			return freeBlock;</span>
+<span class="nc" id="L547">		} catch (IOException e) {</span>
+<span class="nc" id="L548">			throw new RuntimeException(e);</span>
+		}
+	}
+
+	/**
+	 * Store part of a piece of large content. This may be called several times to store chunks of
+	 * content, but MUST be *finished* by calling the &quot;normal&quot; store() method. You may call store()
+	 * with the empty string if you wish.
+	 *
+	 * @param content
+	 *            the content to store
+	 */
+	@Override
+	public synchronized void storePart(String content) {
+<span class="pc bpc" id="L562" title="1 of 2 branches missed.">		if (content.length() == 0)</span>
+<span class="nc" id="L563">			return;</span>
+
+<span class="fc" id="L565">		unwrittenContents.append(content);</span>
+<span class="fc" id="L566">		writeBlocks(false);</span>
+<span class="fc" id="L567">	}</span>
+
+	/**
+	 * Store the given content and assign an id to it.
+	 *
+	 * @param content
+	 *            the content to store
+	 * @return the id assigned to the content
+	 */
+	@Override
+	public synchronized int store(String content) {
+<span class="fc" id="L578">		storePart(content);</span>
+<span class="pc bpc" id="L579" title="1 of 2 branches missed.">		if (unwrittenContents.length() &gt; 0) {</span>
+			// Write the last (not completely full) block
+<span class="fc" id="L581">			writeBlocks(true);</span>
+		}
+
+		// Convert lists to arrays of primitives for storing
+<span class="fc" id="L585">		int[] blockIndices = new int[blockIndicesWhileStoring.size()];</span>
+<span class="fc" id="L586">		int i = 0;</span>
+<span class="fc" id="L587">		IntIterator it = blockIndicesWhileStoring.intIterator();</span>
+<span class="fc bfc" id="L588" title="All 2 branches covered.">		while (it.hasNext()) {</span>
+<span class="fc" id="L589">			blockIndices[i] = it.next();</span>
+<span class="fc" id="L590">			i++;</span>
+		}
+<span class="fc" id="L592">		int[] blockCharOffsets = new int[blockCharOffsetsWhileStoring.size()];</span>
+<span class="fc" id="L593">		i = 0;</span>
+<span class="fc" id="L594">		it = blockCharOffsetsWhileStoring.intIterator();</span>
+<span class="fc bfc" id="L595" title="All 2 branches covered.">		while (it.hasNext()) {</span>
+<span class="fc" id="L596">			blockCharOffsets[i] = it.next();</span>
+<span class="fc" id="L597">			i++;</span>
+		}
+
+<span class="fc" id="L600">		TocEntry e = new TocEntry(nextId, bytesWritten, charsFromEntryWritten, false, blockIndices, blockCharOffsets);</span>
+<span class="fc" id="L601">		nextId++;</span>
+<span class="fc" id="L602">		toc.put(e.id, e);</span>
+<span class="fc" id="L603">		tocModified = true;</span>
+<span class="fc" id="L604">		charsFromEntryWritten = 0;</span>
+<span class="fc" id="L605">		bytesWritten = 0;</span>
+<span class="fc" id="L606">		blockIndicesWhileStoring.clear();</span>
+<span class="fc" id="L607">		blockCharOffsetsWhileStoring.clear();</span>
+<span class="fc" id="L608">		return e.id;</span>
+	}
+
+	private void ensureContentsFileOpen() {
+		try {
+<span class="fc bfc" id="L613" title="All 2 branches covered.">			if (rafContentsFile == null) {</span>
+<span class="fc" id="L614">				File theContentsFile = new File(dir, CONTENTS_FILE_NAME);</span>
+<span class="fc" id="L615">				rafContentsFile = new RandomAccessFile(theContentsFile, &quot;rw&quot;);</span>
+<span class="fc" id="L616">				fchContentsFile = rafContentsFile.getChannel();</span>
+			}
+<span class="nc" id="L618">		} catch (FileNotFoundException e) {</span>
+<span class="nc" id="L619">			throw new RuntimeException(&quot;Contents file not found&quot; + CONTENTS_FILE_NAME, e);</span>
+<span class="fc" id="L620">		}</span>
+<span class="fc" id="L621">	}</span>
+
+	private void closeContentsFile() {
+		try {
+<span class="fc bfc" id="L625" title="All 2 branches covered.">			if (rafContentsFile != null) {</span>
+<span class="fc" id="L626">				fchContentsFile.close();</span>
+<span class="fc" id="L627">				fchContentsFile = null;</span>
+<span class="fc" id="L628">				rafContentsFile.close();</span>
+<span class="fc" id="L629">				rafContentsFile = null;</span>
+			}
+<span class="nc" id="L631">		} catch (IOException e) {</span>
+<span class="nc" id="L632">			throw new RuntimeException(e);</span>
+<span class="fc" id="L633">		}</span>
+<span class="fc" id="L634">	}</span>
+
+	/**
+	 * Retrieve content with given id
+	 *
+	 * @param id
+	 *            the id
+	 * @return the string
+	 */
+	@Override
+	public String retrieve(int id) {
+<span class="fc" id="L645">		String[] rv = retrieveParts(id, new int[] { -1 }, new int[] { -1 });</span>
+<span class="fc bfc" id="L646" title="All 2 branches covered.">		return rv == null ? null : rv[0];</span>
+	}
+
+	/**
+	 * Retrieve one or more substrings from the specified content.
+	 *
+	 * This is more efficient than retrieving the whole content, or retrieving parts in separate
+	 * calls, because the file is only opened once and random access is used to read only the
+	 * required parts.
+	 *
+	 * NOTE: if offset and length are both -1, retrieves the whole content. This is used by the
+	 * retrieve(id) method.
+	 *
+	 * @param contentId
+	 *            id of the entry to get substrings from
+	 * @param start
+	 *            the starting points of the substrings (in characters).
+	 *            -1 means &quot;start of document&quot;
+	 * @param end
+	 *            the end points of the substrings (in characters).
+	 *            -1 means &quot;end of document&quot;
+	 * @return the parts
+	 */
+	@Override
+	public synchronized String[] retrieveParts(int contentId, int[] start, int[] end) {
+		try {
+			// Find the correct TOC entry
+<span class="fc" id="L673">			TocEntry e = toc.get(contentId);</span>
+<span class="pc bpc" id="L674" title="1 of 4 branches missed.">			if (e == null || e.deleted)</span>
+<span class="fc" id="L675">				return null;</span>
+
+			// Sanity-check parameters
+<span class="fc" id="L678">			int n = start.length;</span>
+<span class="pc bpc" id="L679" title="1 of 2 branches missed.">			if (n != end.length)</span>
+<span class="nc" id="L680">				throw new IllegalArgumentException(&quot;start and end must be of equal length&quot;);</span>
+
+			// Create array for results
+<span class="fc" id="L683">			String[] result = new String[n];</span>
+
+			// Open the file
+<span class="pc" id="L686">			try (FileInputStream fileInputStream = new FileInputStream(contentsFile)) {</span>
+<span class="pc" id="L687">				try (FileChannel fileChannel = fileInputStream.getChannel()) {</span>
+					// Retrieve the strings requested
+<span class="fc bfc" id="L689" title="All 2 branches covered.">					for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc" id="L690">						int a = start[i];</span>
+<span class="fc" id="L691">						int b = end[i];</span>
+
+<span class="fc bfc" id="L693" title="All 2 branches covered.">						if (a == -1)</span>
+<span class="fc" id="L694">							a = 0;</span>
+<span class="fc bfc" id="L695" title="All 2 branches covered.">						if (b == -1)</span>
+<span class="fc" id="L696">							b = e.entryLengthCharacters;</span>
+
+						// Check values
+<span class="pc bpc" id="L699" title="2 of 4 branches missed.">						if (a &lt; 0 || b &lt; 0) {</span>
+<span class="nc" id="L700">							throw new IllegalArgumentException(&quot;Illegal values, start = &quot; + a + &quot;, end = &quot; + b);</span>
+						}
+<span class="pc bpc" id="L702" title="2 of 4 branches missed.">						if (a &gt; e.entryLengthCharacters || b &gt; e.entryLengthCharacters) {</span>
+<span class="nc" id="L703">							throw new IllegalArgumentException(&quot;Value(s) out of range, start = &quot; + a</span>
+									+ &quot;, end = &quot; + b + &quot;, content length = &quot; + e.entryLengthCharacters);
+						}
+<span class="pc bpc" id="L706" title="1 of 2 branches missed.">						if (b &lt;= a) {</span>
+<span class="nc" id="L707">							throw new IllegalArgumentException(</span>
+									&quot;Tried to read empty or negative length snippet (from &quot; + a
+											+ &quot; to &quot; + b + &quot;)&quot;);
+						}
+
+						// 1 - determine what blocks to read
+<span class="fc" id="L713">						int firstBlock = -1, lastBlock = -1;</span>
+<span class="fc" id="L714">						int bl = 0;</span>
+<span class="fc" id="L715">						int charOffset = -1;</span>
+<span class="fc bfc" id="L716" title="All 2 branches covered.">						for (int offs: e.blockCharOffsets) {</span>
+<span class="fc bfc" id="L717" title="All 2 branches covered.">							if (offs &lt;= a) {</span>
+<span class="fc" id="L718">								firstBlock = bl; // last block that starts before a</span>
+<span class="fc" id="L719">								charOffset = offs;</span>
+							}
+<span class="pc bpc" id="L721" title="1 of 4 branches missed.">							if (offs &gt; b &amp;&amp; lastBlock == -1) {</span>
+<span class="fc" id="L722">								lastBlock = bl - 1;  // first block that ends after b</span>
+<span class="fc" id="L723">								break;</span>
+							}
+<span class="fc" id="L725">							bl++;</span>
+						}
+<span class="fc bfc" id="L727" title="All 2 branches covered.">						if (lastBlock == -1)</span>
+<span class="fc" id="L728">							lastBlock = bl - 1; // last available block</span>
+
+						// 2 - read and decode blocks
+<span class="fc" id="L731">						StringBuilder decoded = new StringBuilder();</span>
+<span class="fc bfc" id="L732" title="All 2 branches covered.">						for (int j = firstBlock; j &lt;= lastBlock; j++) {</span>
+<span class="fc" id="L733">							long blockNum = e.getBlockNumber(j);</span>
+<span class="fc" id="L734">							long readStartOffset = blockNum * BLOCK_SIZE_BYTES;</span>
+<span class="fc" id="L735">							int bytesToRead = BLOCK_SIZE_BYTES;</span>
+<span class="fc" id="L736">							ByteBuffer buffer = ByteBuffer.allocate(bytesToRead);</span>
+<span class="fc" id="L737">							int bytesRead = fileChannel.read(buffer, readStartOffset);</span>
+<span class="pc bpc" id="L738" title="1 of 2 branches missed.">							if (bytesRead &lt; bytesToRead) {</span>
+								// Apparently, something went wrong.
+<span class="nc" id="L740">								throw new RuntimeException(&quot;Not enough bytes read, &quot; + bytesRead</span>
+										+ &quot; &lt; &quot; + bytesToRead);
+							}
+<span class="fc" id="L743">							String decodedBlock = decodeBlock(buffer.array(), 0, bytesRead);</span>
+<span class="fc" id="L744">							decoded.append(decodedBlock);</span>
+						}
+
+						// 3 - take just what we need
+<span class="fc" id="L748">						int firstChar = a - charOffset;</span>
+<span class="fc" id="L749">						result[i] = decoded.substring(firstChar, firstChar + b - a);</span>
+					}
+<span class="pc bpc" id="L751" title="6 of 8 branches missed.">				}</span>
+<span class="pc bpc" id="L752" title="6 of 8 branches missed.">			}</span>
+<span class="fc" id="L753">			return result;</span>
+<span class="nc" id="L754">		} catch (Exception e) {</span>
+<span class="nc" id="L755">			throw ExUtil.wrapRuntimeException(e);</span>
+		}
+	}
+
+	@Override
+	public synchronized void delete(int id) {
+<span class="fc" id="L761">		TocEntry e = toc.get(id);</span>
+<span class="fc" id="L762">		e.deleted = true;</span>
+<span class="fc bfc" id="L763" title="All 2 branches covered.">		for (int bl: e.blockIndices) {</span>
+<span class="fc" id="L764">			freeBlocks.add(bl);</span>
+		}
+<span class="fc" id="L766">		freeBlocks.sortThis();</span>
+<span class="fc" id="L767">		tocModified = true;</span>
+<span class="fc" id="L768">	}</span>
+
+	@Override
+	public Set&lt;Integer&gt; getDocIds() {
+<span class="fc" id="L772">		return CollUtil.toJavaSet(toc.keySet());</span>
+	}
+
+	@Override
+	public boolean isDeleted(int id) {
+<span class="fc" id="L777">		return toc.get(id).deleted;</span>
+	}
+
+	@Override
+	public int getDocLength(int id) {
+<span class="fc" id="L782">		return toc.get(id).entryLengthCharacters;</span>
+	}
+
+	SimpleResourcePool&lt;Deflater&gt; compresserPool;
+
+	SimpleResourcePool&lt;Inflater&gt; decompresserPool;
+
+	SimpleResourcePool&lt;byte[]&gt; zipbufPool;
+
+	protected void setStoreType() {
+<span class="fc" id="L792">		setStoreType(CONTENT_STORE_TYPE_NAME, CURRENT_VERSION);</span>
+<span class="fc" id="L793">	}</span>
+
+	protected byte[] encodeBlock() {
+
+<span class="fc" id="L797">		int length = TYPICAL_BLOCK_SIZE_CHARACTERS;</span>
+<span class="fc" id="L798">		int available = unwrittenContents.length();</span>
+<span class="pc bpc" id="L799" title="1 of 2 branches missed.">		if (length &gt; available)</span>
+<span class="fc" id="L800">			length = available;</span>
+
+<span class="fc" id="L802">		Deflater compresser = compresserPool.acquire();</span>
+<span class="fc" id="L803">		byte[] zipbuf = zipbufPool.acquire();</span>
+<span class="fc" id="L804">		boolean doMinCheck = true;</span>
+		try {
+			while (true) {
+
+				// Serialize to bytes
+				byte[] encoded;
+				while (true) {
+<span class="fc" id="L811">					encoded = unwrittenContents.substring(0, length).getBytes(DEFAULT_CHARSET);</span>
+
+					// Make sure the block fits in our zip buffer
+<span class="pc bpc" id="L814" title="1 of 2 branches missed.">					if (encoded.length &lt;= MAX_BLOCK_SIZE_BYTES)</span>
+<span class="fc" id="L815">						break;</span>
+					// Doesn't fit; make it a little smaller until it does fit.
+					//System.err.println(&quot;Tried &quot; + length + &quot; characters, encoded length is &quot; + encoded.length);
+					//int newLength = length - (encoded.length - MAX_BLOCK_SIZE_BYTES) * 2;
+<span class="nc" id="L819">					float shrinkFactor = 1.0f + (1.05f * (encoded.length - MAX_BLOCK_SIZE_BYTES)) / BLOCK_SIZE_BYTES;</span>
+<span class="nc" id="L820">					length = (int)(length / shrinkFactor);</span>
+					//System.err.println(&quot;Will try &quot; + length + &quot; characters as blocksize next.&quot;);
+<span class="nc" id="L822">					doMinCheck = false;</span>
+<span class="nc" id="L823">				}</span>
+
+				// Compress
+<span class="fc" id="L826">				compresser.reset();</span>
+<span class="fc" id="L827">				compresser.setInput(encoded);</span>
+<span class="fc" id="L828">				compresser.finish();</span>
+<span class="fc" id="L829">				int compressedDataLength = compresser.deflate(zipbuf, 0, zipbuf.length, Deflater.FULL_FLUSH);</span>
+<span class="pc bpc" id="L830" title="1 of 2 branches missed.">				if (compressedDataLength &lt;= 0) {</span>
+<span class="nc" id="L831">					throw new RuntimeException(&quot;Error, deflate returned &quot; + compressedDataLength);</span>
+				}
+<span class="pc bpc" id="L833" title="1 of 2 branches missed.">				if (compressedDataLength == zipbuf.length) {</span>
+<span class="nc" id="L834">					throw new RuntimeException(&quot;Error, deflate returned size of zipbuf, this indicates insufficient space&quot;);</span>
+				}
+
+				// Check the size
+//				float waste = (float)(BLOCK_SIZE_BYTES - compressedDataLength) / BLOCK_SIZE_BYTES;
+//				float ratio = (float)length / compressedDataLength;
+
+<span class="fc bfc" id="L841" title="All 2 branches covered.">				if (compressedDataLength &gt; BLOCK_SIZE_BYTES) {</span>
+					// Compressed block too large.
+					// Shrink the uncompressed data length by 5% more than what we expect to be required.
+<span class="fc" id="L844">					float shrinkFactor = 1.0f + (1.05f * (compressedDataLength - BLOCK_SIZE_BYTES)) / BLOCK_SIZE_BYTES;</span>
+					//logger.debug(&quot;Block size too large, retrying. Char length: &quot; + length + &quot;, encoded length: &quot; + compressedDataLength + &quot; &gt; &quot; + BLOCK_SIZE_BYTES + &quot;, shrinkFactor: &quot; + shrinkFactor);
+<span class="fc" id="L846">					length = (int)(length / shrinkFactor);</span>
+<span class="pc bpc" id="L847" title="1 of 2 branches missed.">					if (length &lt;= 0)</span>
+<span class="nc" id="L848">						length = 1;</span>
+<span class="fc" id="L849">					doMinCheck = false; // prevent oscillation between enlarging and shrinking</span>
+<span class="pc bpc" id="L850" title="3 of 6 branches missed.">				} else if (doMinCheck &amp;&amp; length &lt; available &amp;&amp; compressedDataLength &lt; MINIMUM_ACCEPTABLE_BLOCK_SIZE) {</span>
+					// Compressed block too small.
+					// Grow the uncompressed data length by 5% less than what we expect is possible.
+<span class="nc" id="L853">					float growFactor = 1.0f + (0.95f * (BLOCK_SIZE_BYTES - compressedDataLength)) / compressedDataLength;</span>
+					//logger.debug(&quot;Block size too small, retrying. Char length: &quot; + length + &quot;, encoded length: &quot; + compressedDataLength + &quot; &lt; &quot; + MINIMUM_ACCEPTABLE_BLOCK_SIZE + &quot;, growFactor: &quot; + growFactor);
+<span class="nc" id="L855">					length = (int)(length * growFactor);</span>
+<span class="nc bnc" id="L856" title="All 2 branches missed.">					if (length &gt; available)</span>
+<span class="nc" id="L857">						length = available;</span>
+<span class="nc" id="L858">				} else {</span>
+					//logger.debug(&quot;Block ok. Char length: &quot; + length + &quot;, encoded length: &quot; + compressedDataLength + &quot;, waste%: &quot; + waste + &quot;, ratio: &quot; + ratio);
+<span class="fc" id="L860">					unwrittenContents.delete(0, length);</span>
+<span class="fc" id="L861">					return Arrays.copyOfRange(zipbuf, 0, compressedDataLength);</span>
+				}
+<span class="fc" id="L863">			}</span>
+		} finally {
+<span class="pc" id="L865">			compresserPool.release(compresser);</span>
+<span class="pc" id="L866">			zipbufPool.release(zipbuf);</span>
+<span class="nc" id="L867">		}</span>
+	}
+
+	protected String decodeBlock(byte[] buf, int offset, int length) {
+		try {
+			// unzip block
+<span class="fc" id="L873">			Inflater decompresser = decompresserPool.acquire();</span>
+<span class="fc" id="L874">			byte[] zipbuf = zipbufPool.acquire();</span>
+			try {
+<span class="fc" id="L876">				decompresser.reset();</span>
+<span class="fc" id="L877">				decompresser.setInput(buf, offset, length);</span>
+<span class="fc" id="L878">				int resultLength = decompresser.inflate(zipbuf);</span>
+<span class="pc bpc" id="L879" title="1 of 2 branches missed.">				if (resultLength &lt;= 0) {</span>
+<span class="nc" id="L880">					throw new RuntimeException(&quot;Error, inflate returned &quot; + resultLength);</span>
+				}
+<span class="pc bpc" id="L882" title="1 of 2 branches missed.">				if (!decompresser.finished()) {</span>
+					// This shouldn't happen because our max block size prevents it
+<span class="nc" id="L884">					throw new RuntimeException(&quot;Unzip buffer size insufficient&quot;);</span>
+				}
+<span class="fc" id="L886">				return new String(zipbuf, 0, resultLength, DEFAULT_CHARSET);</span>
+			} finally {
+<span class="pc" id="L888">				decompresserPool.release(decompresser);</span>
+<span class="pc" id="L889">				zipbufPool.release(zipbuf);</span>
+<span class="nc" id="L890">			}</span>
+<span class="nc" id="L891">		} catch (DataFormatException e) {</span>
+<span class="nc" id="L892">			throw new RuntimeException(e);</span>
+		}
+	}
+
+	@Override
+	public Set&lt;Integer&gt; idSet() {
+<span class="nc" id="L898">		final MutableIntSet cids = toc.keySet();</span>
+<span class="nc" id="L899">		final MutableIntIterator it = cids.intIterator();</span>
+<span class="nc" id="L900">		return new AbstractSet&lt;Integer&gt;() {</span>
+			@Override
+			public Iterator&lt;Integer&gt; iterator() {
+<span class="nc" id="L903">				return new Iterator&lt;Integer&gt;() {</span>
+					@Override
+					public boolean hasNext() {
+<span class="nc" id="L906">						return it.hasNext();</span>
+					}
+
+					@Override
+					public Integer next() {
+<span class="nc" id="L911">						return it.next();</span>
+					}
+
+					@Override
+					public void remove() {
+<span class="nc" id="L916">						throw new UnsupportedOperationException();</span>
+					}
+				};
+			}
+
+			@Override
+			public int size() {
+<span class="nc" id="L923">				return cids.size();</span>
+			}
+		};
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

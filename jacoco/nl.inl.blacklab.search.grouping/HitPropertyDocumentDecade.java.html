@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HitPropertyDocumentDecade.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.grouping</a> &gt; <span class="el_source">HitPropertyDocumentDecade.java</span></div><h1>HitPropertyDocumentDecade.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.grouping;
+
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.List;
+
+import org.apache.lucene.document.Document;
+import org.apache.lucene.index.IndexReader;
+
+import nl.inl.blacklab.search.Hit;
+import nl.inl.blacklab.search.Hits;
+
+/**
+ * A hit property for grouping on by decade based on a stored field
+ * in the corresponding Lucene document containing a year.
+ */
+public class HitPropertyDocumentDecade extends HitProperty {
+
+	/** The value we store when the decade is unknown */
+	public static final int UNKNOWN_VALUE = 10000000;
+
+	IndexReader reader;
+
+	String fieldName;
+
+	public HitPropertyDocumentDecade(Hits hits, String fieldName) {
+<span class="fc" id="L42">		super(hits);</span>
+<span class="fc" id="L43">		this.reader = hits.getSearcher().getIndexReader();</span>
+<span class="fc" id="L44">		this.fieldName = fieldName;</span>
+<span class="fc" id="L45">	}</span>
+
+	@Override
+	public HitPropValueDecade get(int hitNumber) {
+		try {
+<span class="nc" id="L50">			Hit result = hits.getByOriginalOrder(hitNumber);</span>
+<span class="nc" id="L51">			Document d = reader.document(result.doc);</span>
+<span class="nc" id="L52">			String strYear = d.get(fieldName);</span>
+			int year;
+			try {
+<span class="nc" id="L55">				year = Integer.parseInt(strYear);</span>
+<span class="nc" id="L56">				year -= year % 10;</span>
+<span class="nc" id="L57">			} catch (NumberFormatException e) {</span>
+<span class="nc" id="L58">				year = UNKNOWN_VALUE;</span>
+<span class="nc" id="L59">			}</span>
+<span class="nc" id="L60">			return new HitPropValueDecade(year);</span>
+<span class="nc" id="L61">		} catch (IOException e) {</span>
+<span class="nc" id="L62">			throw new RuntimeException(e);</span>
+		}
+	}
+
+	@Override
+	public int compare(Object i, Object j) {
+		try {
+<span class="nc" id="L69">			Hit a = hits.getByOriginalOrder((Integer)i);</span>
+<span class="nc" id="L70">			Hit b = hits.getByOriginalOrder((Integer)j);</span>
+<span class="nc" id="L71">			Document d = reader.document(a.doc);</span>
+<span class="nc" id="L72">			String strYearA = d.get(fieldName);</span>
+<span class="nc bnc" id="L73" title="All 2 branches missed.">			if (strYearA == null)</span>
+<span class="nc" id="L74">				strYearA = &quot;&quot;;</span>
+<span class="nc" id="L75">			d = reader.document(b.doc);</span>
+<span class="nc" id="L76">			String strYearB = d.get(fieldName);</span>
+<span class="nc bnc" id="L77" title="All 2 branches missed.">			if (strYearB == null)</span>
+<span class="nc" id="L78">				strYearB = &quot;&quot;;</span>
+<span class="nc bnc" id="L79" title="All 2 branches missed.">			if (strYearA.length() == 0) // sort missing year at the end</span>
+<span class="nc bnc" id="L80" title="All 4 branches missed.">				return strYearB.length() == 0 ? 0 : (reverse ? -1 : 1);</span>
+<span class="nc bnc" id="L81" title="All 2 branches missed.">			if (strYearB.length() == 0) // sort missing year at the end</span>
+<span class="nc bnc" id="L82" title="All 2 branches missed.">				return reverse ? 1 : -1;</span>
+			int aYear;
+			try {
+<span class="nc" id="L85">				aYear = Integer.parseInt(strYearA);</span>
+<span class="nc" id="L86">				aYear -= aYear % 10;</span>
+<span class="nc" id="L87">			} catch (NumberFormatException e) {</span>
+<span class="nc" id="L88">				aYear = UNKNOWN_VALUE;</span>
+<span class="nc" id="L89">			}</span>
+			int bYear;
+			try {
+<span class="nc" id="L92">				bYear = Integer.parseInt(strYearB);</span>
+<span class="nc" id="L93">				bYear -= bYear % 10;</span>
+<span class="nc" id="L94">			} catch (NumberFormatException e) {</span>
+<span class="nc" id="L95">				bYear = UNKNOWN_VALUE;</span>
+<span class="nc" id="L96">			}</span>
+
+<span class="nc bnc" id="L98" title="All 2 branches missed.">			return reverse ? bYear - aYear : aYear - bYear;</span>
+
+<span class="nc" id="L100">		} catch (IOException e) {</span>
+<span class="nc" id="L101">			throw new RuntimeException(e);</span>
+		}
+	}
+
+	@Override
+	public String getName() {
+<span class="nc" id="L107">		return &quot;decade&quot;;</span>
+	}
+
+	@Override
+	public List&lt;String&gt; getPropNames() {
+<span class="nc" id="L112">		return Arrays.asList(&quot;document: decade&quot;);</span>
+	}
+
+	@Override
+	public String serialize() {
+<span class="fc" id="L117">		return serializeReverse() + PropValSerializeUtil.combineParts(&quot;decade&quot;, fieldName);</span>
+	}
+
+	public static HitPropertyDocumentDecade deserialize(Hits hits, String info) {
+<span class="nc" id="L121">		return new HitPropertyDocumentDecade(hits, info);</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

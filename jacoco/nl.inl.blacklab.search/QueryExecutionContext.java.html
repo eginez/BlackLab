@@ -1,0 +1,332 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>QueryExecutionContext.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search</a> &gt; <span class="el_source">QueryExecutionContext.java</span></div><h1>QueryExecutionContext.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.search;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import nl.inl.blacklab.index.complex.ComplexFieldProperty.SensitivitySetting;
+import nl.inl.blacklab.index.complex.ComplexFieldUtil;
+import nl.inl.blacklab.search.indexstructure.ComplexFieldDesc;
+import nl.inl.blacklab.search.indexstructure.PropertyDesc;
+import nl.inl.util.StringUtil;
+
+/**
+ * Represents the current &quot;execution context&quot; for executing a TextPattern query.
+ * Inside a query, this context may change: a different property may
+ * be &quot;selected&quot; to search in, the case sensitivity setting may change, etc. This
+ * object is passed to the translation methods and keeps track of this context.
+ */
+public class QueryExecutionContext {
+	/** The searcher object, representing the BlackLab index */
+	private Searcher searcher;
+
+	/** The (complex) field to search */
+	private String fieldName;
+
+	/** The property to search */
+	private String propName;
+
+	/** What to prefix values with (for &quot;subproperties&quot;, like PoS features, etc.) */
+	private String subpropPrefix;
+
+	/** Search case-sensitive?
+	 *
+	 * NOTE: depending on available alternatives in the index, this will choose
+	 * the most appropriate one.
+	 */
+	private boolean caseSensitive;
+
+	/** Search diacritics-sensitive?
+	 *
+	 * NOTE: depending on available alternatives in the index, this will choose
+	 * the most appropriate one.
+	 */
+	private boolean diacriticsSensitive;
+
+	/**
+	 * Construct a query execution context object.
+	 * @param searcher the searcher object
+	 * @param fieldName the (complex) field to search
+	 * @param propName the property to search
+	 * @param caseSensitive whether search defaults to case-sensitive
+	 * @param diacriticsSensitive whether search defaults to diacritics-sensitive
+	 */
+<span class="fc" id="L53">	public QueryExecutionContext(Searcher searcher, String fieldName, String propName, boolean caseSensitive, boolean diacriticsSensitive) {</span>
+<span class="fc" id="L54">		this.searcher = searcher;</span>
+<span class="fc" id="L55">		this.fieldName = fieldName;</span>
+<span class="fc" id="L56">		String[] parts = propName.split(&quot;/&quot;, -1);</span>
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">		if (parts.length &gt; 2)</span>
+<span class="nc" id="L58">			throw new IllegalArgumentException(&quot;propName contains more than one colon!&quot;);</span>
+<span class="fc" id="L59">		this.propName = parts[0];</span>
+<span class="fc" id="L60">		String sep = ComplexFieldUtil.SUBPROPERTY_SEPARATOR;</span>
+<span class="pc bpc" id="L61" title="1 of 2 branches missed.">		this.subpropPrefix = parts.length == 2 ? sep + parts[1] + sep : &quot;&quot;;</span>
+<span class="fc" id="L62">		this.caseSensitive = caseSensitive;</span>
+<span class="fc" id="L63">		this.diacriticsSensitive = diacriticsSensitive;</span>
+<span class="fc" id="L64">	}</span>
+
+	/**
+	 * Return a new query execution context with a different property selected.
+	 * @param newPropName the property to select
+	 * @return the new context
+	 */
+	public QueryExecutionContext withProperty(String newPropName) {
+<span class="fc" id="L72">		return new QueryExecutionContext(searcher, fieldName, newPropName, caseSensitive, diacriticsSensitive);</span>
+	}
+
+	public QueryExecutionContext withSensitive(boolean caseSensitive_, boolean diacriticsSensitive_) {
+<span class="fc" id="L76">		return new QueryExecutionContext(searcher, fieldName, propName, caseSensitive_, diacriticsSensitive_);</span>
+	}
+
+	public String optDesensitize(String value) {
+
+<span class="fc" id="L81">		final String s = ComplexFieldUtil.SENSITIVE_ALT_NAME;</span>
+<span class="fc" id="L82">		final String i = ComplexFieldUtil.INSENSITIVE_ALT_NAME;</span>
+<span class="fc" id="L83">		final String ci = ComplexFieldUtil.CASE_INSENSITIVE_ALT_NAME;</span>
+<span class="fc" id="L84">		final String di = ComplexFieldUtil.DIACRITICS_INSENSITIVE_ALT_NAME;</span>
+
+<span class="fc" id="L86">		String[] parts = ComplexFieldUtil.getNameComponents(luceneField());</span>
+
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">		String alt = parts.length &gt;= 3 ? parts[2] : &quot;&quot;;</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">		if (alt.equals(s)) {</span>
+			// Don't desensitize
+<span class="fc" id="L91">			return value;</span>
+		}
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">		if (alt.equals(i)) {</span>
+			// Fully desensitize;
+<span class="fc" id="L95">			return StringUtil.stripAccents(value).toLowerCase();</span>
+		}
+<span class="nc bnc" id="L97" title="All 2 branches missed.">		if (alt.equals(ci)) {</span>
+			// Only case-insensitive
+<span class="nc" id="L99">			return value.toLowerCase();</span>
+		}
+<span class="nc bnc" id="L101" title="All 2 branches missed.">		if (alt.equals(di)) {</span>
+			// Only diacritics-insensitive
+<span class="nc" id="L103">			return StringUtil.stripAccents(value);</span>
+		}
+
+		// Unknown alternative; don't change value
+<span class="nc" id="L107">		return value;</span>
+	}
+
+	/**
+	 * Return alternatives for the current field/prop that
+	 * exist and are appropriate for our current settings.
+	 *
+	 * @return the alternatives that exist, in order of appropriateness
+	 */
+	private String[] getAlternatives() {
+
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">		if (searcher.getClass().getName().endsWith(&quot;MockSearcher&quot;)) {</span>
+			// TODO: give MockSearcher an index structure so we don't need this hack
+<span class="nc bnc" id="L120" title="All 2 branches missed.">			if (caseSensitive)</span>
+<span class="nc" id="L121">				return new String[] {&quot;s&quot;, &quot;i&quot;};</span>
+<span class="nc" id="L122">			return new String[] {&quot;i&quot;, &quot;s&quot;};</span>
+		}
+
+<span class="fc" id="L125">		final String s = ComplexFieldUtil.SENSITIVE_ALT_NAME;</span>
+<span class="fc" id="L126">		final String i = ComplexFieldUtil.INSENSITIVE_ALT_NAME;</span>
+<span class="fc" id="L127">		final String ci = ComplexFieldUtil.CASE_INSENSITIVE_ALT_NAME;</span>
+<span class="fc" id="L128">		final String di = ComplexFieldUtil.DIACRITICS_INSENSITIVE_ALT_NAME;</span>
+
+<span class="fc" id="L130">		ComplexFieldDesc cfd = searcher.getIndexStructure().getComplexFieldDesc(fieldName);</span>
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">		if (cfd == null)</span>
+<span class="nc" id="L132">			return null;</span>
+
+		// Find the property
+<span class="fc" id="L135">		PropertyDesc pd = cfd.getPropertyDesc(propName);</span>
+<span class="fc" id="L136">		SensitivitySetting sensitivity = pd.getSensitivity();</span>
+//		Collection&lt;String&gt; availableAlternatives = Collections.emptyList();
+//		if (pd != null) {
+//			availableAlternatives = pd.getAlternatives();
+//		}
+
+		// New alternative naming scheme (every alternative has a name)
+<span class="fc" id="L143">		List&lt;String&gt; validAlternatives = new ArrayList&lt;&gt;();</span>
+<span class="pc bpc" id="L144" title="1 of 4 branches missed.">		if (!caseSensitive &amp;&amp; !diacriticsSensitive) {</span>
+			// search insensitive if available
+<span class="fc bfc" id="L146" title="All 2 branches covered.">			if (sensitivity != SensitivitySetting.ONLY_SENSITIVE)</span>
+<span class="fc" id="L147">				validAlternatives.add(i);</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">			if (sensitivity != SensitivitySetting.ONLY_INSENSITIVE)</span>
+<span class="fc" id="L149">				validAlternatives.add(s);</span>
+<span class="pc bpc" id="L150" title="2 of 4 branches missed.">		} else if (caseSensitive &amp;&amp; diacriticsSensitive) {</span>
+			// search fully-sensitive if available
+<span class="pc bpc" id="L152" title="1 of 2 branches missed.">			if (sensitivity != SensitivitySetting.ONLY_INSENSITIVE)</span>
+<span class="fc" id="L153">				validAlternatives.add(s);</span>
+<span class="pc bpc" id="L154" title="1 of 2 branches missed.">			if (sensitivity != SensitivitySetting.ONLY_SENSITIVE)</span>
+<span class="fc" id="L155">				validAlternatives.add(i);</span>
+<span class="nc bnc" id="L156" title="All 2 branches missed.">		} else if (!diacriticsSensitive) {</span>
+			// search case-sensitive if available
+<span class="nc bnc" id="L158" title="All 2 branches missed.">			if (sensitivity == SensitivitySetting.CASE_AND_DIACRITICS_SEPARATE)</span>
+<span class="nc" id="L159">				validAlternatives.add(di);</span>
+<span class="nc bnc" id="L160" title="All 2 branches missed.">			if (sensitivity != SensitivitySetting.ONLY_INSENSITIVE)</span>
+<span class="nc" id="L161">				validAlternatives.add(s);</span>
+<span class="nc bnc" id="L162" title="All 2 branches missed.">			if (sensitivity != SensitivitySetting.ONLY_SENSITIVE)</span>
+<span class="nc" id="L163">				validAlternatives.add(i);</span>
+		} else {
+			// search diacritics-sensitive if available
+<span class="nc bnc" id="L166" title="All 2 branches missed.">			if (sensitivity == SensitivitySetting.CASE_AND_DIACRITICS_SEPARATE)</span>
+<span class="nc" id="L167">				validAlternatives.add(ci);</span>
+<span class="nc bnc" id="L168" title="All 2 branches missed.">			if (sensitivity != SensitivitySetting.ONLY_SENSITIVE)</span>
+<span class="nc" id="L169">				validAlternatives.add(i);</span>
+<span class="nc bnc" id="L170" title="All 2 branches missed.">			if (sensitivity != SensitivitySetting.ONLY_INSENSITIVE)</span>
+<span class="nc" id="L171">				validAlternatives.add(s);</span>
+		}
+<span class="fc" id="L173">		return validAlternatives.toArray(new String[] {});</span>
+	}
+
+	/**
+	 * Returns the correct current Lucene field name to use, based on the complex field name,
+	 * property name and list of alternatives.
+	 * @return null if field, property or alternative not found; valid Lucene field name otherwise
+	 */
+	public String luceneField() {
+<span class="fc" id="L182">		return luceneField(true);</span>
+	}
+
+	/**
+	 * Returns the correct current Lucene field name to use, based on the complex field name,
+	 * property name and list of alternatives.
+	 * @param includeAlternative if true, also includes the default alternative at the end of the field name (alternatives determine
+	 *   stuff like case-/diacritics-sensitivity).
+	 * @return null if field, property or alternative not found; valid Lucene field name otherwise
+	 */
+	public String luceneField(boolean includeAlternative) {
+
+		// Determine available alternatives based on sensitivity preferences.
+<span class="pc bpc" id="L195" title="1 of 2 branches missed.">		String[] alternatives = includeAlternative ? getAlternatives() : null;</span>
+
+<span class="pc bpc" id="L197" title="1 of 2 branches missed.">		if (searcher.getClass().getName().endsWith(&quot;MockSearcher&quot;)) {</span>
+			// Mostly for testing. Don't check, just combine field parts.
+			// TODO: give MockSearcher an index structure so we don't need this hack
+<span class="nc bnc" id="L200" title="All 4 branches missed.">			if (alternatives == null || alternatives.length == 0)</span>
+<span class="nc" id="L201">				return ComplexFieldUtil.propertyField(fieldName, propName);</span>
+<span class="nc" id="L202">			return ComplexFieldUtil.propertyField(fieldName, propName, alternatives[0]);</span>
+		}
+
+		// Find the field and the property.
+<span class="fc" id="L206">		ComplexFieldDesc cfd = searcher.getIndexStructure().getComplexFieldDesc(fieldName);</span>
+<span class="pc bpc" id="L207" title="1 of 2 branches missed.">		if (cfd == null)</span>
+<span class="nc" id="L208">			return null;</span>
+
+<span class="pc bpc" id="L210" title="1 of 2 branches missed.">		if (ComplexFieldUtil.isBookkeepingSubfield(propName)) {</span>
+			// Not a property but a bookkeeping subfield (prob. starttag/endtag); ok, return it
+			// (can be removed when old field naming scheme is removed)
+<span class="nc" id="L213">			return ComplexFieldUtil.bookkeepingField(fieldName, propName);</span>
+		}
+
+		// Find the property
+<span class="fc" id="L217">		PropertyDesc pd = cfd.getPropertyDesc(propName);</span>
+<span class="pc bpc" id="L218" title="1 of 2 branches missed.">		if (pd == null)</span>
+<span class="nc" id="L219">			return ComplexFieldUtil.propertyField(fieldName, propName); // doesn't exist? use plain property name</span>
+
+<span class="pc bpc" id="L221" title="2 of 4 branches missed.">		if (alternatives == null || alternatives.length == 0) {</span>
+			// Don't use any alternatives
+<span class="nc" id="L223">			return ComplexFieldUtil.propertyField(fieldName, propName);</span>
+		}
+
+		// Find the first available alternative to use
+<span class="pc bpc" id="L227" title="1 of 2 branches missed.">		for (String alt: alternatives) {</span>
+<span class="pc bpc" id="L228" title="1 of 2 branches missed.">			if (pd.hasAlternative(alt)) {</span>
+				// NOTE: is this loop necessary at all? getAlternatives() only
+				//  returns available alternatives, so the first one should always
+				//  be okay, right?
+<span class="fc" id="L232">				return ComplexFieldUtil.propertyField(fieldName, propName, alt);</span>
+			}
+		}
+
+		// No valid alternative found. Use plain property.
+		// NOTE: should never happen, and doesn't make sense anymore as there are
+		// no 'plain properties' anymore.
+<span class="nc" id="L239">		return ComplexFieldUtil.propertyField(fieldName, propName);</span>
+	}
+
+	/**
+	 * Get a simple execution context for a field. Used for
+	 * testing/debugging purposes.
+	 *
+	 * @param searcher the searcher
+	 * @param fieldName field to get an execution context for
+	 * @return the context
+	 */
+	public static QueryExecutionContext getSimple(Searcher searcher, String fieldName) {
+<span class="nc" id="L251">		String mainPropName = ComplexFieldUtil.getDefaultMainPropName();</span>
+<span class="nc" id="L252">		return new QueryExecutionContext(searcher, fieldName, mainPropName, false, false);</span>
+	}
+
+	/**
+	 * Do property fields in the index always have an extra &quot;closing token&quot; at the end,
+	 * to account for punctuation after the last word.
+	 *
+	 * The closing token is ignored while searching.
+	 *
+	 * @return true if there are closing tokens
+	 */
+	public boolean alwaysHasClosingToken() {
+<span class="fc" id="L264">		return searcher.getIndexStructure().alwaysHasClosingToken();</span>
+	}
+
+	/**
+	 * Does the index store the length of XML tags in the payload?
+	 *
+	 * Older indices instead store a tag end token separately.
+	 *
+	 * @return true if tag lengths are in payload
+	 */
+	public boolean tagLengthInPayload() {
+<span class="fc" id="L275">		return searcher.getIndexStructure().tagLengthInPayload();</span>
+	}
+
+	/**
+	 * The (complex) field to search
+	 * @return field name
+	 */
+	public String fieldName() {
+<span class="nc" id="L283">		return fieldName;</span>
+	}
+
+	/**
+	 * The property to search
+	 * @return property name
+	 */
+	public String propName() {
+<span class="nc" id="L291">		return propName;</span>
+	}
+
+	/** What to prefix values with (for &quot;subproperties&quot;, like PoS features, etc.)
+	 *
+	 * Subproperties are indexed with this prefix before every value. When searching,
+	 * we also prefix our search string with this value.
+	 *
+	 * @return prefix what to prefix search strings with to find the right subproperty value
+	 */
+	public String subpropPrefix() {
+<span class="fc" id="L302">		return subpropPrefix;</span>
+	}
+
+	/** Search diacritics-sensitive?
+	 *
+	 * NOTE: depending on available alternatives in the index, this will choose
+	 * the most appropriate one.
+	 *
+	 * @return true iff we want to pay attention to diacritics
+	 */
+	public boolean diacriticsSensitive() {
+<span class="nc" id="L313">		return diacriticsSensitive;</span>
+	}
+
+	/** Search case-sensitive?
+	 *
+	 * NOTE: depending on available alternatives in the index, this will choose
+	 * the most appropriate one.
+	 *
+	 * @return true iff we want to pay attention to case
+	 */
+	public boolean caseSensitive() {
+<span class="nc" id="L324">		return caseSensitive;</span>
+	}
+
+	public Searcher getSearcher() {
+<span class="fc" id="L328">		return searcher;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

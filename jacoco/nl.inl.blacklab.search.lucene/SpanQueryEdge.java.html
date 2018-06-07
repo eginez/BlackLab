@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SpanQueryEdge.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">SpanQueryEdge.java</span></div><h1>SpanQueryEdge.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.lucene;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.index.TermContext;
+import org.apache.lucene.search.IndexSearcher;
+
+/**
+ * Returns either the left edge or right edge of the specified query.
+ *
+ * Note that the results of this query are zero-length spans.
+ */
+public class SpanQueryEdge extends BLSpanQueryAbstract {
+
+	/** if true, return the right edges; if false, the left */
+	boolean rightEdge;
+
+	/**
+	 * Construct SpanQueryEdge object.
+	 * @param query the query to determine edges from
+	 * @param rightEdge if true, return the right edges; if false, the left
+	 */
+	public SpanQueryEdge(BLSpanQuery query, boolean rightEdge) {
+<span class="fc" id="L45">		super(query);</span>
+<span class="fc" id="L46">		this.rightEdge = rightEdge;</span>
+<span class="fc" id="L47">	}</span>
+
+	@Override
+	public BLSpanQuery rewrite(IndexReader reader) throws IOException {
+<span class="fc" id="L51">		List&lt;BLSpanQuery&gt; rewritten = rewriteClauses(reader);</span>
+<span class="pc bpc" id="L52" title="1 of 2 branches missed.">		return rewritten == null ? this : new SpanQueryEdge(rewritten.get(0), rightEdge);</span>
+	}
+
+	@Override
+	public BLSpanWeight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
+<span class="fc" id="L57">		BLSpanWeight weight = clauses.get(0).createWeight(searcher, needsScores);</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">		return new SpanWeightEdge(weight, searcher, needsScores ? getTermContexts(weight) : null);</span>
+	}
+
+	class SpanWeightEdge extends BLSpanWeight {
+
+		final BLSpanWeight weight;
+
+<span class="fc" id="L65">		public SpanWeightEdge(BLSpanWeight weight, IndexSearcher searcher, Map&lt;Term, TermContext&gt; terms) throws IOException {</span>
+<span class="fc" id="L66">			super(SpanQueryEdge.this, searcher, terms);</span>
+<span class="fc" id="L67">			this.weight = weight;</span>
+<span class="fc" id="L68">		}</span>
+
+		@Override
+		public void extractTerms(Set&lt;Term&gt; terms) {
+<span class="fc" id="L72">			weight.extractTerms(terms);</span>
+<span class="fc" id="L73">		}</span>
+
+		@Override
+		public void extractTermContexts(Map&lt;Term, TermContext&gt; contexts) {
+<span class="nc" id="L77">			weight.extractTermContexts(contexts);</span>
+<span class="nc" id="L78">		}</span>
+
+		@Override
+		public BLSpans getSpans(final LeafReaderContext context, Postings requiredPostings) throws IOException {
+<span class="fc" id="L82">			BLSpans spans = weight.getSpans(context, requiredPostings);</span>
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">			if (spans == null)</span>
+<span class="nc" id="L84">				return null;</span>
+<span class="fc" id="L85">			return new SpansEdge(spans, rightEdge);</span>
+		}
+
+	}
+
+	@Override
+	public String toString(String field) {
+<span class="nc bnc" id="L92" title="All 2 branches missed.">		return &quot;EDGE(&quot; + clausesToString(field) + &quot;, &quot; + (rightEdge ? &quot;R&quot; : &quot;L&quot;) + &quot;)&quot;;</span>
+	}
+
+	public boolean isRightEdge() {
+<span class="fc" id="L96">		return rightEdge;</span>
+	}
+
+	public String getElementName() {
+<span class="fc" id="L100">		BLSpanQuery cl = clauses.get(0);</span>
+<span class="pc bpc" id="L101" title="1 of 2 branches missed.">		if (cl instanceof SpanQueryTags) {</span>
+<span class="fc" id="L102">			return ((SpanQueryTags)cl).getElementName();</span>
+		}
+<span class="nc" id="L104">		return null;</span>
+	}
+
+	public BLSpanQuery getClause() {
+<span class="fc" id="L108">		return clauses.get(0);</span>
+	}
+
+	@Override
+	public boolean hitsAllSameLength() {
+<span class="fc" id="L113">		return true;</span>
+	}
+
+	@Override
+	public int hitsLengthMin() {
+<span class="nc" id="L118">		return 0;</span>
+	}
+
+	@Override
+	public int hitsLengthMax() {
+<span class="nc" id="L123">		return 0;</span>
+	}
+
+	@Override
+	public boolean hitsStartPointSorted() {
+<span class="fc bfc" id="L128" title="All 2 branches covered.">		return rightEdge ? clauses.get(0).hitsEndPointSorted() : clauses.get(0).hitsStartPointSorted();</span>
+	}
+
+	@Override
+	public boolean hitsEndPointSorted() {
+<span class="fc" id="L133">		return hitsStartPointSorted();</span>
+	}
+
+	@Override
+	public boolean hitsHaveUniqueStart() {
+<span class="fc bfc" id="L138" title="All 2 branches covered.">		return rightEdge ? clauses.get(0).hitsHaveUniqueEnd() : clauses.get(0).hitsHaveUniqueStart();</span>
+	}
+
+	@Override
+	public boolean hitsHaveUniqueEnd() {
+<span class="fc" id="L143">		return hitsHaveUniqueStart();</span>
+	}
+
+	@Override
+	public boolean hitsAreUnique() {
+<span class="nc" id="L148">		return hitsHaveUniqueStart();</span>
+	}
+
+	@Override
+	public long reverseMatchingCost(IndexReader reader) {
+<span class="fc" id="L153">		return clauses.get(0).reverseMatchingCost(reader);</span>
+	}
+
+	@Override
+	public int forwardMatchingCost() {
+<span class="fc" id="L158">		return clauses.get(0).forwardMatchingCost();</span>
+	}
+
+	@Override
+	public int hashCode() {
+<span class="nc" id="L163">		final int prime = 31;</span>
+<span class="nc" id="L164">		int result = super.hashCode();</span>
+<span class="nc bnc" id="L165" title="All 2 branches missed.">		result = prime * result + (rightEdge ? 1231 : 1237);</span>
+<span class="nc" id="L166">		return result;</span>
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+<span class="pc bpc" id="L171" title="1 of 2 branches missed.">		if (this == obj)</span>
+<span class="nc" id="L172">			return true;</span>
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">		if (!super.equals(obj))</span>
+<span class="fc" id="L174">			return false;</span>
+<span class="nc bnc" id="L175" title="All 2 branches missed.">		if (getClass() != obj.getClass())</span>
+<span class="nc" id="L176">			return false;</span>
+<span class="nc" id="L177">		SpanQueryEdge other = (SpanQueryEdge) obj;</span>
+<span class="nc bnc" id="L178" title="All 2 branches missed.">		if (rightEdge != other.rightEdge)</span>
+<span class="nc" id="L179">			return false;</span>
+<span class="nc" id="L180">		return true;</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

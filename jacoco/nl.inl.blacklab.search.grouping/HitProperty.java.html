@@ -1,0 +1,222 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HitProperty.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.grouping</a> &gt; <span class="el_source">HitProperty.java</span></div><h1>HitProperty.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.grouping;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.List;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import nl.inl.blacklab.search.Hits;
+
+/**
+ * Abstract base class for a property of a hit, like document title, hit text, right context, etc.
+ */
+public abstract class HitProperty implements Comparator&lt;Object&gt; {
+<span class="fc" id="L32">	protected static final Logger logger = LogManager.getLogger(HitProperty.class);</span>
+
+	/** The Hits object we're looking at */
+	protected Hits hits;
+
+	/** Reverse comparison result or not? */
+<span class="fc" id="L38">	protected boolean reverse = false;</span>
+
+<span class="fc" id="L40">	public HitProperty(Hits hits) {</span>
+<span class="fc" id="L41">		this.hits = hits;</span>
+<span class="fc" id="L42">		contextIndices = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L43">		contextIndices.add(0); // in case it's accidentally not set, set a default value</span>
+<span class="fc" id="L44">	}</span>
+
+	public abstract HitPropValue get(int result);
+
+	/**
+	 * Compares two hits on this property.
+	 *
+	 * The default implementation uses get() to compare
+	 * the two hits. Subclasses may override this method to
+	 * provide a more efficient implementation.
+	 *
+	 * Note that we use Object as the type instead of Hit to save
+	 * on run-time type checking. We know (slash hope :-) that this
+	 * method is only ever called to compare Hits.
+	 *
+	 * @param a first hit
+	 * @param b second hit
+	 * @return 0 if equal, negative if a &lt; b, positive if a &gt; b.
+	 */
+	@Override
+	public int compare(Object a, Object b) {
+<span class="nc" id="L65">		HitPropValue hitPropValueA = get((Integer)a);</span>
+<span class="nc" id="L66">		HitPropValue hitPropValueB = get((Integer)b);</span>
+<span class="nc" id="L67">		return hitPropValueA.compareTo(hitPropValueB);</span>
+	}
+
+	/**
+	 * Retrieve context from which field(s) prior to sorting/grouping on this
+	 * property?
+	 * @return null if no context is required, the fieldnames otherwise
+	 */
+	public List&lt;String&gt; needsContext() {
+<span class="fc" id="L76">		return null;</span>
+	}
+
+	public abstract String getName();
+
+	/**
+	 * Serialize this HitProperty so we can deserialize it later (to pass it
+	 * via URL, for example)
+	 * @return the String representation of this HitProperty
+	 */
+	public abstract String serialize();
+
+	/**
+	 * Used by subclasses to add a dash for reverse when serializing
+	 * @return either a dash or the empty string
+	 */
+	protected String serializeReverse() {
+<span class="fc bfc" id="L93" title="All 2 branches covered.">		return reverse ? &quot;-&quot; : &quot;&quot;;</span>
+	}
+
+	/**
+	 * Convert the String representation of a HitProperty back into the HitProperty
+	 * @param hits our hits object (i.e. what we're trying to sort or group)
+	 * @param serialized the serialized object
+	 * @return the HitProperty object, or null if it could not be deserialized
+	 */
+	public static HitProperty deserialize(Hits hits, String serialized) {
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">		if (PropValSerializeUtil.isMultiple(serialized)) {</span>
+<span class="nc" id="L104">			boolean reverse = false;</span>
+<span class="nc bnc" id="L105" title="All 4 branches missed.">			if (serialized.startsWith(&quot;-(&quot;) &amp;&amp; serialized.endsWith(&quot;)&quot;)) {</span>
+<span class="nc" id="L106">				reverse = true;</span>
+<span class="nc" id="L107">				serialized = serialized.substring(2, serialized.length() - 1);</span>
+			}
+<span class="nc" id="L109">			HitPropertyMultiple result = HitPropertyMultiple.deserialize(hits, serialized);</span>
+<span class="nc" id="L110">			result.setReverse(reverse);</span>
+<span class="nc" id="L111">			return result;</span>
+		}
+
+<span class="fc" id="L114">		String[] parts = PropValSerializeUtil.splitPartFirstRest(serialized);</span>
+<span class="fc" id="L115">		String type = parts[0].toLowerCase();</span>
+<span class="fc" id="L116">		boolean reverse = false;</span>
+<span class="pc bpc" id="L117" title="2 of 4 branches missed.">		if (type.length() &gt; 0 &amp;&amp; type.charAt(0) == '-') {</span>
+<span class="fc" id="L118">			reverse = true;</span>
+<span class="fc" id="L119">			type = type.substring(1);</span>
+		}
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">		String info = parts.length &gt; 1 ? parts[1] : &quot;&quot;;</span>
+<span class="fc" id="L122">		List&lt;String&gt; types = Arrays.asList(&quot;decade&quot;, &quot;docid&quot;, &quot;field&quot;, &quot;hit&quot;, &quot;left&quot;, &quot;right&quot;, &quot;wordleft&quot;, &quot;wordright&quot;, &quot;context&quot;, &quot;hitposition&quot;);</span>
+<span class="fc" id="L123">		int typeNum = types.indexOf(type);</span>
+		HitProperty result;
+<span class="pc bpc" id="L125" title="10 of 11 branches missed.">		switch (typeNum) {</span>
+		case 0:
+<span class="nc" id="L127">			result = HitPropertyDocumentDecade.deserialize(hits, info);</span>
+<span class="nc" id="L128">			break;</span>
+		case 1:
+<span class="fc" id="L130">			result = HitPropertyDocumentId.deserialize(hits);</span>
+<span class="fc" id="L131">			break;</span>
+		case 2:
+<span class="nc" id="L133">			result = HitPropertyDocumentStoredField.deserialize(hits, info);</span>
+<span class="nc" id="L134">			break;</span>
+		case 3:
+<span class="nc" id="L136">			result = HitPropertyHitText.deserialize(hits, info);</span>
+<span class="nc" id="L137">			break;</span>
+		case 4:
+<span class="nc" id="L139">			result = HitPropertyLeftContext.deserialize(hits, info);</span>
+<span class="nc" id="L140">			break;</span>
+		case 5:
+<span class="nc" id="L142">			result = HitPropertyRightContext.deserialize(hits, info);</span>
+<span class="nc" id="L143">			break;</span>
+		case 6:
+<span class="nc" id="L145">			result = HitPropertyWordLeft.deserialize(hits, info);</span>
+<span class="nc" id="L146">			break;</span>
+		case 7:
+<span class="nc" id="L148">			result = HitPropertyWordRight.deserialize(hits, info);</span>
+<span class="nc" id="L149">			break;</span>
+		case 8:
+<span class="nc" id="L151">			result = HitPropertyContextWords.deserialize(hits, info);</span>
+<span class="nc" id="L152">			break;</span>
+		case 9:
+<span class="nc" id="L154">			result = HitPropertyHitPosition.deserialize(hits);</span>
+<span class="nc" id="L155">			break;</span>
+		default:
+<span class="nc" id="L157">			logger.debug(&quot;Unknown HitProperty '&quot; + type + &quot;'&quot;);</span>
+<span class="nc" id="L158">			return null;</span>
+		}
+<span class="fc" id="L160">		result.setReverse(reverse);</span>
+<span class="fc" id="L161">		return result;</span>
+	}
+
+	/**
+	 * For HitProperties that need context, the context indices that
+	 * correspond to the context(s) they need in the result set.
+	 * (in the same order as reported by needsContext()).
+	 */
+<span class="fc" id="L169">	List&lt;Integer&gt; contextIndices = null;</span>
+
+	/**
+	 * For HitProperties that need context, sets the context indices that
+	 * correspond to the context(s) they need in the result set.
+	 * @param contextIndices the indices, in the same order as reported by needsContext().
+	 */
+	public void setContextIndices(List&lt;Integer&gt; contextIndices) {
+<span class="nc" id="L177">		this.contextIndices.clear();</span>
+<span class="nc" id="L178">		this.contextIndices.addAll(contextIndices);</span>
+<span class="nc" id="L179">	}</span>
+
+	/**
+	 * Produce a copy of this HitProperty object with a different Hits object.
+	 *
+	 * Used by Hits.sortedBy(), to use the specified HitProperty on a different
+	 * Hits object than originally intended.
+	 *
+	 * @param newHits new Hits object to use
+	 * @return the new HitProperty object
+	 */
+	public HitProperty copyWithHits(Hits newHits) {
+		// A bit ugly, but it works..
+<span class="nc" id="L192">		return HitProperty.deserialize(newHits, serialize());</span>
+	}
+
+	/**
+	 * Is the comparison reversed?
+	 * @return true if it is, false if not
+	 */
+	public boolean isReverse() {
+<span class="nc" id="L200">		return reverse;</span>
+	}
+
+	/**
+	 * Set whether to reverse the comparison.
+	 * @param reverse if true, reverses comparison
+	 */
+	public void setReverse(boolean reverse) {
+<span class="fc" id="L208">		this.reverse = reverse;</span>
+<span class="fc" id="L209">	}</span>
+
+	@Override
+	public String toString() {
+<span class="nc" id="L213">		return serialize();</span>
+	}
+
+	/**
+	 * Get the names of all (sub-)properties separately.
+	 * @return the list
+	 */
+	public abstract List&lt;String&gt; getPropNames();
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

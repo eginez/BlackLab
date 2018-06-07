@@ -152,27 +152,32 @@
 <a class="jxr_linenumber" name="L144" href="#L144">144</a> 	}
 <a class="jxr_linenumber" name="L145" href="#L145">145</a> 
 <a class="jxr_linenumber" name="L146" href="#L146">146</a> 	@Override
-<a class="jxr_linenumber" name="L147" href="#L147">147</a> 	<strong class="jxr_keyword">public</strong> String serialize() {
-<a class="jxr_linenumber" name="L148" href="#L148">148</a> 		String[] parts = ComplexFieldUtil.getNameComponents(luceneFieldName);
-<a class="jxr_linenumber" name="L149" href="#L149">149</a> 		String thePropName = parts.length &gt; 1 ? parts[1] : <span class="jxr_string">""</span>;
-<a class="jxr_linenumber" name="L150" href="#L150">150</a> 		<strong class="jxr_keyword">return</strong> serializeReverse() + PropValSerializeUtil.combineParts(<span class="jxr_string">"left"</span>, thePropName, sensitive ? <span class="jxr_string">"s"</span> : <span class="jxr_string">"i"</span>);
-<a class="jxr_linenumber" name="L151" href="#L151">151</a> 	}
-<a class="jxr_linenumber" name="L152" href="#L152">152</a> 
-<a class="jxr_linenumber" name="L153" href="#L153">153</a> 	<strong class="jxr_keyword">public</strong> <strong class="jxr_keyword">static</strong> <a href="../../../../../nl/inl/blacklab/search/grouping/HitPropertyLeftContext.html">HitPropertyLeftContext</a> deserialize(<a href="../../../../../nl/inl/blacklab/search/Hits.html">Hits</a> hits, String info) {
-<a class="jxr_linenumber" name="L154" href="#L154">154</a> 		String[] parts = PropValSerializeUtil.splitParts(info);
-<a class="jxr_linenumber" name="L155" href="#L155">155</a> 		String fieldName = hits.settings().concordanceField();
-<a class="jxr_linenumber" name="L156" href="#L156">156</a> 		String propName = parts[0];
-<a class="jxr_linenumber" name="L157" href="#L157">157</a> 		<strong class="jxr_keyword">if</strong> (propName.length() == 0)
-<a class="jxr_linenumber" name="L158" href="#L158">158</a> 			propName = ComplexFieldUtil.getDefaultMainPropName();
-<a class="jxr_linenumber" name="L159" href="#L159">159</a> 		<strong class="jxr_keyword">boolean</strong> sensitive = parts.length &gt; 1 ? parts[1].equalsIgnoreCase(<span class="jxr_string">"s"</span>) : <strong class="jxr_keyword">true</strong>;
-<a class="jxr_linenumber" name="L160" href="#L160">160</a> 		<strong class="jxr_keyword">if</strong> (fieldName == <strong class="jxr_keyword">null</strong> || fieldName.length() == 0)
-<a class="jxr_linenumber" name="L161" href="#L161">161</a> 			<strong class="jxr_keyword">return</strong> <strong class="jxr_keyword">new</strong> <a href="../../../../../nl/inl/blacklab/search/grouping/HitPropertyLeftContext.html">HitPropertyLeftContext</a>(hits, sensitive);
-<a class="jxr_linenumber" name="L162" href="#L162">162</a> 		<strong class="jxr_keyword">return</strong> <strong class="jxr_keyword">new</strong> <a href="../../../../../nl/inl/blacklab/search/grouping/HitPropertyLeftContext.html">HitPropertyLeftContext</a>(hits, fieldName, propName, sensitive);
-<a class="jxr_linenumber" name="L163" href="#L163">163</a> 	}
-<a class="jxr_linenumber" name="L164" href="#L164">164</a> 
-<a class="jxr_linenumber" name="L165" href="#L165">165</a> }
+<a class="jxr_linenumber" name="L147" href="#L147">147</a> 	<strong class="jxr_keyword">public</strong> List&lt;String&gt; getPropNames() {
+<a class="jxr_linenumber" name="L148" href="#L148">148</a> 		<strong class="jxr_keyword">return</strong> Arrays.asList(<span class="jxr_string">"left context: "</span> + propName);
+<a class="jxr_linenumber" name="L149" href="#L149">149</a> 	}
+<a class="jxr_linenumber" name="L150" href="#L150">150</a> 
+<a class="jxr_linenumber" name="L151" href="#L151">151</a> 	@Override
+<a class="jxr_linenumber" name="L152" href="#L152">152</a> 	<strong class="jxr_keyword">public</strong> String serialize() {
+<a class="jxr_linenumber" name="L153" href="#L153">153</a> 		String[] parts = ComplexFieldUtil.getNameComponents(luceneFieldName);
+<a class="jxr_linenumber" name="L154" href="#L154">154</a> 		String thePropName = parts.length &gt; 1 ? parts[1] : <span class="jxr_string">""</span>;
+<a class="jxr_linenumber" name="L155" href="#L155">155</a> 		<strong class="jxr_keyword">return</strong> serializeReverse() + PropValSerializeUtil.combineParts(<span class="jxr_string">"left"</span>, thePropName, sensitive ? <span class="jxr_string">"s"</span> : <span class="jxr_string">"i"</span>);
+<a class="jxr_linenumber" name="L156" href="#L156">156</a> 	}
+<a class="jxr_linenumber" name="L157" href="#L157">157</a> 
+<a class="jxr_linenumber" name="L158" href="#L158">158</a> 	<strong class="jxr_keyword">public</strong> <strong class="jxr_keyword">static</strong> <a href="../../../../../nl/inl/blacklab/search/grouping/HitPropertyLeftContext.html">HitPropertyLeftContext</a> deserialize(<a href="../../../../../nl/inl/blacklab/search/Hits.html">Hits</a> hits, String info) {
+<a class="jxr_linenumber" name="L159" href="#L159">159</a> 		String[] parts = PropValSerializeUtil.splitParts(info);
+<a class="jxr_linenumber" name="L160" href="#L160">160</a> 		String fieldName = hits.settings().concordanceField();
+<a class="jxr_linenumber" name="L161" href="#L161">161</a> 		String propName = parts[0];
+<a class="jxr_linenumber" name="L162" href="#L162">162</a> 		<strong class="jxr_keyword">if</strong> (propName.length() == 0)
+<a class="jxr_linenumber" name="L163" href="#L163">163</a> 			propName = ComplexFieldUtil.getDefaultMainPropName();
+<a class="jxr_linenumber" name="L164" href="#L164">164</a> 		<strong class="jxr_keyword">boolean</strong> sensitive = parts.length &gt; 1 ? parts[1].equalsIgnoreCase(<span class="jxr_string">"s"</span>) : <strong class="jxr_keyword">true</strong>;
+<a class="jxr_linenumber" name="L165" href="#L165">165</a> 		<strong class="jxr_keyword">if</strong> (fieldName == <strong class="jxr_keyword">null</strong> || fieldName.length() == 0)
+<a class="jxr_linenumber" name="L166" href="#L166">166</a> 			<strong class="jxr_keyword">return</strong> <strong class="jxr_keyword">new</strong> <a href="../../../../../nl/inl/blacklab/search/grouping/HitPropertyLeftContext.html">HitPropertyLeftContext</a>(hits, sensitive);
+<a class="jxr_linenumber" name="L167" href="#L167">167</a> 		<strong class="jxr_keyword">return</strong> <strong class="jxr_keyword">new</strong> <a href="../../../../../nl/inl/blacklab/search/grouping/HitPropertyLeftContext.html">HitPropertyLeftContext</a>(hits, fieldName, propName, sensitive);
+<a class="jxr_linenumber" name="L168" href="#L168">168</a> 	}
+<a class="jxr_linenumber" name="L169" href="#L169">169</a> 
+<a class="jxr_linenumber" name="L170" href="#L170">170</a> }
 </pre>
 <hr/>
-<div id="footer">Copyright &#169; 2017 <a href="http://www.inl.nl">Instituut voor Nederlandse Taal (INT)</a>. All rights reserved.</div>
+<div id="footer">Copyright &#169; 2018 <a href="http://www.inl.nl">Instituut voor Nederlandse Taal (INT)</a>. All rights reserved.</div>
 </body>
 </html>

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ConstraintValue.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.matchfilter</a> &gt; <span class="el_source">ConstraintValue.java</span></div><h1>ConstraintValue.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.search.matchfilter;
+
+<span class="fc" id="L3">public abstract class ConstraintValue {</span>
+
+<span class="fc" id="L5">	private static final ConstraintValue FALSE = new ConstraintValueBoolean(false);</span>
+
+<span class="fc" id="L7">	private static final ConstraintValue TRUE = new ConstraintValueBoolean(true);</span>
+
+<span class="fc" id="L9">	private static final ConstraintValue UNDEFINED = new ConstraintValueUndefined();</span>
+
+	public static ConstraintValue get(int i) {
+<span class="fc" id="L12">		return new ConstraintValueInt(i);</span>
+	}
+
+	public static ConstraintValue get(String s) {
+<span class="fc" id="L16">		return new ConstraintValueString(s);</span>
+	}
+
+	public static ConstraintValue get(boolean b) {
+<span class="fc bfc" id="L20" title="All 2 branches covered.">		return b ? TRUE : FALSE;</span>
+	}
+
+	public static ConstraintValue undefined() {
+<span class="fc" id="L24">		return UNDEFINED;</span>
+	}
+
+	@Override
+	public abstract int hashCode();
+
+	@Override
+	public abstract boolean equals(Object obj);
+
+	public abstract boolean isTruthy();
+
+	@Override
+	public abstract String toString();
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

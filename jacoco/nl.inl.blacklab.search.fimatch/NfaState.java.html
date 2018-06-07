@@ -1,0 +1,250 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NfaState.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.fimatch</a> &gt; <span class="el_source">NfaState.java</span></div><h1>NfaState.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.search.fimatch;
+
+import java.util.Collection;
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.NavigableSet;
+import java.util.Set;
+import java.util.TreeSet;
+
+/**
+ * Represents both a state in an NFA, and a complete NFA
+ * with this as the starting state.
+ *
+ * (Note that the &quot;matching state&quot; is simply represented as null
+ *  in the NFAs we build, which is convenient when possibly appending
+ *  other NFAs to it later)
+ */
+<span class="fc" id="L20">public abstract class NfaState {</span>
+
+	/** Singleton instance of the match final state */
+<span class="fc" id="L23">	private static final NfaState THE_MATCH_STATE = new NfaStateMatch();</span>
+
+	/**
+	 * Build a token state.
+	 *
+	 * @param luceneField what property to match
+	 * @param inputToken what token to match
+	 * @param nextState what state to go to after a succesful match
+	 * @return the state object
+	 */
+	public static NfaState token(String luceneField, String inputToken, NfaState nextState) {
+<span class="fc" id="L34">		return new NfaStateToken(luceneField, inputToken, nextState);</span>
+	}
+
+	/**
+	 * Build a token state.
+	 *
+	 * @param luceneField what property to match
+	 * @param inputTokens what tokens to match
+	 * @param nextState what state to go to after a succesful match
+	 * @return the state object
+	 */
+	public static NfaState token(String luceneField, Set&lt;String&gt; inputTokens, NfaState nextState) {
+<span class="fc" id="L46">		return new NfaStateToken(luceneField, inputTokens, nextState);</span>
+	}
+
+	public static NfaState regex(String luceneField, String pattern, NfaState nextState) {
+<span class="fc" id="L50">		return new NfaStateRegex(luceneField, pattern, nextState);</span>
+	}
+
+	public static NfaState anyToken(String luceneField, NfaState nextState) {
+<span class="fc" id="L54">		return new NfaStateAnyToken(luceneField, nextState);</span>
+	}
+
+	/**
+	 * Build am OR state.
+	 *
+	 * @param clausesMayLoopBack if false, no clauses loop back to earlier states,
+	 *   (a more efficient way of matching can be used in this case)
+	 * @param nextStates states to try
+	 * @param clausesAllSameLength are all hits for all clauses the same length? (used to optimize matching)
+	 * @return the state object
+	 */
+	public static NfaState or(boolean clausesMayLoopBack, List&lt;NfaState&gt; nextStates, boolean clausesAllSameLength) {
+<span class="fc bfc" id="L67" title="All 2 branches covered.">		return clausesMayLoopBack ? new NfaStateOr(nextStates, clausesAllSameLength) : new NfaStateOrAcyclic(nextStates, clausesAllSameLength);</span>
+	}
+
+	/**
+	 * Build an AND state.
+	 *
+	 * @param clausesMayLoopBack if false, no clauses loop back to earlier states,
+	 *   (a more efficient way of matching can be used in this case)
+	 * @param nextStates NFAs that must match
+	 * @return the state object
+	 */
+	public static NfaState and(boolean clausesMayLoopBack, List&lt;NfaState&gt; nextStates) {
+<span class="pc bpc" id="L79" title="1 of 2 branches missed.">		return clausesMayLoopBack ? new NfaStateAnd(nextStates) : new NfaStateAndAcyclic(nextStates);</span>
+	}
+
+	public static NfaState match() {
+<span class="fc" id="L83">		return THE_MATCH_STATE;</span>
+	}
+
+	/**
+	 * Find all matches for this NFA in the token source.
+	 *
+	 * @param fiDoc where to read tokens from
+	 * @param pos current matching position
+	 * @param direction matching direction
+	 * @param matchEnds where to collect the matches found, or null if we don't want to collect them
+	 * @return true if any (new) matches were found, false if not
+	 */
+	abstract boolean findMatchesInternal(ForwardIndexDocument fiDoc, int pos, int direction, Set&lt;Integer&gt; matchEnds);
+
+	/**
+	 * Find all matches for this NFA in the token source.
+	 *
+	 * @param fiDoc where to read tokens from
+	 * @param pos current matching position
+	 * @param direction matching direction
+	 * @return the matches found, if any
+	 */
+	public NavigableSet&lt;Integer&gt; findMatches(ForwardIndexDocument fiDoc, int pos, int direction) {
+<span class="fc" id="L106">		NavigableSet&lt;Integer&gt; results = new TreeSet&lt;&gt;();</span>
+<span class="fc" id="L107">		findMatchesInternal(fiDoc, pos, direction, results);</span>
+<span class="fc" id="L108">		return results;</span>
+	}
+
+	/**
+	 * Does the token source match this NFA?
+	 *
+	 * @param fiDoc where to read tokens from
+	 * @param pos current matching position
+	 * @param direction matching direction
+	 * @return true if fiDoc matches, false if not
+	 */
+	public boolean matches(ForwardIndexDocument fiDoc, int pos, int direction) {
+<span class="fc" id="L120">		return findMatchesInternal(fiDoc, pos, direction, null);</span>
+	}
+
+	/**
+	 * For any dangling output states this state has, fill in the specified state.
+	 *
+	 * @param state state to fill in for dangling output states
+	 */
+	abstract void fillDangling(NfaState state);
+
+	/**
+	 * Return a copy of the fragment starting from this state, and collect all (copied) states with dangling outputs.
+	 *
+	 * @param dangling where to collect copied states with dangling outputs, or null if we don't care about these
+	 * @param copiesMade states copied earlier during this copy operation, so we can deal with cyclic NFAs (i.e. don't keep copying,
+	 *   re-use the previous copy)
+	 * @return the copied fragment
+	 */
+	final NfaState copy(Collection&lt;NfaState&gt; dangling, Map&lt;NfaState, NfaState&gt; copiesMade) {
+<span class="fc" id="L139">		NfaState existingCopy = copiesMade.get(this);</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">		if (existingCopy != null)</span>
+<span class="fc" id="L141">			return existingCopy;</span>
+<span class="fc" id="L142">		return copyInternal(dangling, copiesMade);</span>
+	}
+
+	/**
+	 * Return a copy of the fragment starting from this state, and collect all (copied) states with dangling outputs.
+	 *
+	 * Subclasses can override this (not copy()), so they don't have to look at copiesMade but can always just create a
+	 * copy of themselves.
+	 *
+	 * @param dangling where to collect copied states with dangling outputs, or null if we don't care about these
+	 * @param copiesMade states copied earlier during this copy operation, so we can deal with cyclic NFAs (i.e. don't keep copying,
+	 *   re-use the previous copy)
+	 * @return the copied fragment
+	 */
+	abstract NfaState copyInternal(Collection&lt;NfaState&gt; dangling, Map&lt;NfaState, NfaState&gt; copiesMade);
+
+	/**
+	 * Set the next state for a given input.
+	 *
+	 * @param input input
+	 * @param state next state
+	 */
+	public abstract void setNextState(int input, NfaState state);
+
+	@Override
+	public String toString() {
+<span class="fc" id="L168">		Map&lt;NfaState, Integer&gt; stateNrs = new IdentityHashMap&lt;&gt;();</span>
+<span class="fc" id="L169">		return &quot;NFA:&quot; + dump(stateNrs);</span>
+	}
+
+	public static String dump(NfaState state, Map&lt;NfaState, Integer&gt; stateNrs) {
+<span class="fc bfc" id="L173" title="All 2 branches covered.">		return state == null ? &quot;DANGLING&quot; : state.dump(stateNrs);</span>
+	}
+
+	/**
+	 * Visit each node and replace dangling arrows (nulls) with the match state.
+	 *
+	 * @param visited nodes visited so far, so we don't visit nodes multiple times
+	 */
+	public void finish(Set&lt;NfaState&gt; visited) {
+<span class="fc bfc" id="L182" title="All 2 branches covered.">		if (visited.contains(this))</span>
+<span class="fc" id="L183">			return;</span>
+<span class="fc" id="L184">		visited.add(this);</span>
+<span class="fc" id="L185">		finishInternal(visited);</span>
+<span class="fc" id="L186">	}</span>
+
+	/**
+	 * Visit each node and replace dangling arrows (nulls) with the match state.
+	 *
+	 * @param visited nodes visited so far, this one included. finish() uses this to
+	 *   make sure we don't visit the same node twice, so always call finish() in your
+	 *   implementations, not finishInternal().
+	 */
+	protected abstract void finishInternal(Set&lt;NfaState&gt; visited);
+
+	public String dump(Map&lt;NfaState, Integer&gt; stateNrs) {
+<span class="fc" id="L198">		Integer n = stateNrs.get(this);</span>
+<span class="pc bpc" id="L199" title="1 of 2 branches missed.">		if (n != null)</span>
+<span class="nc" id="L200">			return &quot;#&quot; + n;</span>
+<span class="fc" id="L201">		n = stateNrs.size() + 1;</span>
+<span class="fc" id="L202">		stateNrs.put(this, n);</span>
+<span class="fc" id="L203">		return &quot;#&quot; + n + &quot;:&quot; + dumpInternal(stateNrs);</span>
+	}
+
+	protected abstract String dumpInternal(Map&lt;NfaState, Integer&gt; stateNrs);
+
+	/**
+	 * Does this NFA match the empty sequence?
+	 * @param statesVisited states we've already visited, so we can deal with cycles
+	 * @return true if it matches the empty sequence, false if not
+	 */
+	public abstract boolean matchesEmptySequence(Set&lt;NfaState&gt; statesVisited);
+
+	/**
+	 * Are all hits from this NFA the same length?
+	 * @param statesVisited states we've already visited, so we can deal with cycles
+	 * @return true if all hits are the same length, false if not
+	 */
+	public abstract boolean hitsAllSameLength(Set&lt;NfaState&gt; statesVisited);
+
+	/**
+	 * What's the minimum hit length?
+	 * @param statesVisited states we've already visited, so we can deal with cycles
+	 * @return minimum hit length
+	 */
+	public abstract int hitsLengthMin(Set&lt;NfaState&gt; statesVisited);
+
+	/**
+	 * What's the maximum hit length?
+	 * @param statesVisited states we've already visited, so we can deal with cycles
+	 * @return maximum hit length
+	 */
+	public abstract int hitsLengthMax(Set&lt;NfaState&gt; statesVisited);
+
+	public static Set&lt;NfaState&gt; emptySet() {
+<span class="nc" id="L237">		return Collections.newSetFromMap(new IdentityHashMap&lt;NfaState, Boolean&gt;());</span>
+	}
+
+	public final void lookupPropertyNumbers(ForwardIndexAccessor fiAccessor, Map&lt;NfaState, Boolean&gt; statesVisited) {
+<span class="fc bfc" id="L241" title="All 2 branches covered.">		if (statesVisited.containsKey(this))</span>
+<span class="fc" id="L242">			return;</span>
+<span class="fc" id="L243">		statesVisited.put(this, true);</span>
+<span class="fc" id="L244">		lookupPropertyNumbersInternal(fiAccessor, statesVisited);</span>
+<span class="fc" id="L245">	}</span>
+
+	abstract void lookupPropertyNumbersInternal(ForwardIndexAccessor fiAccessor, Map&lt;NfaState, Boolean&gt; statesVisited);
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

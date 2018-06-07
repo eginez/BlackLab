@@ -1,0 +1,354 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MetadataFetcherKbDpo.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.indexers</a> &gt; <span class="el_source">MetadataFetcherKbDpo.java</span></div><h1>MetadataFetcherKbDpo.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.indexers;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.StringReader;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
+import java.net.UnknownHostException;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import javax.xml.XMLConstants;
+import javax.xml.namespace.NamespaceContext;
+import javax.xml.xpath.XPath;
+import javax.xml.xpath.XPathConstants;
+import javax.xml.xpath.XPathExpression;
+import javax.xml.xpath.XPathExpressionException;
+import javax.xml.xpath.XPathFactory;
+
+import org.w3c.dom.DOMException;
+import org.w3c.dom.Document;
+import org.w3c.dom.Node;
+import org.xml.sax.SAXException;
+
+import nl.inl.blacklab.index.DocIndexer;
+import nl.inl.blacklab.index.Indexer;
+import nl.inl.blacklab.index.MetadataFetcher;
+import nl.inl.blacklab.indexers.MetadataFetcherKbDpo.GetKbMetadata.Metadata;
+import nl.inl.util.XmlUtil;
+
+/**
+ * Metadata fetcher for KB DPO metadata.
+ *
+ * In order for this class to work correctly, you should add the following
+ * libraries to the classpath (from Apache Http Components, version 4.1.2 or up):
+ * - commons-codec
+ * - commons-logging
+ * - httpclient
+ * - httpcore
+ */
+public class MetadataFetcherKbDpo extends MetadataFetcher {
+
+	/**
+	 * Retrieve metadata from KB.
+	 */
+	public static class GetKbMetadata {
+
+		public static class Metadata {
+			public String title;
+
+			public String author;
+
+			public String date;
+
+			public String ppn;
+
+			public Metadata(String title, String author, String date, String ppn) {
+<span class="nc" id="L63">				super();</span>
+<span class="nc" id="L64">				this.title = title;</span>
+<span class="nc" id="L65">				this.author = author;</span>
+<span class="nc" id="L66">				this.date = date;</span>
+<span class="nc" id="L67">				this.ppn = ppn;</span>
+<span class="nc" id="L68">			}</span>
+		}
+
+		/** Has the HTTP client been initialized? */
+<span class="nc" id="L72">		static boolean initialised = false;</span>
+
+		/* Xpath expressions used to get metadata fields from XML */
+		static XPathExpression xpathPpn;
+		static XPathExpression xpathTitle;
+		static XPathExpression xpathAuthor;
+		static XPathExpression xpathDate;
+
+		/** Apache HTTP components classes, ctors and methods
+		 *  (we use reflection to avoid static dependency on these libs) */
+		private static Class&lt;?&gt; clsDefaultHttpClient;
+		private static Class&lt;?&gt; clsHttpUriRequest;
+		private static Class&lt;?&gt; clsHttpGet;
+		private static Class&lt;?&gt; clsHttpResponse;
+		private static Class&lt;?&gt; clsStatusLine;
+		private static Class&lt;?&gt; clsHttpEntity;
+		private static Class&lt;?&gt; clsEntityUtils;
+		private static Constructor&lt;?&gt; ctorHttpGetUrl;
+		private static Method methHttpClientExecute;
+		private static Method methHttpResponseGetStatusLine;
+		private static Method methHttpResponseGetEntity;
+		private static Method methStatusLineGetStatusCode;
+		private static Method methStatusLineGetReasonPhrase;
+		private static Method methHttpEntityGetContent;
+		private static Method methEntityUtilsConsume;
+
+		/** The HTTP client used to get metadata from webservices */
+		static Object defaultHttpClient;
+
+		/** Cached metadata (saves URL requests) */
+<span class="nc" id="L102">		static Map&lt;String, Metadata&gt; cached = new HashMap&lt;&gt;();</span>
+
+		private static void init() {
+
+			// Init XPath
+<span class="nc" id="L107">			XmlUtil.setNamespaceAware(true);</span>
+<span class="nc" id="L108">			XPathFactory factory = XPathFactory.newInstance();</span>
+<span class="nc" id="L109">			XPath xpath = factory.newXPath();</span>
+<span class="nc" id="L110">			xpath.setNamespaceContext(new NamespaceContext() {</span>
+				@Override
+				public Iterator&lt;?&gt; getPrefixes(String arg0) {
+<span class="nc" id="L113">					throw new UnsupportedOperationException();</span>
+				}
+
+				@Override
+				public String getPrefix(String arg0) {
+<span class="nc" id="L118">					throw new UnsupportedOperationException();</span>
+				}
+
+				@Override
+				public String getNamespaceURI(String prefix) {
+<span class="nc bnc" id="L123" title="All 2 branches missed.">					if (prefix == null)</span>
+<span class="nc" id="L124">						throw new NullPointerException(&quot;Null prefix&quot;);</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">					if (prefix.equals(&quot;xsi&quot;))</span>
+<span class="nc" id="L126">						return &quot;http://www.w3.org/2001/XMLSchema-instance&quot;;</span>
+<span class="nc bnc" id="L127" title="All 2 branches missed.">					if (prefix.equals(&quot;dc&quot;))</span>
+<span class="nc" id="L128">						return &quot;http://purl.org/dc/elements/1.1/&quot;;</span>
+<span class="nc bnc" id="L129" title="All 2 branches missed.">					if (prefix.equals(&quot;dcx&quot;))</span>
+<span class="nc" id="L130">						return &quot;http://krait.kb.nl/coop/tel/handbook/telterms.html&quot;;</span>
+<span class="nc bnc" id="L131" title="All 2 branches missed.">					if (prefix.equals(&quot;&quot;))</span>
+<span class="nc" id="L132">						return &quot;http://www.openarchives.org/OAI/2.0/&quot;;</span>
+<span class="nc bnc" id="L133" title="All 2 branches missed.">					if (prefix.equals(&quot;xml&quot;))</span>
+<span class="nc" id="L134">						return XMLConstants.XML_NS_URI;</span>
+<span class="nc" id="L135">					return XMLConstants.NULL_NS_URI;</span>
+				}
+			});
+
+			// Compile XPath expressions
+			try {
+<span class="nc" id="L141">				xpathPpn = xpath.compile(&quot;//dcx:recordIdentifier[@xsi:type='dcx:PPN']&quot;);</span>
+<span class="nc" id="L142">				xpathTitle = xpath.compile(&quot;//dc:title&quot;);</span>
+<span class="nc" id="L143">				xpathAuthor = xpath.compile(&quot;//dc:creator&quot;);</span>
+<span class="nc" id="L144">				xpathDate = xpath.compile(&quot;//dc:date&quot;);</span>
+<span class="nc" id="L145">			} catch (XPathExpressionException e) {</span>
+<span class="nc" id="L146">				throw new RuntimeException(e);</span>
+<span class="nc" id="L147">			}</span>
+
+			try {
+				// Use reflection to get handle to classes, ctors and methods
+				// (so we avoid static dependencies on the Apache HTTP libraries)
+<span class="nc" id="L152">				clsDefaultHttpClient = Class.forName(&quot;org.apache.http.impl.client.DefaultHttpClient&quot;);</span>
+<span class="nc" id="L153">				clsHttpUriRequest = Class.forName(&quot;org.apache.http.client.methods.HttpUriRequest&quot;);</span>
+<span class="nc" id="L154">				clsHttpGet = Class.forName(&quot;org.apache.http.client.methods.HttpGet&quot;);</span>
+<span class="nc" id="L155">				clsHttpResponse = Class.forName(&quot;org.apache.http.HttpResponse&quot;);</span>
+<span class="nc" id="L156">				clsStatusLine = Class.forName(&quot;org.apache.http.StatusLine&quot;);</span>
+<span class="nc" id="L157">				clsHttpEntity = Class.forName(&quot;org.apache.http.HttpEntity&quot;);</span>
+<span class="nc" id="L158">				clsEntityUtils = Class.forName(&quot;org.apache.http.util.EntityUtils&quot;);</span>
+<span class="nc" id="L159">				ctorHttpGetUrl = clsHttpGet.getConstructor(String.class);</span>
+<span class="nc" id="L160">				methHttpClientExecute = clsDefaultHttpClient.getMethod(&quot;execute&quot;, clsHttpUriRequest);</span>
+<span class="nc" id="L161">				methHttpResponseGetStatusLine = clsHttpResponse.getMethod(&quot;getStatusLine&quot;);</span>
+<span class="nc" id="L162">				methHttpResponseGetEntity = clsHttpResponse.getMethod(&quot;getEntity&quot;);</span>
+<span class="nc" id="L163">				methStatusLineGetStatusCode = clsStatusLine.getMethod(&quot;getStatusCode&quot;);</span>
+<span class="nc" id="L164">				methStatusLineGetReasonPhrase = clsStatusLine.getMethod(&quot;getReasonPhrase&quot;);</span>
+<span class="nc" id="L165">				methHttpEntityGetContent = clsHttpEntity.getMethod(&quot;getContent&quot;);</span>
+<span class="nc" id="L166">				methEntityUtilsConsume = clsEntityUtils.getMethod(&quot;consume&quot;, clsHttpEntity);</span>
+
+				// Instantiate HTTP client object
+<span class="nc" id="L169">				defaultHttpClient = clsDefaultHttpClient.newInstance();</span>
+
+<span class="nc" id="L171">			} catch (Exception e) {</span>
+<span class="nc" id="L172">				throw new RuntimeException(&quot;Error finding (some of the) Apache HTTP libraries.&quot;</span>
+					+ &quot;Make sure Apache commons-codec, commons-logging, httpclient, httpcore (4.1.2 or higher) are on the classpath.&quot;,
+					e);
+<span class="nc" id="L175">			}</span>
+
+<span class="nc" id="L177">			initialised = true;</span>
+<span class="nc" id="L178">		}</span>
+
+		private static Document getMetadataByDpo(String dpo) {
+<span class="nc" id="L181">			String url = &quot;http://services.kb.nl/mdo/oai?verb=GetRecord&amp;identifier=DPO:dpo:&quot; + dpo</span>
+					+ &quot;:mpeg21&amp;metadataPrefix=didl&quot;;
+<span class="nc" id="L183">			return fetchDomDocument(url);</span>
+		}
+
+		private static Document getMetadataByPpn(String ppn) {
+<span class="nc" id="L187">			String url = &quot;http://services.kb.nl/mdo/oai?verb=GetRecord&amp;identifier=DPO:DPO:&quot; + ppn</span>
+					+ &quot;&amp;metadataPrefix=dcx&quot;;
+<span class="nc" id="L189">			return fetchDomDocument(url);</span>
+		}
+
+		private static String fetchDocument(String url) {
+<span class="nc" id="L193">			int code = -1;</span>
+			String reason;
+
+			// HTTP
+			try {
+
+				// HttpGet httpGet = new HttpGet(url);
+<span class="nc" id="L200">				Object httpGet = ctorHttpGetUrl.newInstance(url);</span>
+
+				// HttpResponse response = defaultHttpClient.execute(httpGet);
+<span class="nc" id="L203">				Object httpResponse = methHttpClientExecute.invoke(defaultHttpClient, httpGet);</span>
+
+				// StatusLine statusLine = httpResponse.getStatusLine();
+<span class="nc" id="L206">				Object statusLine = methHttpResponseGetStatusLine.invoke(httpResponse);</span>
+
+				// code = statusLine.getStatusCode();
+<span class="nc" id="L209">				code = (Integer) methStatusLineGetStatusCode.invoke(statusLine);</span>
+
+				// reason = statusLine.getReasonPhrase();
+<span class="nc" id="L212">				reason = (String) methStatusLineGetReasonPhrase.invoke(statusLine);</span>
+
+				// HttpEntity httpEntity = httpResponse.getEntity();
+<span class="nc" id="L215">				Object httpEntity = methHttpResponseGetEntity.invoke(httpResponse);</span>
+
+<span class="nc bnc" id="L217" title="All 2 branches missed.">				if (code == 200) {</span>
+					// InputStream is = httpEntity.getContent();
+<span class="nc" id="L219">					InputStream is = (InputStream) methHttpEntityGetContent.invoke(httpEntity);</span>
+
+<span class="nc" id="L221">					try (BufferedReader b = new BufferedReader(new InputStreamReader(is, Indexer.DEFAULT_INPUT_ENCODING))) {</span>
+<span class="nc" id="L222">						StringBuilder content = new StringBuilder();</span>
+						while (true) {
+<span class="nc" id="L224">							String line = b.readLine();</span>
+<span class="nc bnc" id="L225" title="All 2 branches missed.">							if (line == null)</span>
+<span class="nc" id="L226">								break;</span>
+<span class="nc" id="L227">							content.append(line);</span>
+<span class="nc" id="L228">						}</span>
+<span class="nc" id="L229">						return content.toString();</span>
+<span class="nc bnc" id="L230" title="All 8 branches missed.">					}</span>
+				}
+
+				try {
+					// Some HTTP error occurred (e.g. 403 / 404)
+					// Make sure the entity content is fully consumed and the content stream, if
+					// exists, is closed. The process is done, quietly , without throwing any
+					// IOException.
+<span class="nc" id="L238">					methEntityUtilsConsume.invoke(httpEntity);</span>
+<span class="nc" id="L239">				} catch (Exception e) {</span>
+					// Not important, ignore
+<span class="nc" id="L241">				}</span>
+
+<span class="nc" id="L243">			} catch (UnknownHostException e) {</span>
+<span class="nc" id="L244">				reason = &quot;Unknown host&quot;;</span>
+<span class="nc" id="L245">			} catch (IOException e) {</span>
+<span class="nc" id="L246">				reason = &quot;IOException: &quot; + e.getMessage();</span>
+<span class="nc" id="L247">			} catch (Exception e) {</span>
+<span class="nc" id="L248">				e.printStackTrace();</span>
+<span class="nc bnc" id="L249" title="All 2 branches missed.">				if (e.getCause() != null)</span>
+<span class="nc" id="L250">					reason = e.getCause().getMessage();</span>
+				else
+<span class="nc" id="L252">					reason = e.getMessage();</span>
+<span class="nc" id="L253">			}</span>
+<span class="nc bnc" id="L254" title="All 2 branches missed.">			if (code != 200)</span>
+<span class="nc" id="L255">				System.err.println(&quot;Could not fetch &quot; + url + &quot; (&quot; + code + &quot; &quot; + reason + &quot;)&quot;);</span>
+
+<span class="nc" id="L257">			return null;</span>
+		}
+
+		private static Document fetchDomDocument(String url) {
+<span class="nc" id="L261">			String content = fetchDocument(url);</span>
+			try {
+<span class="nc" id="L263">				return XmlUtil.parseXml(new StringReader(content));</span>
+<span class="nc" id="L264">			} catch (SAXException e) {</span>
+<span class="nc" id="L265">				e.printStackTrace();</span>
+			}
+<span class="nc" id="L267">			return null;</span>
+		}
+
+		/**
+		 * Fetch metadata for a document from its DPO number
+		 *
+		 * @param dpo the DPO number
+		 *
+		 * @return the metadata fetched
+		 */
+		public static Metadata getMetadataFieldsFromDpo(String dpo) {
+<span class="nc bnc" id="L278" title="All 2 branches missed.">			if (!initialised)</span>
+<span class="nc" id="L279">				init();</span>
+
+<span class="nc bnc" id="L281" title="All 2 branches missed.">			if (cached.containsKey(dpo))</span>
+<span class="nc" id="L282">				return cached.get(dpo);</span>
+
+			// Retrieve and parse metadata
+<span class="nc" id="L285">			Document doc = getMetadataByDpo(dpo);</span>
+
+			try {
+
+<span class="nc" id="L289">				Node nodePpn = (Node) xpathPpn.evaluate(doc, XPathConstants.NODE);</span>
+<span class="nc bnc" id="L290" title="All 2 branches missed.">				String ppn = nodePpn == null ? &quot;?&quot; : nodePpn.getTextContent();</span>
+<span class="nc" id="L291">				Document doc2 = getMetadataByPpn(ppn);</span>
+
+<span class="nc" id="L293">				Node nodeTitle = (Node) xpathTitle.evaluate(doc2, XPathConstants.NODE);</span>
+<span class="nc" id="L294">				Node nodeAuthor = (Node) xpathAuthor.evaluate(doc2, XPathConstants.NODE);</span>
+<span class="nc" id="L295">				Node nodeDate = (Node) xpathDate.evaluate(doc2, XPathConstants.NODE);</span>
+<span class="nc bnc" id="L296" title="All 2 branches missed.">				String title = nodeTitle == null ? &quot;?&quot; : nodeTitle.getTextContent();</span>
+<span class="nc bnc" id="L297" title="All 2 branches missed.">				String author = nodeAuthor == null ? &quot;?&quot; : nodeAuthor.getTextContent();</span>
+<span class="nc bnc" id="L298" title="All 2 branches missed.">				String date = nodeDate == null ? &quot;?&quot; : nodeDate.getTextContent();</span>
+
+<span class="nc" id="L300">				Metadata metadata = new Metadata(title, author, date, ppn);</span>
+<span class="nc" id="L301">				cached.put(dpo, metadata); // save in cache so we don't query it twice</span>
+<span class="nc" id="L302">				return metadata;</span>
+
+<span class="nc" id="L304">			} catch (XPathExpressionException e) {</span>
+<span class="nc" id="L305">				throw new RuntimeException(e);</span>
+<span class="nc" id="L306">			} catch (DOMException e) {</span>
+<span class="nc" id="L307">				throw new RuntimeException(e);</span>
+			}
+		}
+
+<span class="nc" id="L311">		private GetKbMetadata() {</span>
+			// Cannot instantiate
+<span class="nc" id="L313">		}</span>
+
+	}
+
+	// TODO: improve structure to avoid test-specific code
+	final static String TEST_FROM_INPUT_FILE = &quot;dpo_123_0002_master.jpf&quot;;
+
+	/** Pattern for getting DPO number from image file name */
+<span class="nc" id="L321">	private final static Pattern PATT_DPO = Pattern.compile(&quot;^dpo_(\\d+)_&quot;);</span>
+
+	public MetadataFetcherKbDpo(DocIndexer docIndexer) {
+<span class="nc" id="L324">		super(docIndexer);</span>
+<span class="nc" id="L325">	}</span>
+
+	@Override
+	public void addMetadata() {
+		String fileName;
+<span class="nc bnc" id="L330" title="All 2 branches missed.">		if (docIndexer != null)</span>
+<span class="nc" id="L331">			fileName = docIndexer.getCurrentLuceneDoc().get(&quot;imageFileName&quot;);</span>
+		else {
+			// TEST
+<span class="nc" id="L334">			fileName = TEST_FROM_INPUT_FILE;</span>
+		}
+
+<span class="nc" id="L337">		Matcher m = PATT_DPO.matcher(fileName);</span>
+<span class="nc bnc" id="L338" title="All 2 branches missed.">		if (m.find()) {</span>
+			String dpo;
+<span class="nc" id="L340">			dpo = m.group(1);</span>
+<span class="nc" id="L341">			Metadata metadata = GetKbMetadata.getMetadataFieldsFromDpo(dpo);</span>
+<span class="nc" id="L342">			docIndexer.addMetadataField(&quot;title&quot;, metadata.title);</span>
+<span class="nc" id="L343">			docIndexer.addMetadataField(&quot;author&quot;, metadata.author);</span>
+<span class="nc" id="L344">			docIndexer.addMetadataField(&quot;date&quot;, metadata.date);</span>
+<span class="nc" id="L345">			docIndexer.addMetadataField(&quot;ppn&quot;, metadata.ppn);</span>
+<span class="nc" id="L346">		} else {</span>
+<span class="nc" id="L347">			System.err.println(&quot;DPO number not found for imageFileName &quot; + fileName);</span>
+<span class="nc" id="L348">			return;</span>
+		}
+
+<span class="nc" id="L351">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

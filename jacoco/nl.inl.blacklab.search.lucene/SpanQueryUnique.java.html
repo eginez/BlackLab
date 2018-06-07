@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SpanQueryUnique.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">SpanQueryUnique.java</span></div><h1>SpanQueryUnique.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.lucene;
+
+import java.io.IOException;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.index.TermContext;
+import org.apache.lucene.search.IndexSearcher;
+
+/**
+ * Makes sure the resulting hits do not contain consecutive duplicate hits. These may arise when
+ * e.g. combining multiple SpanFuzzyQueries with OR.
+ */
+class SpanQueryUnique extends BLSpanQuery {
+	BLSpanQuery src;
+
+<span class="fc" id="L35">	public SpanQueryUnique(BLSpanQuery src) {</span>
+<span class="fc" id="L36">		this.src = BLSpanQuery.ensureSorted(src);</span>
+<span class="fc" id="L37">	}</span>
+
+	@Override
+	public BLSpanQuery rewrite(IndexReader reader) throws IOException {
+<span class="fc" id="L41">		BLSpanQuery rewritten = src.rewrite(reader);</span>
+<span class="pc bpc" id="L42" title="1 of 2 branches missed.">		if (rewritten != src) {</span>
+<span class="pc bpc" id="L43" title="1 of 2 branches missed.">			if (rewritten.hitsAreUnique())</span>
+<span class="nc" id="L44">				return rewritten;</span>
+<span class="fc" id="L45">			return new SpanQueryUnique(rewritten);</span>
+		}
+<span class="nc" id="L47">		return this;</span>
+	}
+
+	@Override
+	public boolean matchesEmptySequence() {
+<span class="nc" id="L52">		return src.matchesEmptySequence();</span>
+	}
+
+	@Override
+	public BLSpanQuery noEmpty() {
+<span class="nc" id="L57">		return new SpanQueryUnique(src.noEmpty());</span>
+	}
+
+	@Override
+	public BLSpanWeight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
+<span class="fc" id="L62">		BLSpanWeight weight = src.createWeight(searcher, needsScores);</span>
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">		return new SpanWeightUnique(weight, searcher, needsScores ? getTermContexts(weight) : null);</span>
+	}
+
+	class SpanWeightUnique extends BLSpanWeight {
+
+		final BLSpanWeight weight;
+
+<span class="fc" id="L70">		public SpanWeightUnique(BLSpanWeight weight, IndexSearcher searcher, Map&lt;Term, TermContext&gt; terms) throws IOException {</span>
+<span class="fc" id="L71">			super(SpanQueryUnique.this, searcher, terms);</span>
+<span class="fc" id="L72">			this.weight = weight;</span>
+<span class="fc" id="L73">		}</span>
+
+		@Override
+		public void extractTerms(Set&lt;Term&gt; terms) {
+<span class="fc" id="L77">			weight.extractTerms(terms);</span>
+<span class="fc" id="L78">		}</span>
+
+		@Override
+		public void extractTermContexts(Map&lt;Term, TermContext&gt; contexts) {
+<span class="nc" id="L82">			weight.extractTermContexts(contexts);</span>
+<span class="nc" id="L83">		}</span>
+
+		@Override
+		public BLSpans getSpans(final LeafReaderContext context, Postings requiredPostings) throws IOException {
+<span class="fc" id="L87">			BLSpans srcSpans = weight.getSpans(context, requiredPostings);</span>
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">			if (srcSpans == null)</span>
+<span class="nc" id="L89">				return null;</span>
+<span class="pc bpc" id="L90" title="1 of 2 branches missed.">			if (!src.hitsStartPointSorted())</span>
+<span class="nc" id="L91">				return new PerDocumentSortedSpans(srcSpans, PerDocumentSortedSpans.cmpStartPoint, true);</span>
+<span class="fc" id="L92">			return new SpansUnique(srcSpans);</span>
+		}
+	}
+
+	@Override
+	public String toString(String field) {
+<span class="nc" id="L98">		return &quot;UNIQ(&quot; + src + &quot;)&quot;;</span>
+	}
+
+	@Override
+	public String getField() {
+<span class="fc" id="L103">		return src.getField();</span>
+	}
+
+	@Override
+	public String getRealField() {
+<span class="fc" id="L108">		return src.getRealField();</span>
+	}
+
+	@Override
+	public boolean equals(Object o) {
+<span class="nc bnc" id="L113" title="All 2 branches missed.">		if (this == o)</span>
+<span class="nc" id="L114">			return true;</span>
+<span class="nc bnc" id="L115" title="All 2 branches missed.">		if (o instanceof SpanQueryUnique) {</span>
+<span class="nc" id="L116">			final SpanQueryUnique that = (SpanQueryUnique) o;</span>
+<span class="nc" id="L117">			return src.equals(that.src);</span>
+		}
+<span class="nc" id="L119">		return false;</span>
+	}
+
+	@Override
+	public int hashCode() {
+<span class="nc" id="L124">		return src.hashCode() ^ 0x98764038;</span>
+	}
+
+	@Override
+	public boolean hitsAllSameLength() {
+<span class="nc" id="L129">		return src.hitsAllSameLength();</span>
+	}
+
+	@Override
+	public int hitsLengthMin() {
+<span class="nc" id="L134">		return src.hitsLengthMin();</span>
+	}
+
+	@Override
+	public int hitsLengthMax() {
+<span class="nc" id="L139">		return src.hitsLengthMax();</span>
+	}
+
+	@Override
+	public boolean hitsStartPointSorted() {
+<span class="fc" id="L144">		return true;</span>
+	}
+
+	@Override
+	public boolean hitsEndPointSorted() {
+<span class="nc" id="L149">		return src.hitsEndPointSorted();</span>
+	}
+
+	@Override
+	public boolean hitsHaveUniqueStart() {
+<span class="nc" id="L154">		return src.hitsHaveUniqueStart();</span>
+	}
+
+	@Override
+	public boolean hitsHaveUniqueEnd() {
+<span class="nc" id="L159">		return src.hitsHaveUniqueEnd();</span>
+	}
+
+	@Override
+	public boolean hitsAreUnique() {
+<span class="fc" id="L164">		return true;</span>
+	}
+
+	@Override
+	public long reverseMatchingCost(IndexReader reader) {
+<span class="nc" id="L169">		return src.reverseMatchingCost(reader);</span>
+	}
+
+	@Override
+	public int forwardMatchingCost() {
+<span class="nc" id="L174">		return src.forwardMatchingCost();</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

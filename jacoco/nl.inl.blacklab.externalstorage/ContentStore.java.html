@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ContentStore.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.externalstorage</a> &gt; <span class="el_source">ContentStore.java</span></div><h1>ContentStore.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.externalstorage;
+
+import java.io.File;
+import java.nio.charset.Charset;
+import java.util.Set;
+
+import nl.inl.util.VersionFile;
+
+
+/**
+ * Store string content by integer id. Quickly retrieve (parts of) the string content.
+ */
+<span class="fc" id="L28">public abstract class ContentStore {</span>
+
+<span class="fc" id="L30">	static final Charset DEFAULT_CHARSET = Charset.forName(&quot;utf-8&quot;);</span>
+
+	/**
+	 * Store a document.
+	 *
+	 * It is possible to first call storePart() several times,
+	 * as long as you finish with a call to store. The parameter may
+	 * be the empty string if you wish.
+	 *
+	 * @param content (part of) the content of the document to store
+	 * @return the content store id assigned to the document
+	 */
+	public abstract int store(String content);
+
+	/**
+	 * Store part of a large document.
+	 *
+	 * You can call this several times, but it must end with a call to store()
+	 * or the document isn't properly stored.
+	 *
+	 * @param content part of the content of the document to store
+	 */
+	public abstract void storePart(String content);
+
+	/**
+	 * Retrieve a document from the content store.
+	 * @param id the document's content store id
+	 * @return the original content
+	 */
+	public abstract String retrieve(int id);
+
+	/**
+	 * Retrieve substring from a document.
+	 *
+	 * @param id
+	 *            content store document id
+	 * @param start
+	 *            start of the substring
+	 * @param end
+	 *            end of the substring
+	 * @return the substring
+	 */
+	public String retrievePart(int id, int start, int end) {
+<span class="fc" id="L73">		return retrieveParts(id, new int[] { start }, new int[] { end })[0];</span>
+	}
+
+	/**
+	 * Retrieve substrings from a document.
+	 *
+	 * @param id
+	 *            content store document id
+	 * @param start
+	 *            start of the substring
+	 * @param end
+	 *            end of the substring
+	 * @return the substrings
+	 */
+	public abstract String[] retrieveParts(int id, int[] start, int[] end);
+
+	/**
+	 * Close the content store
+	 */
+	public abstract void close();
+
+	/**
+	 * Delete a document from the content store.
+	 * @param id content store id of the document to delete
+	 */
+	public abstract void delete(int id);
+
+	/**
+	 * Clear the entire content store.
+	 */
+	public abstract void clear();
+
+	/**
+	 * Returns the set of doc ids in the store.
+	 * Note that the IDs of deleted document are still returned by this method.
+	 * Use isDeleted() to check.
+	 * @return the set of doc ids
+	 */
+	public abstract Set&lt;Integer&gt; getDocIds();
+
+	/**
+	 * Return true iff the entry with this id was deleted.
+	 * @param id the entry to check
+	 * @return true iff deleted
+	 */
+	public abstract boolean isDeleted(int id);
+
+	/**
+	 * Returns the document length in characters
+	 * @param id the document
+	 * @return the length in characters
+	 */
+	public abstract int getDocLength(int id);
+
+	public static ContentStore open(File indexXmlDir, boolean create) {
+		String type;
+<span class="fc bfc" id="L129" title="All 2 branches covered.">		if (create)</span>
+<span class="fc" id="L130">			type = &quot;fixedblock&quot;;</span>
+		else {
+<span class="fc" id="L132">			VersionFile vf = ContentStoreDirAbstract.getStoreTypeVersion(indexXmlDir);</span>
+<span class="fc" id="L133">			type = vf.getType();</span>
+		}
+<span class="pc bpc" id="L135" title="1 of 2 branches missed.">		if (type.equals(&quot;fixedblock&quot;))</span>
+<span class="fc" id="L136">			return new ContentStoreDirFixedBlock(indexXmlDir, create);</span>
+<span class="nc bnc" id="L137" title="All 2 branches missed.">		if (type.equals(&quot;utf8zip&quot;))</span>
+<span class="nc" id="L138">			return new ContentStoreDirZip(indexXmlDir, create);</span>
+<span class="nc bnc" id="L139" title="All 2 branches missed.">		if (type.equals(&quot;utf8&quot;))</span>
+<span class="nc" id="L140">			return new ContentStoreDirUtf8(indexXmlDir, create);</span>
+<span class="nc bnc" id="L141" title="All 2 branches missed.">		if (type.equals(&quot;utf16&quot;)) {</span>
+<span class="nc" id="L142">			throw new UnsupportedOperationException(&quot;UTF-16 content store is deprecated. Please re-index your data.&quot;);</span>
+		}
+<span class="nc" id="L144">		throw new UnsupportedOperationException(&quot;Unknown content store type &quot; + type);</span>
+	}
+
+	/** @return the set of all content store ids */
+	public abstract Set&lt;Integer&gt; idSet();
+
+	/** A task to perform on a document in the content store. */
+	public interface DocTask {
+		void perform(int cid, String contents);
+	}
+
+	/** Perform a task on each document in the content store.
+	 * @param task the task to perform
+	 */
+	public void forEachDocument(DocTask task) {
+<span class="nc bnc" id="L159" title="All 2 branches missed.">		for (Integer cid: idSet()) {</span>
+<span class="nc" id="L160">			task.perform(cid, retrieve(cid));</span>
+<span class="nc" id="L161">		}</span>
+<span class="nc" id="L162">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

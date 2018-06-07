@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ConvertPluginOpenConvert.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.indexers.preprocess</a> &gt; <span class="el_source">ConvertPluginOpenConvert.java</span></div><h1>ConvertPluginOpenConvert.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.indexers.preprocess;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.PushbackInputStream;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Optional;
+import java.util.Set;
+import java.util.jar.Manifest;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.NullNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
+public class ConvertPluginOpenConvert implements ConvertPlugin {
+	private static final String PROP_JAR     = &quot;jarPath&quot;;
+
+	private static final String VERSION      = &quot;0.2&quot;;
+
+	private ClassLoader loader;
+
+	private Class&lt;?&gt;  OpenConvert;
+	private Method    OpenConvert_GetConverter;
+
+	private Class&lt;?&gt;  SimpleInputOutputProcess;
+	private Method    SimpleInputOutputProcess_handleStream;
+
+<span class="nc" id="L39">	public ConvertPluginOpenConvert() {</span>
+		//
+<span class="nc" id="L41">	}</span>
+
+	@Override
+	public void init(Optional&lt;ObjectNode&gt; configNode) throws PluginException {
+<span class="nc" id="L45">		ObjectNode config = configNode.orElseThrow(() -&gt; new PluginException(&quot;This plugin requires a configuration.&quot;));</span>
+
+<span class="nc" id="L47">		File jar = new File(configStr(config, PROP_JAR));</span>
+<span class="nc bnc" id="L48" title="All 2 branches missed.">		if (!jar.exists())</span>
+<span class="nc" id="L49">			throw new PluginException(&quot;Could not find the openConvert jar at location &quot; + jar.toString());</span>
+<span class="nc bnc" id="L50" title="All 2 branches missed.">		if (!jar.canRead())</span>
+<span class="nc" id="L51">			throw new PluginException(&quot;Could not read the openConvert jar at location &quot; + jar.toString());</span>
+
+		try {
+<span class="nc" id="L54">			URL jarUrl = jar.toURI().toURL();</span>
+<span class="nc" id="L55">			loader = new URLClassLoader(new URL[]{jarUrl}, null);</span>
+<span class="nc" id="L56">			assertVersion(loader);</span>
+
+<span class="nc" id="L58">			OpenConvert = loader.loadClass(&quot;org.ivdnt.openconvert.converters.OpenConvert&quot;);</span>
+<span class="nc" id="L59">			OpenConvert_GetConverter = OpenConvert.getMethod(&quot;getConverter&quot;, String.class, String.class);</span>
+
+<span class="nc" id="L61">			SimpleInputOutputProcess = loader.loadClass(&quot;org.ivdnt.openconvert.filehandling.SimpleInputOutputProcess&quot;);</span>
+<span class="nc" id="L62">			SimpleInputOutputProcess_handleStream = SimpleInputOutputProcess.getMethod(&quot;handleStream&quot;, InputStream.class, Charset.class, OutputStream.class);</span>
+<span class="nc" id="L63">		} catch (ClassNotFoundException | NoSuchMethodException | SecurityException | MalformedURLException e) {</span>
+<span class="nc" id="L64">			throw new PluginException(&quot;Error loading the OpenConvert jar: &quot; + e.getMessage(), e);</span>
+<span class="nc" id="L65">		}</span>
+<span class="nc" id="L66">	}</span>
+
+	@Override
+	public void perform(InputStream is, Charset inputCharset, String inputFormat, OutputStream os) throws PluginException {
+		// Set the ContextClassLoader to use the UrlClassLoader we pointed at the OpenConvert jar.
+		// This is required because OpenConvert implicitly loads some dependencies through locators/providers (such as its xml transformers)
+		// and these locators/providers sometimes prefer to use the ContextClassLoader, which may have been set by a servlet container or the like.
+		// If those cases, the contextClassLoader does not have the jar we loaded on its classpath, and so it cannot find the correct classes.
+<span class="nc" id="L74">		ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();</span>
+<span class="nc" id="L75">		Thread.currentThread().setContextClassLoader(loader);</span>
+		try {
+<span class="nc" id="L77">			performImpl(is, inputCharset, inputFormat, os);</span>
+		} finally {
+<span class="nc" id="L79">			Thread.currentThread().setContextClassLoader(originalClassLoader);</span>
+<span class="nc" id="L80">		}</span>
+<span class="nc" id="L81">	}</span>
+
+	private void performImpl(InputStream _in, Charset inputCharset, String inputFormat, OutputStream out) throws PluginException {
+<span class="nc" id="L84">		try (PushbackInputStream in = new PushbackInputStream(_in, 251)) {</span>
+			// important to let openconvert know what we want to do
+<span class="nc" id="L86">			inputFormat = getActualFormat(in, inputFormat);</span>
+<span class="nc bnc" id="L87" title="All 2 branches missed.">			if (!canConvert(in, inputCharset, inputFormat))</span>
+<span class="nc" id="L88">				throw new PluginException(&quot;The OpenConvert plugin does not support conversion from '&quot; + inputFormat + &quot;' to '&quot; + getOutputFormat() + &quot;'&quot;);</span>
+
+<span class="nc" id="L90">			Object OpenConvertInstance = OpenConvert.newInstance();</span>
+<span class="nc" id="L91">			Object SimpleInputOutputProcessInstance = OpenConvert_GetConverter.invoke(OpenConvertInstance, getOutputFormat(), inputFormat);</span>
+
+<span class="nc" id="L93">			SimpleInputOutputProcess_handleStream.invoke(SimpleInputOutputProcessInstance, in, inputCharset, out);</span>
+<span class="nc bnc" id="L94" title="All 8 branches missed.">		} catch (InstantiationException | IllegalAccessException | IllegalArgumentException | InvocationTargetException | IOException e) {</span>
+<span class="nc" id="L95">			throw new PluginException(&quot;Exception while running OpenConvert: &quot; + e.getMessage(), e);</span>
+<span class="nc" id="L96">		}</span>
+<span class="nc" id="L97">	}</span>
+
+	@Override
+	public String getId() {
+<span class="nc" id="L101">		return &quot;OpenConvert&quot;;</span>
+	}
+
+	@Override
+	public String getDisplayName() {
+<span class="nc" id="L106">		return &quot;OpenConvert&quot;;</span>
+	}
+
+	@Override
+	public String getDescription() {
+<span class="nc" id="L111">		return &quot;File converter using the OpenConvert library&quot;;</span>
+	}
+
+<span class="nc" id="L114">	private static final Set&lt;String&gt; inputFormats = new HashSet&lt;&gt;(Arrays.asList(&quot;doc&quot;, &quot;docx&quot;, &quot;txt&quot;, &quot;epub&quot;, &quot;html&quot;, &quot;alto&quot;, &quot;rtf&quot;, &quot;odt&quot;)); // TODO (not supported in openconvert yet): pdf</span>
+	@Override
+	public Set&lt;String&gt; getInputFormats() {
+<span class="nc" id="L117">		return Collections.unmodifiableSet(inputFormats);</span>
+	}
+
+	@Override
+	public String getOutputFormat() {
+<span class="nc" id="L122">		return &quot;tei&quot;;</span>
+	}
+
+	@Override
+	public boolean canConvert(PushbackInputStream is, Charset cs, String inputFormat) {
+<span class="nc" id="L127">		return inputFormats.contains(getActualFormat(is, inputFormat));</span>
+	}
+
+	private static String getActualFormat(PushbackInputStream is, String reportedFormat) {
+<span class="nc" id="L131">		reportedFormat = reportedFormat.toLowerCase();</span>
+<span class="nc bnc" id="L132" title="All 2 branches missed.">		if (reportedFormat.equals(&quot;xhtml&quot;))</span>
+<span class="nc" id="L133">			return &quot;html&quot;;</span>
+<span class="nc bnc" id="L134" title="All 4 branches missed.">		if (reportedFormat.equals(&quot;xml&quot;) &amp;&amp; isAlto(is)) {</span>
+<span class="nc" id="L135">			return &quot;alto&quot;;</span>
+		}
+
+<span class="nc" id="L138">		return reportedFormat;</span>
+	}
+
+	private static boolean isAlto(PushbackInputStream i) {
+		try {
+<span class="nc" id="L143">			byte[] buffer = new byte[250];</span>
+<span class="nc" id="L144">			int bytesRead = i.read(buffer);</span>
+<span class="nc" id="L145">			String head = new String(buffer, StandardCharsets.US_ASCII).toLowerCase();</span>
+<span class="nc" id="L146">			i.unread(buffer, 0, bytesRead);</span>
+<span class="nc" id="L147">			return head.contains(&quot;&lt;alto&quot;);</span>
+<span class="nc" id="L148">		} catch (IOException e) {</span>
+<span class="nc" id="L149">			return false;</span>
+		}
+	}
+
+	/**
+	 * Read a value from our config if present.
+	 *
+	 * @param config root node of our config object
+	 * @param nodeName node to read
+	 * @return the value as a string
+	 * @throws PluginException on missing key or null value
+	 */
+	private static String configStr(ObjectNode config, String nodeName) throws PluginException {
+<span class="nc" id="L162">		JsonNode n = config.get(nodeName);</span>
+<span class="nc bnc" id="L163" title="All 4 branches missed.">		if (n == null || n instanceof NullNode)</span>
+<span class="nc" id="L164">			throw new PluginException(&quot;Missing configuration value &quot; + nodeName);</span>
+
+<span class="nc" id="L166">		return n.asText();</span>
+	}
+
+	/**
+	 * Ensure that the maven artifact version matches VERSION
+	 *
+	 * @param loader
+	 * @throws PluginException
+	 */
+	private static void assertVersion(ClassLoader loader) throws PluginException {
+<span class="nc" id="L176">		try (InputStream is = loader.getResourceAsStream(&quot;META-INF/MANIFEST.MF&quot;)) {</span>
+<span class="nc" id="L177">			Manifest manifest = new Manifest(is);</span>
+<span class="nc" id="L178">			String version = manifest.getMainAttributes().getValue(&quot;Specification-Version&quot;);</span>
+<span class="nc bnc" id="L179" title="All 2 branches missed.">			if (!version.equals(VERSION))</span>
+<span class="nc" id="L180">				throw new PluginException(&quot;Mismatched version! Expected &quot; + VERSION + &quot; but found &quot; + version);</span>
+<span class="nc bnc" id="L181" title="All 8 branches missed.">		} catch (IOException e) {</span>
+<span class="nc" id="L182">			throw new PluginException(&quot;Could not read manifest: &quot; + e.getMessage(), e);</span>
+<span class="nc" id="L183">		}</span>
+<span class="nc" id="L184">	}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

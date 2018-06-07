@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MatchFilterImplication.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.matchfilter</a> &gt; <span class="el_source">MatchFilterImplication.java</span></div><h1>MatchFilterImplication.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.search.matchfilter;
+
+import nl.inl.blacklab.search.Span;
+import nl.inl.blacklab.search.fimatch.ForwardIndexAccessor;
+import nl.inl.blacklab.search.fimatch.ForwardIndexDocument;
+import nl.inl.blacklab.search.lucene.HitQueryContext;
+
+public class MatchFilterImplication extends MatchFilter {
+
+	MatchFilter a, b;
+
+	public MatchFilterImplication(MatchFilter a, MatchFilter b) {
+<span class="fc" id="L13">		super();</span>
+<span class="fc" id="L14">		this.a = a;</span>
+<span class="fc" id="L15">		this.b = b;</span>
+<span class="fc" id="L16">	}</span>
+
+	@Override
+	public String toString() {
+<span class="nc" id="L20">		return a + &quot; -&gt; &quot; + b;</span>
+	}
+
+	@Override
+	public int hashCode() {
+<span class="nc" id="L25">		final int prime = 31;</span>
+<span class="nc" id="L26">		int result = 1;</span>
+<span class="nc bnc" id="L27" title="All 2 branches missed.">		result = prime * result + ((a == null) ? 0 : a.hashCode());</span>
+<span class="nc bnc" id="L28" title="All 2 branches missed.">		result = prime * result + ((b == null) ? 0 : b.hashCode());</span>
+<span class="nc" id="L29">		return result;</span>
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+<span class="nc bnc" id="L34" title="All 2 branches missed.">		if (this == obj)</span>
+<span class="nc" id="L35">			return true;</span>
+<span class="nc bnc" id="L36" title="All 2 branches missed.">		if (obj == null)</span>
+<span class="nc" id="L37">			return false;</span>
+<span class="nc bnc" id="L38" title="All 2 branches missed.">		if (getClass() != obj.getClass())</span>
+<span class="nc" id="L39">			return false;</span>
+<span class="nc" id="L40">		MatchFilterImplication other = (MatchFilterImplication) obj;</span>
+<span class="nc bnc" id="L41" title="All 2 branches missed.">		if (a == null) {</span>
+<span class="nc bnc" id="L42" title="All 2 branches missed.">			if (other.a != null)</span>
+<span class="nc" id="L43">				return false;</span>
+<span class="nc bnc" id="L44" title="All 2 branches missed.">		} else if (!a.equals(other.a))</span>
+<span class="nc" id="L45">			return false;</span>
+<span class="nc bnc" id="L46" title="All 2 branches missed.">		if (b == null) {</span>
+<span class="nc bnc" id="L47" title="All 2 branches missed.">			if (other.b != null)</span>
+<span class="nc" id="L48">				return false;</span>
+<span class="nc bnc" id="L49" title="All 2 branches missed.">		} else if (!b.equals(other.b))</span>
+<span class="nc" id="L50">			return false;</span>
+<span class="nc" id="L51">		return true;</span>
+	}
+
+	@Override
+	public void setHitQueryContext(HitQueryContext context) {
+<span class="fc" id="L56">		a.setHitQueryContext(context);</span>
+<span class="fc" id="L57">		b.setHitQueryContext(context);</span>
+<span class="fc" id="L58">	}</span>
+
+	@Override
+	public ConstraintValue evaluate(ForwardIndexDocument fiDoc, Span[] capturedGroups) {
+<span class="fc" id="L62">		ConstraintValue ra = a.evaluate(fiDoc, capturedGroups);</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">		if (!ra.isTruthy())</span>
+<span class="fc" id="L64">			return ConstraintValue.get(true);</span>
+<span class="fc" id="L65">		return b.evaluate(fiDoc, capturedGroups);</span>
+	}
+
+	@Override
+	public void lookupPropertyIndices(ForwardIndexAccessor fiAccessor) {
+<span class="fc" id="L70">		a.lookupPropertyIndices(fiAccessor);</span>
+<span class="fc" id="L71">		b.lookupPropertyIndices(fiAccessor);</span>
+<span class="fc" id="L72">	}</span>
+
+	@Override
+	public MatchFilter rewrite() {
+<span class="fc" id="L76">		MatchFilter x = a.rewrite();</span>
+<span class="fc" id="L77">		MatchFilter y = b.rewrite();</span>
+<span class="pc bpc" id="L78" title="2 of 4 branches missed.">		if (x != a || y != b)</span>
+<span class="fc" id="L79">			return new MatchFilterImplication(x, y);</span>
+<span class="nc" id="L80">		return this;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

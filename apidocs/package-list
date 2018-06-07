@@ -5,7 +5,9 @@ nl.inl.blacklab.forwardindex
 nl.inl.blacklab.highlight
 nl.inl.blacklab.index
 nl.inl.blacklab.index.complex
+nl.inl.blacklab.index.config
 nl.inl.blacklab.indexers
+nl.inl.blacklab.indexers.preprocess
 nl.inl.blacklab.perdocument
 nl.inl.blacklab.queryParser.contextql
 nl.inl.blacklab.queryParser.corpusql

@@ -1,0 +1,239 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BLSpanMultiTermQueryWrapper.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">BLSpanMultiTermQueryWrapper.java</span></div><h1>BLSpanMultiTermQueryWrapper.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.search.lucene;
+
+import java.io.IOException;
+import java.lang.reflect.Field;
+import java.util.Arrays;
+
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.search.AutomatonQuery;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.MultiTermQuery;
+import org.apache.lucene.search.PrefixQuery;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.RegexpQuery;
+import org.apache.lucene.search.WildcardQuery;
+import org.apache.lucene.search.spans.SpanMultiTermQueryWrapper;
+import org.apache.lucene.search.spans.SpanQuery;
+
+import nl.inl.blacklab.index.complex.ComplexFieldUtil;
+import nl.inl.blacklab.search.fimatch.ForwardIndexAccessor;
+import nl.inl.blacklab.search.fimatch.Nfa;
+import nl.inl.blacklab.search.fimatch.NfaState;
+import nl.inl.util.StringUtil;
+
+/**
+ * Subclasses SpanMultiTermQueryWrapper so it correctly produces
+ * BLSpanOrQuery or BLSpanTermQuery.
+ * @param &lt;Q&gt; the type of query we're wrapping
+ */
+public class BLSpanMultiTermQueryWrapper&lt;Q extends MultiTermQuery&gt;
+		extends BLSpanQuery {
+
+	SpanMultiTermQueryWrapper&lt;Q&gt; query;
+
+	Term term;
+
+<span class="fc" id="L37">	public BLSpanMultiTermQueryWrapper(Q query) {</span>
+		try {
+			// Use reflection to get at inaccesible field MultiTermQuery.field.
+			// We need this in order to (decide whether to) optimize this to an NFA.
+<span class="fc" id="L41">			Field fldTerm = AutomatonQuery.class.getDeclaredField(&quot;term&quot;);</span>
+<span class="fc" id="L42">			fldTerm.setAccessible(true);</span>
+<span class="fc" id="L43">			this.term = (Term)fldTerm.get(query);</span>
+<span class="nc" id="L44">		} catch (NoSuchFieldException | SecurityException | IllegalArgumentException | IllegalAccessException e) {</span>
+<span class="nc" id="L45">			throw new RuntimeException(e);</span>
+<span class="fc" id="L46">		}</span>
+<span class="fc" id="L47">		this.query = new SpanMultiTermQueryWrapper&lt;&gt;(query);</span>
+<span class="fc" id="L48">	}</span>
+
+	@Override
+	public String toString(String field) {
+<span class="fc" id="L52">		return &quot;SPANWRAP(&quot; + query.getWrappedQuery() + &quot;)&quot;;</span>
+	}
+
+	@Override
+	public BLSpanQuery rewrite(IndexReader reader) throws IOException {
+<span class="fc" id="L57">		Query q = query.rewrite(reader);</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">		if (!(q instanceof SpanQuery))</span>
+<span class="nc" id="L59">			throw new UnsupportedOperationException(</span>
+					&quot;You can only use BLSpanMultiTermQueryWrapper with a suitable SpanRewriteMethod.&quot;);
+<span class="fc" id="L61">		BLSpanQuery result = BLSpanQuery.wrap((SpanQuery) q);</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">		if (result.getField() == null) {</span>
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">			if (result instanceof BLSpanOrQuery) {</span>
+<span class="fc" id="L64">				BLSpanOrQuery or = (BLSpanOrQuery) result;</span>
+<span class="fc" id="L65">				or.setHitsAreFixedLength(1);</span>
+<span class="fc" id="L66">				or.setClausesAreSimpleTermsInSameProperty(true);</span>
+<span class="fc" id="L67">				or.setField(getRealField());</span>
+<span class="fc" id="L68">			} else {</span>
+<span class="nc" id="L69">				throw new RuntimeException(&quot;BLSpanMultiTermQueryWrapper rewritten to &quot; +</span>
+<span class="nc" id="L70">						result.getClass().getSimpleName() + &quot;, getField() == null&quot;);</span>
+			}
+		}
+<span class="fc" id="L73">		return result;</span>
+	}
+
+	@Override
+	public BLSpanWeight createWeight(IndexSearcher searcher, boolean needsScores)
+			throws IOException {
+<span class="nc" id="L79">		throw new IllegalArgumentException(&quot;Rewrite first!&quot;);</span>
+	}
+
+	@Override
+	public int hashCode() {
+<span class="nc" id="L84">		return query.hashCode() ^ 0xB1ACC1AB;</span>
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">		if (this == obj)</span>
+<span class="nc" id="L90">			return true;</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">		if (obj instanceof BLSpanMultiTermQueryWrapper) {</span>
+<span class="fc" id="L92">			BLSpanMultiTermQueryWrapper&lt;?&gt; other = (BLSpanMultiTermQueryWrapper&lt;?&gt;)obj;</span>
+<span class="fc" id="L93">			return query.equals(other.query);</span>
+		}
+<span class="fc" id="L95">		return false;</span>
+	}
+
+	@Override
+	public boolean hitsAllSameLength() {
+<span class="fc" id="L100">		return true;</span>
+	}
+
+	@Override
+	public int hitsLengthMin() {
+<span class="nc" id="L105">		return 1;</span>
+	}
+
+	@Override
+	public int hitsLengthMax() {
+<span class="nc" id="L110">		return 1;</span>
+	}
+
+	@Override
+	public boolean hitsEndPointSorted() {
+<span class="nc" id="L115">		return true;</span>
+	}
+
+	@Override
+	public boolean hitsStartPointSorted() {
+<span class="nc" id="L120">		return true;</span>
+	}
+
+	@Override
+	public boolean hitsHaveUniqueStart() {
+<span class="nc" id="L125">		return true;</span>
+	}
+
+	@Override
+	public boolean hitsHaveUniqueEnd() {
+<span class="nc" id="L130">		return true;</span>
+	}
+
+	@Override
+	public boolean hitsAreUnique() {
+<span class="nc" id="L135">		return true;</span>
+	}
+
+	@Override
+	public Nfa getNfa(ForwardIndexAccessor fiAccessor, int direction) {
+<span class="fc" id="L140">		NfaState state = NfaState.regex(getRealField(), getRegex(), null);</span>
+<span class="fc" id="L141">		return new Nfa(state, Arrays.asList(state));</span>
+	}
+
+	protected String getRegex() {
+<span class="fc" id="L145">		String pattern = term.text();</span>
+<span class="fc" id="L146">		Query wrapped = query.getWrappedQuery();</span>
+		String regex;
+<span class="pc bpc" id="L148" title="1 of 2 branches missed.">		if (wrapped instanceof RegexpQuery) {</span>
+<span class="fc" id="L149">			regex = pattern;</span>
+<span class="nc bnc" id="L150" title="All 2 branches missed.">		} else if (wrapped instanceof WildcardQuery) {</span>
+<span class="nc" id="L151">			regex = StringUtil.wildcardToRegex(pattern);</span>
+<span class="nc bnc" id="L152" title="All 2 branches missed.">		} else if (wrapped instanceof PrefixQuery) {</span>
+<span class="nc" id="L153">			regex = &quot;^&quot; + StringUtil.escapeRegexCharacters(pattern) + &quot;.*$&quot;;</span>
+		} else {
+<span class="nc" id="L155">			throw new UnsupportedOperationException(&quot;Cannot make regex from &quot; + wrapped);</span>
+		}
+<span class="fc" id="L157">		return regex;</span>
+	}
+
+	@Override
+	public boolean canMakeNfa() {
+		// Subproperties aren't stored in forward index, so we can't match them using NFAs
+<span class="pc bpc" id="L163" title="1 of 2 branches missed.">		if (term.text().contains(ComplexFieldUtil.SUBPROPERTY_SEPARATOR))</span>
+<span class="nc" id="L164">			return false;</span>
+
+<span class="fc" id="L166">		return true;</span>
+	}
+
+	@Override
+	public long reverseMatchingCost(IndexReader reader) {
+<span class="fc" id="L171">		String pattern = term.text();</span>
+<span class="fc" id="L172">		Query wrapped = query.getWrappedQuery();</span>
+		int numberOfChars;
+<span class="pc bpc" id="L174" title="1 of 2 branches missed.">		if (wrapped instanceof RegexpQuery) {</span>
+<span class="fc" id="L175">			String prefixPostfix = findRegexPrefixSuffix(pattern);</span>
+<span class="fc" id="L176">			numberOfChars = prefixPostfix.length();</span>
+<span class="pc bnc" id="L177" title="All 2 branches missed.">		} else if (wrapped instanceof WildcardQuery) {</span>
+<span class="nc" id="L178">			numberOfChars = pattern.replaceAll(&quot;[\\*\\?]&quot;, &quot;&quot;).length();</span>
+<span class="nc bnc" id="L179" title="All 2 branches missed.">		} else if (wrapped instanceof PrefixQuery) {</span>
+<span class="nc" id="L180">			numberOfChars = pattern.length();</span>
+		} else {
+			// Don't know; just use reverse matching
+<span class="nc" id="L183">			numberOfChars = 5;</span>
+		}
+		long n;
+		try {
+<span class="fc" id="L187">			n = reader.getSumTotalTermFreq(term.field()); // total terms in field</span>
+<span class="nc" id="L188">		} catch (IOException e) {</span>
+<span class="nc" id="L189">			throw new RuntimeException(e);</span>
+<span class="fc" id="L190">		}</span>
+		// Make a very rough estimate of the number of terms that could match
+		// this. We tend to guess on the high side, because clauses matching lots
+		// of terms benefit a lot from using NFAs, and clauses that don't match that
+		// many likely aren't slowed down a lot by using NFAs. Also, people tend to
+		// ask common pre- and suffixes more often than rare ones.
+		// All in all, it's really a wild guess, but it's all we have right now.
+<span class="pc bpc" id="L197" title="2 of 5 branches missed.">		switch (numberOfChars) {</span>
+		case 1:
+<span class="nc" id="L199">			return n / 10;   // bijv. d.*    komt ca. 55000000  keer voor in x termen</span>
+		case 2:
+<span class="nc" id="L201">			return n / 50;   // bijv. di.*   komt ca.  6600000  keer voor in x termen</span>
+		case 3:
+<span class="fc" id="L203">			return n / 75;   // bijv. die.*  komt ca.  4400000  keer voor in x termen</span>
+		case 4:
+<span class="fc" id="L205">			return n / 1000; // bijv. dier.* komt ca.   108000  keer voor in x termen</span>
+		default:
+			// 5 or more characters given.
+			// We have no idea how many hits we're likely to get from this.
+			// Let's assume not too many, so we will likely use regular reverse matching.
+<span class="pc bpc" id="L210" title="1 of 2 branches missed.">			return n &gt; 1000000 ? n / 1000000 : 1;</span>
+		}
+	}
+
+	/**
+	 * Strip everything out of the regex except a fixed prefix and suffix.
+	 * We use this to (gu)estimate how slow resolving the terms matching this regex will likely be.
+	 *
+	 * @param pattern regex pattern
+	 * @return only the prefix and suffix of the pattern
+	 */
+	public static String findRegexPrefixSuffix(String pattern) {
+<span class="fc" id="L222">		String trimmed = pattern.replaceAll(&quot;^\\^(\\(\\?\\-?[ic]\\))?|\\$$&quot;, &quot;&quot;); // trim off ^, $ and (?-i), etc.</span>
+<span class="fc" id="L223">		String prefixPostfix = trimmed.replaceAll(&quot;^(\\w+)(\\W(|.*\\W))(\\w+)$&quot;, &quot;$1$4&quot;); // only retain prefix and suffix</span>
+<span class="fc" id="L224">		return prefixPostfix;</span>
+	}
+
+	@Override
+	public int forwardMatchingCost() {
+<span class="fc" id="L229">		return 3; // more expensive than a single term, because we have to do FI lookup and regex matching</span>
+	}
+
+	@Override
+	public String getRealField() {
+<span class="fc" id="L234">		return query.getField();</span>
+	}
+
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

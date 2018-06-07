@@ -1,0 +1,514 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SpansPositionFilter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">SpansPositionFilter.java</span></div><h1>SpansPositionFilter.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.lucene;
+
+import java.io.IOException;
+
+import org.apache.lucene.search.spans.SpanCollector;
+import nl.inl.blacklab.search.Span;
+import nl.inl.blacklab.search.lucene.SpanQueryPositionFilter.Operation;
+
+/**
+ * Finds hits from a set that contain one or more hits from the second set,
+ * or finds hits from a set that are contained by hit(s) from the second set.
+ */
+class SpansPositionFilter extends BLSpans {
+	/** The spans we're (possibly) looking for */
+	private BLSpans producer;
+
+	/** The spans we use to filter the producer spans */
+	private SpansInBuckets filter;
+
+	/** What doc is the producer in? */
+<span class="fc" id="L36">	private int producerDoc = -1;</span>
+
+	/** What doc is the filter in? */
+<span class="fc" id="L39">	private int filterDoc = -1;</span>
+
+	/** What start pos is the producer at? */
+<span class="fc" id="L42">	private int producerStart = -1;</span>
+
+	/** Which index in the filter bucket did we use? (needed for getting captured groups) */
+<span class="fc" id="L45">	private int filterIndex = -1;</span>
+
+	/** What filter operation to use */
+	private Operation op;
+
+	/** How to adjust the left edge of the producer hits while matching */
+	private int leftAdjust;
+
+	/** How to adjust the right edge of the producer hits while matching */
+	private int rightAdjust;
+
+	/** Are we already at the first match in a new document, before nextStartPosition() has been called?
+	 * Necessary because we have to make sure nextDoc()/advance() actually puts us in a document with at
+	 * least one match.
+	 */
+<span class="fc" id="L60">	private boolean alreadyAtFirstMatch = false;</span>
+
+	/**
+	 * If true, produce hits that DON'T match the filter instead.
+	 */
+	private boolean invert;
+
+	/** Are the filter hits guaranteed to have the same length? */
+	private boolean filterFixedLength;
+
+	/**
+	 * Find hits from producer, filtered by the filter according to the specified op
+	 *
+	 * Both producer and filter should be start-point sorted.
+	 *
+	 * @param producer the hits we may be interested in
+	 * @param filter the hits used to filter the producer hits
+	 * @param filterFixedLength true if the filter hits are all the same length. Used for optimization.
+	 * @param op filter operation to use
+	 * @param invert if true, produce hits that DON'T match the filter instead
+	 * @param leftAdjust how to adjust the left edge of the producer hits while matching
+	 * @param rightAdjust how to adjust the right edge of the producer hits while matching
+	 */
+<span class="fc" id="L83">	public SpansPositionFilter(BLSpans producer, SpansInBuckets filter, boolean filterFixedLength, Operation op, boolean invert, int leftAdjust, int rightAdjust) {</span>
+<span class="fc" id="L84">		this.producer = producer; // Sort</span>
+<span class="fc" id="L85">		this.op = op;</span>
+<span class="fc" id="L86">		this.invert = invert;</span>
+<span class="fc" id="L87">		this.filter = filter;</span>
+<span class="fc" id="L88">		this.filterFixedLength = filterFixedLength;</span>
+<span class="fc" id="L89">		this.leftAdjust = leftAdjust;</span>
+<span class="fc" id="L90">		this.rightAdjust = rightAdjust;</span>
+<span class="fc" id="L91">	}</span>
+
+	@Override
+	public int docID() {
+<span class="fc" id="L95">		return producerDoc;</span>
+	}
+
+	@Override
+	public int endPosition() {
+<span class="fc bfc" id="L100" title="All 2 branches covered.">		if (alreadyAtFirstMatch)</span>
+<span class="fc" id="L101">			return -1; // nextStartPosition() hasn't been called yet</span>
+<span class="fc" id="L102">		return producer.endPosition();</span>
+	}
+
+	@Override
+	public int nextDoc() throws IOException {
+<span class="fc" id="L107">		alreadyAtFirstMatch = false;</span>
+
+		// Are we done yet?
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">		if (producerDoc == NO_MORE_DOCS /*|| filterDoc == NO_MORE_DOCS*/)</span>
+<span class="nc" id="L111">			return NO_MORE_DOCS;</span>
+
+		// Advance container
+<span class="fc" id="L114">		producerDoc = producer.nextDoc();</span>
+<span class="fc" id="L115">		producerStart = -1;</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">		if (producerDoc == NO_MORE_DOCS)</span>
+<span class="fc" id="L117">			return NO_MORE_DOCS; // no more containers; we're done.</span>
+
+		// Find first matching producer span from here
+<span class="fc" id="L120">		return findDocWithMatch();</span>
+	}
+
+	@Override
+	public int nextStartPosition() throws IOException {
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">		if (producerDoc == NO_MORE_DOCS)</span>
+<span class="nc" id="L126">			return NO_MORE_POSITIONS;</span>
+
+<span class="fc bfc" id="L128" title="All 2 branches covered.">		if (alreadyAtFirstMatch) {</span>
+			// We're already at the first match in the doc. Return it.
+<span class="fc" id="L130">			alreadyAtFirstMatch = false;</span>
+<span class="fc" id="L131">			return producerStart;</span>
+		}
+
+		// Are we done yet?
+<span class="pc bpc" id="L135" title="1 of 2 branches missed.">		if (producerStart == NO_MORE_POSITIONS)</span>
+<span class="nc" id="L136">			return NO_MORE_POSITIONS;</span>
+
+		// Find first matching producer span from here
+<span class="fc" id="L139">		producerStart = producer.nextStartPosition();</span>
+<span class="fc" id="L140">		return synchronizePos();</span>
+	}
+
+	@Override
+	public int advanceStartPosition(int target) throws IOException {
+<span class="nc bnc" id="L145" title="All 2 branches missed.">		if (producerDoc == NO_MORE_DOCS)</span>
+<span class="nc" id="L146">			return NO_MORE_POSITIONS;</span>
+
+<span class="nc bnc" id="L148" title="All 2 branches missed.">		if (alreadyAtFirstMatch) {</span>
+<span class="nc" id="L149">			alreadyAtFirstMatch = false;</span>
+<span class="nc bnc" id="L150" title="All 2 branches missed.">			if (producerStart &gt;= target)</span>
+<span class="nc" id="L151">				return producerStart;</span>
+		}
+
+		// Are we done yet?
+<span class="nc bnc" id="L155" title="All 2 branches missed.">		if (producerStart == NO_MORE_POSITIONS)</span>
+<span class="nc" id="L156">			return NO_MORE_POSITIONS;</span>
+
+<span class="nc" id="L158">		producerStart = producer.advanceStartPosition(target);</span>
+
+		// Find first matching producer span from here
+<span class="nc" id="L161">		return synchronizePos();</span>
+	}
+
+	/**
+	 * Find a producer span (not necessarily in this document) matching with filter,
+	 * starting from the current producer span.
+	 *
+	 * @return docID if found, NO_MORE_DOCS if no such producer span exists (i.e. we're done)
+	 * @throws IOException
+	 */
+	private int findDocWithMatch() throws IOException {
+		// Find the next &quot;valid&quot; container, if there is one.
+<span class="fc bfc" id="L173" title="All 2 branches covered.">		while (producerDoc != NO_MORE_DOCS) {</span>
+
+			// Are filter and producer in the same document?
+<span class="fc bfc" id="L176" title="All 2 branches covered.">			while (filterDoc != producerDoc) {</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">				if (filterDoc &lt; producerDoc) {</span>
+					// No, advance filter to be in the same document as the producer
+<span class="fc" id="L179">					filterDoc = filter.advance(producerDoc);</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">					if (filterDoc == NO_MORE_DOCS) {</span>
+<span class="pc bpc" id="L181" title="1 of 2 branches missed.">						if (!invert) {</span>
+							// Positive filter, but no more filter hits. We're done.
+<span class="fc" id="L183">							return NO_MORE_DOCS;</span>
+						}
+					} else
+<span class="fc" id="L186">						filter.nextBucket();</span>
+<span class="pc bpc" id="L187" title="1 of 2 branches missed.">				} else if (producerDoc &lt; filterDoc) {</span>
+<span class="fc bfc" id="L188" title="All 2 branches covered.">					if (invert) {</span>
+						// For negative filters, lagging producer spans is ok. This just means
+						// all hits in the current producer doc are matches.
+<span class="fc" id="L191">						break;</span>
+					}
+					// No, advance producer to be in the same document as the producer
+<span class="fc" id="L194">					producerDoc = producer.advance(filterDoc);</span>
+<span class="pc bpc" id="L195" title="1 of 2 branches missed.">					if (producerDoc == NO_MORE_DOCS)</span>
+<span class="nc" id="L196">						return NO_MORE_DOCS; // No more producer results, we're done.</span>
+				}
+			}
+
+			// Are there search results in this document?
+<span class="pc bpc" id="L201" title="1 of 2 branches missed.">			if (producerStart != NO_MORE_POSITIONS) {</span>
+<span class="fc" id="L202">				producerStart = producer.nextStartPosition();</span>
+			}
+<span class="fc" id="L204">			producerStart = synchronizePos();</span>
+<span class="fc bfc" id="L205" title="All 2 branches covered.">			if (producerStart != NO_MORE_POSITIONS) {</span>
+<span class="fc" id="L206">				alreadyAtFirstMatch = true;</span>
+<span class="fc" id="L207">				return producerDoc;</span>
+			}
+
+			// No search results found in the current container.
+			// Advance to the next container.
+<span class="fc" id="L212">			producerDoc = producer.nextDoc();</span>
+<span class="fc" id="L213">			producerStart = -1;</span>
+		}
+<span class="fc" id="L215">		return producerDoc;</span>
+	}
+
+	/**
+	 * Find a producer span matching with filter, starting from the current producer span.
+	 *
+	 * @return start position if found, NO_MORE_POSITIONS if no such container exists (i.e. we're done)
+	 * @throws IOException
+	 */
+	private int synchronizePos() throws IOException {
+		// Find the next &quot;valid&quot; producer spans, if there is one.
+<span class="fc bfc" id="L226" title="All 2 branches covered.">		while (producerStart != NO_MORE_POSITIONS) {</span>
+<span class="fc bfc" id="L227" title="All 4 branches covered.">			if (invert &amp;&amp; filterDoc != producerDoc) {</span>
+				// No filter hits in this doc, so this is definitely a hit.
+<span class="fc" id="L229">				return producerStart;</span>
+			}
+
+			// We're at the first unchecked producer spans. Does it match our filter?
+<span class="fc" id="L233">			boolean invertedMatch = invert; // if looking for non-matches, keep track if there have been any matches.</span>
+<span class="fc" id="L234">			int min = 0, max = filter.bucketSize() - 1;</span>
+<span class="pc bpc" id="L235" title="3 of 8 branches missed.">			switch(op) {</span>
+			case CONTAINING:
+				// Looking for producer hits with a filter hit inside
+<span class="fc bfc" id="L238" title="All 2 branches covered.">				while (min &lt;= max) {</span>
+<span class="fc" id="L239">					int i = (min + max) / 2;</span>
+<span class="fc bfc" id="L240" title="All 4 branches covered.">					if (filterFixedLength &amp;&amp; filter.endPosition(i) &gt; producer.endPosition() + rightAdjust) {</span>
+						// Filter end position to the right of producer hit end position.
+<span class="fc" id="L242">						max = i - 1;</span>
+<span class="fc bfc" id="L243" title="All 2 branches covered.">					} else if (filter.startPosition(i) &lt; producerStart + leftAdjust) {</span>
+						// Filter start position to the left of producer hit start position.
+<span class="fc" id="L245">						min = i + 1;</span>
+					} else {
+						// Can't narrow down the edges any further; do linear search from here.
+						break;
+					}
+<span class="fc" id="L250">				}</span>
+<span class="fc bfc" id="L251" title="All 2 branches covered.">				for (int i = min; i &lt;= max; i++) {</span>
+<span class="fc bfc" id="L252" title="All 4 branches covered.">					if (filter.startPosition(i) &gt;= producerStart + leftAdjust &amp;&amp; filter.endPosition(i) &lt;= producer.endPosition() + rightAdjust) {</span>
+<span class="fc bfc" id="L253" title="All 2 branches covered.">						if (invert) {</span>
+							// This producer hit is no good; on to the next.
+<span class="fc" id="L255">							invertedMatch = false;</span>
+<span class="fc" id="L256">							break;</span>
+						}
+						// Yes, this producer hit contains this filter hit
+<span class="fc" id="L259">						filterIndex = i; // remember for captured groups</span>
+<span class="fc" id="L260">						return producerStart;</span>
+					}
+				}
+<span class="fc" id="L263">				break;</span>
+			case CONTAINING_AT_START:
+				// Looking for producer hits with a filter hit inside, at the start
+<span class="nc bnc" id="L266" title="All 2 branches missed.">				while (min &lt;= max) {</span>
+<span class="nc" id="L267">					int i = (min + max) / 2;</span>
+<span class="nc bnc" id="L268" title="All 4 branches missed.">					if (filterFixedLength &amp;&amp; filter.endPosition(i) &gt; producer.endPosition() + rightAdjust) {</span>
+						// Filter end position to the right of producer hit end position.
+<span class="nc" id="L270">						max = i - 1;</span>
+<span class="nc bnc" id="L271" title="All 2 branches missed.">					} else if (filter.startPosition(i) &lt; producerStart + leftAdjust) {</span>
+						// Filter start position to the left of producer hit start position.
+<span class="nc" id="L273">						min = i + 1;</span>
+					} else {
+						// Can't narrow down the edges any further; do linear search from here.
+						break;
+					}
+<span class="nc" id="L278">				}</span>
+<span class="nc bnc" id="L279" title="All 2 branches missed.">				for (int i = min; i &lt;= max; i++) {</span>
+<span class="nc bnc" id="L280" title="All 4 branches missed.">					if (filter.startPosition(i) == producerStart + leftAdjust &amp;&amp; filter.endPosition(i) &lt;= producer.endPosition() + rightAdjust) {</span>
+<span class="nc bnc" id="L281" title="All 2 branches missed.">						if (invert) {</span>
+							// This producer hit is no good; on to the next.
+<span class="nc" id="L283">							invertedMatch = false;</span>
+<span class="nc" id="L284">							break;</span>
+						}
+						// Yes, this producer hit contains this filter hit
+<span class="nc" id="L287">						filterIndex = i; // remember for captured groups</span>
+<span class="nc" id="L288">						return producerStart;</span>
+					}
+				}
+<span class="nc" id="L291">				break;</span>
+			case CONTAINING_AT_END:
+				// Looking for producer hits with a filter hit inside, at the end
+<span class="nc bnc" id="L294" title="All 2 branches missed.">				while (min &lt;= max) {</span>
+<span class="nc" id="L295">					int i = (min + max) / 2;</span>
+<span class="nc bnc" id="L296" title="All 4 branches missed.">					if (filterFixedLength &amp;&amp; filter.endPosition(i) &gt; producer.endPosition() + rightAdjust) {</span>
+						// Filter end position to the right of producer hit end position.
+<span class="nc" id="L298">						max = i - 1;</span>
+<span class="nc bnc" id="L299" title="All 2 branches missed.">					} else if (filter.startPosition(i) &lt; producerStart + leftAdjust) {</span>
+						// Filter start position to the left of producer hit start position.
+<span class="nc" id="L301">						min = i + 1;</span>
+					} else {
+						// Can't narrow down the edges any further; do linear search from here.
+						break;
+					}
+<span class="nc" id="L306">				}</span>
+<span class="nc bnc" id="L307" title="All 2 branches missed.">				for (int i = min; i &lt;= max; i++) {</span>
+<span class="nc bnc" id="L308" title="All 4 branches missed.">					if (filter.startPosition(i) &gt;= producerStart + leftAdjust &amp;&amp; filter.endPosition(i) == producer.endPosition() + rightAdjust) {</span>
+<span class="nc bnc" id="L309" title="All 2 branches missed.">						if (invert) {</span>
+							// This producer hit is no good; on to the next.
+<span class="nc" id="L311">							invertedMatch = false;</span>
+<span class="nc" id="L312">							break;</span>
+						}
+						// Yes, this producer hit contains this filter hit
+<span class="nc" id="L315">						filterIndex = i; // remember for captured groups</span>
+<span class="nc" id="L316">						return producerStart;</span>
+					}
+				}
+<span class="nc" id="L319">				break;</span>
+			case WITHIN:
+				// Looking for producer hits contained by a filter hit
+<span class="pc bpc" id="L322" title="1 of 2 branches missed.">				while (min &lt;= max) {</span>
+<span class="fc" id="L323">					int i = (min + max) / 2;</span>
+<span class="pc bpc" id="L324" title="1 of 2 branches missed.">					if (filter.startPosition(i) &gt; producerStart + leftAdjust) {</span>
+						// Filter start position to the right of producer hit start position.
+<span class="nc" id="L326">						max = i - 1;</span>
+<span class="pc bpc" id="L327" title="3 of 4 branches missed.">					} else if (filterFixedLength &amp;&amp; filter.endPosition(i) &lt; producer.endPosition() + rightAdjust) {</span>
+						// Filter end position to the left of producer hit end position.
+<span class="nc" id="L329">						min = i + 1;</span>
+					} else {
+						// Can't narrow down the edges any further; do linear search from here.
+						break;
+					}
+<span class="nc" id="L334">				}</span>
+<span class="fc bfc" id="L335" title="All 2 branches covered.">				for (int i = min; i &lt;= max; i++) {</span>
+<span class="fc bfc" id="L336" title="All 4 branches covered.">					if (filter.startPosition(i) &lt;= producerStart + leftAdjust &amp;&amp; filter.endPosition(i) &gt;= producer.endPosition() + rightAdjust) {</span>
+<span class="fc bfc" id="L337" title="All 2 branches covered.">						if (invert) {</span>
+							// This producer hit is no good; on to the next.
+<span class="fc" id="L339">							invertedMatch = false;</span>
+<span class="fc" id="L340">							break;</span>
+						}
+						// Yes, this producer hit is contained within this filter hit
+<span class="fc" id="L343">						filterIndex = i; // remember for captured groups</span>
+<span class="fc" id="L344">						return producerStart;</span>
+					}
+				}
+<span class="fc" id="L347">				break;</span>
+			case STARTS_AT:
+				// Looking for producer hits starting at a filter hit
+<span class="fc bfc" id="L350" title="All 2 branches covered.">				while (min &lt;= max) {</span>
+<span class="fc" id="L351">					int i = (min + max) / 2;</span>
+<span class="fc bfc" id="L352" title="All 2 branches covered.">					if (filter.startPosition(i) &gt; producerStart + leftAdjust) {</span>
+						// Filter start position to the right of producer hit start position.
+<span class="fc" id="L354">						max = i - 1;</span>
+<span class="fc bfc" id="L355" title="All 2 branches covered.">					} else if (filter.startPosition(i) &lt; producerStart + leftAdjust) {</span>
+						// Filter start position to the left of producer hit start position.
+<span class="fc" id="L357">						min = i + 1;</span>
+					} else {
+						// Found filter hit at the start of current producer hit.
+<span class="pc bpc" id="L360" title="1 of 2 branches missed.">						if (invert) {</span>
+							// This producer hit is no good; on to the next.
+<span class="nc" id="L362">							invertedMatch = false;</span>
+<span class="nc" id="L363">							break;</span>
+						}
+						// Yes, this producer hit starts at this filter hit
+<span class="fc" id="L366">						filterIndex = i; // remember for captured groups</span>
+<span class="fc" id="L367">						return producerStart;</span>
+					}
+<span class="fc" id="L369">				}</span>
+				break;
+			case ENDS_AT:
+				// Looking for producer hits ending at a filter hit
+<span class="pc bpc" id="L373" title="1 of 2 branches missed.">				if (filterFixedLength) {</span>
+<span class="nc bnc" id="L374" title="All 2 branches missed.">					while (min &lt;= max) {</span>
+<span class="nc" id="L375">						int i = (min + max) / 2;</span>
+<span class="nc bnc" id="L376" title="All 2 branches missed.">						if (filter.endPosition(i) &gt; producer.endPosition() + rightAdjust) {</span>
+							// Filter end position to the right of producer hit end position.
+<span class="nc" id="L378">							max = i - 1;</span>
+<span class="nc bnc" id="L379" title="All 2 branches missed.">						} else if (filter.endPosition(i) &lt; producer.endPosition() + rightAdjust) {</span>
+							// Filter end position to the left of producer hit end position.
+<span class="nc" id="L381">							min = i + 1;</span>
+						} else {
+							// Can't narrow down the edges any further; do linear search from here.
+							break;
+						}
+<span class="nc" id="L386">					}</span>
+				}
+<span class="fc bfc" id="L388" title="All 2 branches covered.">				for (int i = min; i &lt;= max; i++) {</span>
+<span class="fc bfc" id="L389" title="All 2 branches covered.">					if (filter.endPosition(i) == producer.endPosition() + rightAdjust) {</span>
+<span class="pc bpc" id="L390" title="1 of 2 branches missed.">						if (invert) {</span>
+							// This producer hit is no good; on to the next.
+<span class="nc" id="L392">							invertedMatch = false;</span>
+<span class="nc" id="L393">							break;</span>
+						}
+						// Yes, this producer hit ends at this filter hit
+<span class="fc" id="L396">						filterIndex = i; // remember for captured groups</span>
+<span class="fc" id="L397">						return producerStart;</span>
+					}
+				}
+<span class="fc" id="L400">				break;</span>
+			case MATCHES:
+				// Looking for producer hits exactly matching a filter hit
+<span class="fc bfc" id="L403" title="All 2 branches covered.">				while (min &lt;= max) {</span>
+<span class="fc" id="L404">					int i = (min + max) / 2;</span>
+<span class="pc bpc" id="L405" title="3 of 6 branches missed.">					if (filter.startPosition(i) &lt; producerStart + leftAdjust || filterFixedLength &amp;&amp; filter.endPosition(i) &lt; producer.endPosition() + rightAdjust) {</span>
+<span class="fc" id="L406">						min = i + 1;</span>
+<span class="pc bpc" id="L407" title="3 of 6 branches missed.">					} else if (filter.startPosition(i) &gt; producerStart + leftAdjust || filterFixedLength &amp;&amp; filter.endPosition(i) &gt; producer.endPosition() + rightAdjust) {</span>
+<span class="fc" id="L408">						max = i - 1;</span>
+					} else {
+						// Can't narrow down the edges any further; do linear search from here.
+						break;
+					}
+<span class="fc" id="L413">				}</span>
+<span class="pc bfc" id="L414" title="All 2 branches covered.">				for (int i = min; i &lt;= max; i++) {</span>
+<span class="pc bpc" id="L415" title="2 of 4 branches missed.">					if (filter.startPosition(i) == producerStart + leftAdjust &amp;&amp; filter.endPosition(i) == producer.endPosition() + rightAdjust) {</span>
+<span class="fc bfc" id="L416" title="All 2 branches covered.">						if (invert) {</span>
+							// This producer hit is no good; on to the next.
+<span class="fc" id="L418">							invertedMatch = false;</span>
+<span class="fc" id="L419">							break;</span>
+						}
+						// Yes, this producer hit exactly matches this filter hit
+<span class="fc" id="L422">						filterIndex = i; // remember for captured groups</span>
+<span class="fc" id="L423">						return producerStart;</span>
+					}
+				}
+<span class="fc" id="L426">				break;</span>
+			default:
+<span class="nc" id="L428">				throw new IllegalArgumentException(&quot;Unknown filter operation &quot; + op);</span>
+			}
+			// Were we looking for non-matching producer hits, and have we not found any?
+<span class="fc bfc" id="L431" title="All 2 branches covered.">			if (invertedMatch) {</span>
+<span class="fc" id="L432">				return producerStart;</span>
+			}
+			// Didn't match filter; go to the next position.
+<span class="fc" id="L435">			producerStart = producer.nextStartPosition();</span>
+<span class="fc bfc" id="L436" title="All 2 branches covered.">			if (producerStart == NO_MORE_POSITIONS)</span>
+<span class="fc" id="L437">				return NO_MORE_POSITIONS;</span>
+
+<span class="fc" id="L439">		}</span>
+<span class="fc" id="L440">		return producerStart;</span>
+	}
+
+	@Override
+	public int advance(int doc) throws IOException {
+<span class="nc" id="L445">		alreadyAtFirstMatch = false;</span>
+
+		// Skip both to doc
+<span class="nc" id="L448">		producerDoc = producer.advance(doc);</span>
+<span class="nc" id="L449">		producerStart = -1;</span>
+<span class="nc bnc" id="L450" title="All 2 branches missed.">		if (producerDoc == NO_MORE_DOCS)</span>
+<span class="nc" id="L451">			return NO_MORE_DOCS;</span>
+
+		// Find first matching producer span from here
+<span class="nc" id="L454">		return findDocWithMatch();</span>
+	}
+
+	@Override
+	public int startPosition() {
+<span class="fc bfc" id="L459" title="All 2 branches covered.">		if (alreadyAtFirstMatch)</span>
+<span class="fc" id="L460">			return -1; // nextStartPosition() hasn't been called yet</span>
+<span class="fc" id="L461">		return producerStart;</span>
+	}
+
+	@Override
+	public String toString() {
+<span class="nc bnc" id="L466" title="All 2 branches missed.">		String not = invert ? &quot;not &quot; : &quot;&quot;;</span>
+<span class="nc bnc" id="L467" title="All 4 branches missed.">		String ign = (leftAdjust != 0 || rightAdjust != 0) ? &quot;, &quot; + leftAdjust + &quot;, &quot; + rightAdjust : &quot;&quot;;</span>
+<span class="nc bnc" id="L468" title="All 6 branches missed.">		switch (op) {</span>
+		case CONTAINING:
+<span class="nc" id="L470">			return &quot;POSFILTER(&quot; + producer + &quot; &quot; + not + &quot;containing &quot; + filter + ign + &quot;)&quot;;</span>
+		case WITHIN:
+<span class="nc" id="L472">			return &quot;POSFILTER(&quot; + producer + &quot; &quot; + not + &quot;within &quot; + filter + ign + &quot;)&quot;;</span>
+		case STARTS_AT:
+<span class="nc" id="L474">			return &quot;POSFILTER(&quot; + producer + &quot; &quot; + not + &quot;starts at &quot; + filter + ign + &quot;)&quot;;</span>
+		case ENDS_AT:
+<span class="nc" id="L476">			return &quot;POSFILTER(&quot; + producer + &quot; &quot; + not + &quot;ends at &quot; + filter + ign + &quot;)&quot;;</span>
+		case MATCHES:
+<span class="nc" id="L478">			return &quot;POSFILTER(&quot; + producer + &quot; &quot; + not + &quot;matches &quot; + filter + ign + &quot;)&quot;;</span>
+		default:
+<span class="nc" id="L480">			throw new IllegalArgumentException(&quot;Unknown filter operation &quot; + op);</span>
+		}
+	}
+
+	@Override
+	public void passHitQueryContextToClauses(HitQueryContext context) {
+<span class="fc" id="L486">		producer.setHitQueryContext(context);</span>
+<span class="fc" id="L487">		filter.setHitQueryContext(context);</span>
+<span class="fc" id="L488">	}</span>
+
+	@Override
+	public void getCapturedGroups(Span[] capturedGroups) {
+<span class="pc bpc" id="L492" title="1 of 2 branches missed.">		if (!childClausesCaptureGroups)</span>
+<span class="nc" id="L493">			return;</span>
+<span class="fc" id="L494">		producer.getCapturedGroups(capturedGroups);</span>
+<span class="fc" id="L495">		filter.getCapturedGroups(filterIndex, capturedGroups);</span>
+<span class="fc" id="L496">	}</span>
+
+	@Override
+	public int width() {
+<span class="nc" id="L500">		return producer.width();</span>
+	}
+
+	@Override
+	public void collect(SpanCollector collector) throws IOException {
+<span class="nc" id="L505">		producer.collect(collector);</span>
+<span class="nc" id="L506">	}</span>
+
+	@Override
+	public float positionsCost() {
+<span class="nc" id="L510">		return producer.positionsCost();</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

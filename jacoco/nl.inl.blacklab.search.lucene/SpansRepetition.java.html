@@ -1,0 +1,269 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SpansRepetition.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">SpansRepetition.java</span></div><h1>SpansRepetition.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.lucene;
+
+import java.io.IOException;
+
+import org.apache.lucene.search.spans.SpanCollector;
+
+import nl.inl.blacklab.search.Span;
+
+/**
+ * Finds all sequences of consecutive hits from the source spans of the specified min and max
+ * lengths. Used to implement repetition operators.
+ *
+ * This generates all possible sequences of consecutive hits, so if we search
+ * for B+ in the input string ABBBA, we'll get 3 hits of length 1, 2 hits of length 2,
+ * and 1 hit of length 3. In the future, this should be made configurable (to specifically
+ * support greedy matching, etc.)
+ */
+class SpansRepetition extends BLSpans {
+	private SpansInBuckets source;
+
+	/**
+	 * If -1: not started yet. If NO_MORE_DOCS: done. Otherwise: doc id.
+	 */
+<span class="fc" id="L39">	private int currentDoc = -1;</span>
+
+<span class="fc" id="L41">	boolean moreBuckets = false;</span>
+
+	private int min;
+
+	private int max;
+
+	private int firstToken;
+
+	private int numRepetitions;
+
+	private BLSpans spansSource;
+
+<span class="fc" id="L53">	private boolean alreadyAtFirstMatch = false;</span>
+
+	/**
+	 * Construct SpansRepetition.
+	 *
+	 * Source must be start-point sorted and unique.
+	 *
+	 * @param source spans to find repetitions in
+	 * @param min minimum number of repetitions
+	 * @param max maximum number of repetitions
+	 */
+<span class="fc" id="L64">	public SpansRepetition(BLSpans source, int min, int max) {</span>
+		// Find all consecutive matches in this Spans
+<span class="fc" id="L66">		spansSource = source;</span>
+<span class="fc" id="L67">		this.source = new SpansInBucketsConsecutive(spansSource);</span>
+<span class="fc" id="L68">		this.min = min;</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">		this.max = max == -1 ? MAX_UNLIMITED : max;</span>
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">		if (min &gt; this.max)</span>
+<span class="nc" id="L71">			throw new IllegalArgumentException(&quot;min &gt; max&quot;);</span>
+<span class="pc bpc" id="L72" title="2 of 4 branches missed.">		if (min &lt; 1 || this.max &lt; 1)</span>
+<span class="nc" id="L73">			throw new IllegalArgumentException(&quot;min and max must be at least 1&quot;);</span>
+<span class="fc" id="L74">	}</span>
+
+	@Override
+	public int docID() {
+<span class="fc" id="L78">		return currentDoc;</span>
+	}
+
+	@Override
+	public int endPosition() {
+<span class="fc bfc" id="L83" title="All 2 branches covered.">		if (alreadyAtFirstMatch)</span>
+<span class="fc" id="L84">			return -1; // .nextStartPosition() not called yet</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">		if (!moreBuckets)</span>
+<span class="fc" id="L86">			return NO_MORE_POSITIONS;</span>
+<span class="fc" id="L87">		return source.endPosition(firstToken + numRepetitions - 1);</span>
+	}
+
+	@Override
+	public int nextDoc() throws IOException {
+<span class="fc" id="L92">		alreadyAtFirstMatch = false;</span>
+
+<span class="pc bpc" id="L94" title="1 of 2 branches missed.">		if (currentDoc == NO_MORE_DOCS)</span>
+<span class="nc" id="L95">			return NO_MORE_DOCS;</span>
+
+		// Go to next doc (we don't know if it has a match)
+<span class="fc" id="L98">		currentDoc = source.nextDoc();</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">		if (currentDoc != NO_MORE_DOCS) {</span>
+			// From here, find next match in this or further doc
+<span class="fc" id="L101">			currentDoc = findDocWithMatchingBucket();</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">			if (currentDoc != NO_MORE_DOCS)</span>
+				// findDocWithMatchingBucket places us at the first match.
+<span class="fc" id="L104">				alreadyAtFirstMatch = true;</span>
+		}
+<span class="fc" id="L106">		return currentDoc;</span>
+	}
+
+	/**
+	 * Go to the next matching bucket, not necessarily in the current doc.
+	 * @return the doc id, or NO_MORE_DOCS if there's no more buckets.
+	 * @throws IOException
+	 */
+	private int findDocWithMatchingBucket() throws IOException {
+<span class="fc bfc" id="L115" title="All 2 branches covered.">		while (currentDoc != NO_MORE_DOCS) {</span>
+
+			// Another bucket in this doc?
+<span class="fc" id="L118">			int startPos = nextBucket();</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">			moreBuckets = startPos != SpansInBuckets.NO_MORE_BUCKETS;</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">			if (moreBuckets) {</span>
+				// Yes, found one.
+<span class="fc" id="L122">				break;</span>
+			}
+
+			// No more matching buckets; try next doc
+<span class="fc" id="L126">			currentDoc = source.nextDoc();</span>
+<span class="fc" id="L127">		}</span>
+<span class="fc" id="L128">		return currentDoc;</span>
+	}
+
+	/**
+	 * Go to the next matching bucket in the current doc, if it has any.
+	 *
+	 * @return the start position of the bucket, or NO_MORE_BUCKETS if there's no more matching buckets
+	 * @throws IOException
+	 */
+	private int nextBucket() throws IOException {
+<span class="fc bfc" id="L138" title="All 2 branches covered.">		moreBuckets = source.nextBucket() != SpansInBuckets.NO_MORE_BUCKETS;</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">		while (moreBuckets) {</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">			if (source.bucketSize() &gt;= min) {</span>
+				// This stretch is large enough to get a repetition hit;
+				// Position us at the first hit and remember we're already there.
+<span class="fc" id="L143">				firstToken = 0;</span>
+<span class="fc" id="L144">				numRepetitions = min;</span>
+<span class="fc" id="L145">				currentDoc = source.docID();</span>
+<span class="fc" id="L146">				return source.startPosition(firstToken);</span>
+			}
+			// Not large enough; try next bucket
+<span class="fc bfc" id="L149" title="All 2 branches covered.">			moreBuckets = source.nextBucket() != SpansInBuckets.NO_MORE_BUCKETS;</span>
+		}
+<span class="fc" id="L151">		return SpansInBuckets.NO_MORE_BUCKETS;</span>
+	}
+
+	/**
+	 * Go to the next match.
+	 *
+	 * @return true if we're on a valid match, false if we're done.
+	 * @throws IOException
+	 */
+	@Override
+	public int nextStartPosition() throws IOException {
+<span class="pc bpc" id="L162" title="2 of 4 branches missed.">		if (currentDoc == NO_MORE_DOCS || !moreBuckets)</span>
+<span class="nc" id="L163">			return NO_MORE_POSITIONS;</span>
+
+<span class="fc bfc" id="L165" title="All 2 branches covered.">		if (alreadyAtFirstMatch) {</span>
+			// We're already at the first match in the document, because
+			// we needed to check if there were matches at all. Return it now.
+<span class="fc" id="L168">			alreadyAtFirstMatch = false;</span>
+<span class="fc" id="L169">			return source.startPosition(firstToken);</span>
+		}
+
+		// Go to the next hit length for this start point in the current bucket.
+<span class="fc" id="L173">		numRepetitions++;</span>
+
+		// Find the first valid hit in the bucket
+<span class="fc bfc" id="L176" title="All 4 branches covered.">		if (numRepetitions &gt; max || firstToken + numRepetitions &gt; source.bucketSize()) {</span>
+			// On to the next start point.
+<span class="fc" id="L178">			firstToken++;</span>
+<span class="fc" id="L179">			numRepetitions = min;</span>
+		}
+
+<span class="fc bfc" id="L182" title="All 2 branches covered.">		if (firstToken + numRepetitions &lt;= source.bucketSize()) {</span>
+			// Still a valid rep. hit.
+<span class="fc" id="L184">			return source.startPosition(firstToken);</span>
+		}
+
+		// No valid hits left; on to the next matching bucket
+<span class="fc" id="L188">		int startPos = nextBucket();</span>
+<span class="fc bfc" id="L189" title="All 2 branches covered.">		moreBuckets = startPos != SpansInBuckets.NO_MORE_BUCKETS;</span>
+<span class="fc bfc" id="L190" title="All 2 branches covered.">		if (moreBuckets) {</span>
+<span class="fc" id="L191">			return startPos;</span>
+		}
+
+		// No more matching buckets.
+<span class="fc" id="L195">		return NO_MORE_POSITIONS;</span>
+	}
+
+	/**
+	 * Go to the specified document, if it has hits. If not, go to the next document containing
+	 * hits.
+	 *
+	 * @param doc
+	 *            the document number to skip to / over
+	 * @return true if we're at a valid hit, false if not
+	 * @throws IOException
+	 */
+	@Override
+	public int advance(int doc) throws IOException {
+<span class="fc" id="L209">		alreadyAtFirstMatch = false;</span>
+
+<span class="pc bpc" id="L211" title="1 of 2 branches missed.">		if (currentDoc != NO_MORE_DOCS) {</span>
+			// Go to first doc at or after target that has a match.
+<span class="fc" id="L213">			currentDoc = source.advance(doc);</span>
+<span class="pc bpc" id="L214" title="1 of 2 branches missed.">			if (currentDoc != NO_MORE_DOCS) {</span>
+				// From here, find next match in this or further doc
+<span class="fc" id="L216">				currentDoc = findDocWithMatchingBucket();</span>
+<span class="pc bpc" id="L217" title="1 of 2 branches missed.">				if (currentDoc != NO_MORE_DOCS)</span>
+<span class="fc" id="L218">					alreadyAtFirstMatch = true;</span>
+			}
+		}
+<span class="fc" id="L221">		return currentDoc;</span>
+	}
+
+	/**
+	 * @return start of the current hit
+	 */
+	@Override
+	public int startPosition() {
+<span class="fc bfc" id="L229" title="All 2 branches covered.">		if (alreadyAtFirstMatch)</span>
+<span class="fc" id="L230">			return -1; // .nextStartPosition() not called yet</span>
+<span class="fc bfc" id="L231" title="All 2 branches covered.">		if (!moreBuckets)</span>
+<span class="fc" id="L232">			return NO_MORE_POSITIONS;</span>
+<span class="fc" id="L233">		return source.startPosition(firstToken);</span>
+	}
+
+	@Override
+	public String toString() {
+<span class="nc" id="L238">		return &quot;SpansRepetition(&quot; + source + &quot;, &quot; + min + &quot;, &quot; + inf(max) + &quot;)&quot;;</span>
+	}
+
+	@Override
+	public void passHitQueryContextToClauses(HitQueryContext context) {
+<span class="fc" id="L243">		source.setHitQueryContext(context);</span>
+<span class="fc" id="L244">	}</span>
+
+	@Override
+	public void getCapturedGroups(Span[] capturedGroups) {
+<span class="nc" id="L248">		int index = firstToken + numRepetitions - 1; // use the last match for captured groups</span>
+<span class="nc" id="L249">		source.getCapturedGroups(index, capturedGroups);</span>
+<span class="nc" id="L250">	}</span>
+
+	@Override
+	public int width() {
+<span class="nc" id="L254">		return 0; // should be source.width(); but not currently supported and we don't use .width()</span>
+	}
+
+	@Override
+	public void collect(SpanCollector collector) throws IOException {
+		// Should be  source.collect(collector); but not currently supported and we don't use
+		// payloads except in simple queries like SpanQueryTags.
+<span class="nc" id="L261">	}</span>
+
+	@Override
+	public float positionsCost() {
+<span class="nc" id="L265">		return 0;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

@@ -1,0 +1,386 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SpansFilterNGramsRaw.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">SpansFilterNGramsRaw.java</span></div><h1>SpansFilterNGramsRaw.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.lucene;
+
+import java.io.IOException;
+
+import org.apache.lucene.index.LeafReader;
+import org.apache.lucene.search.spans.SpanCollector;
+import nl.inl.blacklab.search.Span;
+
+/**
+ * Expands the source spans to the left and right to form N-grams.
+ *
+ * This is used to speed up queries of the form
+ * &lt;code&gt;[]{2,4} containing &quot;a&quot; &quot;b&quot;&lt;/code&gt;: N-grams of certain lengths containing some construct.
+ *
+ * Note that this class will generate all possible N-grams, so it will likely produce multiple
+ * N-gram hits per source hit.
+ *
+ * Note that the hits coming out of this class may contain duplicates and will not always be
+ * properly sorted. Both are undesirable; the user doesn't want to see duplicates, and Lucene
+ * expects Spans to always be sorted by start point (and possible by end point after that, although
+ * that is not certain; should be checked).
+ *
+ * Therefore, objects of this class should be wrapped in a class that sort the matches per document
+ * and eliminates duplicates (hence the 'raw' in the name - not suitable for consumption yet).
+ */
+class SpansFilterNGramsRaw extends BLSpans {
+
+	/** The clause to expand */
+	private BLSpans clause;
+
+	/** Whether or not there's more docs in the clause */
+<span class="fc" id="L47">	private int currentDoc = -1;</span>
+
+	/** Current startPosition() in the clause */
+<span class="fc" id="L50">	private int srcStart = -1;</span>
+
+	/** How to expand the hits */
+	private SpanQueryPositionFilter.Operation op;
+
+	/** Minimum number of tokens to expand */
+	private int min;
+
+	/** Maximum number of tokens to expand (MAX_UNLIMITED = infinite) */
+	private int max;
+
+	/** End of the current source hit */
+<span class="fc" id="L62">	private int srcEnd = -1;</span>
+
+	/** Start of the current expanded hit */
+<span class="fc" id="L65">	private int start = -1;</span>
+
+	/** Start of the current expanded hit */
+<span class="fc" id="L68">	private int end = -1;</span>
+
+	/** For which document do we have the token length? */
+<span class="fc" id="L71">	private int tokenLengthDocId = -1;</span>
+
+	/** Token length for the doc specified in tokenLengthDocId */
+	private int tokenLength;
+
+	/** Used to get the field length in tokens for a document */
+	DocFieldLengthGetter lengthGetter;
+
+	/** How much to subtract from length (for ignoring closing token) */
+	private int subtractFromLength;
+
+	private boolean alreadyAtFirstHit;
+
+<span class="fc" id="L84">	public SpansFilterNGramsRaw(boolean ignoreLastToken, LeafReader reader, String fieldName, BLSpans clause, SpanQueryPositionFilter.Operation op, int min, int max) {</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">		subtractFromLength = ignoreLastToken ? 1 : 0;</span>
+<span class="pc bpc" id="L86" title="1 of 6 branches missed.">		if (op != SpanQueryPositionFilter.Operation.CONTAINING_AT_END &amp;&amp; op != SpanQueryPositionFilter.Operation.ENDS_AT &amp;&amp; op != SpanQueryPositionFilter.Operation.MATCHES) {</span>
+			// We need to know document length to properly do expansion to the right
+			// TODO: cache this in Searcher..?
+<span class="fc" id="L89">			lengthGetter = new DocFieldLengthGetter(reader, fieldName);</span>
+		}
+<span class="fc" id="L91">		this.clause = clause;</span>
+<span class="fc" id="L92">		this.op = op;</span>
+<span class="fc" id="L93">		this.min = min;</span>
+<span class="pc bpc" id="L94" title="1 of 2 branches missed.">		this.max = max == -1 ? MAX_UNLIMITED : max;</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">		if (min &gt; this.max)</span>
+<span class="nc" id="L96">			throw new IllegalArgumentException(&quot;min &gt; max&quot;);</span>
+<span class="pc bpc" id="L97" title="2 of 4 branches missed.">		if (min &lt; 0 || this.max &lt; 0)</span>
+<span class="nc" id="L98">			throw new IllegalArgumentException(&quot;Expansions cannot be negative&quot;);</span>
+<span class="fc" id="L99">	}</span>
+
+	/** For test, we don't have an index reader, so use default values (all docs are 5 tokens long)
+	 * @param b true if we're testing, false if not */
+	public void setTest(boolean b) {
+<span class="fc bfc" id="L104" title="All 2 branches covered.">		if (lengthGetter != null)</span>
+<span class="fc" id="L105">			lengthGetter.setTest(b);</span>
+<span class="fc" id="L106">	}</span>
+
+	@Override
+	public int docID() {
+<span class="fc" id="L110">		return currentDoc;</span>
+	}
+
+	@Override
+	public int endPosition() {
+<span class="fc bfc" id="L115" title="All 2 branches covered.">		if (alreadyAtFirstHit)</span>
+<span class="fc" id="L116">			return -1; // .nextStartPosition() not called yet</span>
+<span class="fc" id="L117">		return end;</span>
+	}
+
+	@Override
+	public int nextDoc() throws IOException {
+<span class="fc" id="L122">		alreadyAtFirstHit = false;</span>
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">		if (currentDoc != NO_MORE_DOCS) {</span>
+			do {
+<span class="fc" id="L125">				currentDoc = clause.nextDoc();</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">				if (currentDoc == NO_MORE_DOCS)</span>
+<span class="fc" id="L127">					return NO_MORE_DOCS;</span>
+<span class="fc" id="L128">				srcStart = srcEnd = start = end = -1;</span>
+<span class="fc" id="L129">				goToNextClauseSpan();</span>
+<span class="pc bpc" id="L130" title="1 of 2 branches missed.">			} while (start == NO_MORE_POSITIONS);</span>
+<span class="fc" id="L131">			alreadyAtFirstHit = true;</span>
+		}
+<span class="fc" id="L133">		return currentDoc;</span>
+	}
+
+	@Override
+	public int nextStartPosition() throws IOException {
+<span class="fc bfc" id="L138" title="All 2 branches covered.">		if (alreadyAtFirstHit) {</span>
+<span class="fc" id="L139">			alreadyAtFirstHit = false;</span>
+<span class="fc" id="L140">			return start;</span>
+		}
+<span class="pc bpc" id="L142" title="2 of 4 branches missed.">		if (currentDoc == NO_MORE_DOCS || srcStart == NO_MORE_POSITIONS)</span>
+<span class="nc" id="L143">			return NO_MORE_POSITIONS;</span>
+
+		// Is there another n-gram for this source hit?
+<span class="fc" id="L146">		boolean atValidNGram = false;</span>
+<span class="pc bpc" id="L147" title="2 of 7 branches missed.">		switch (op) {</span>
+		case CONTAINING:
+<span class="fc" id="L149">			end++;</span>
+<span class="pc bpc" id="L150" title="1 of 4 branches missed.">			if (end - start &gt; max || end &gt; tokenLength) {</span>
+				// N-gram became too long, or we went past end of document.
+				// On to next start position.
+<span class="fc" id="L153">				start++;</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">				if (start &gt; srcStart) {</span>
+					// No more start positions for N-gram; done with this source hit.
+<span class="fc" id="L156">					break;</span>
+				}
+<span class="fc" id="L158">				end = Math.max(srcEnd, start + min); // minimum length still containing source hit</span>
+<span class="pc bpc" id="L159" title="1 of 2 branches missed.">				if (end &gt; tokenLength) {</span>
+					// Smallest n-gram at start position went past the end of the document.
+					// Done with this source hit.
+<span class="nc" id="L162">					break;</span>
+				}
+			}
+<span class="fc" id="L165">			atValidNGram = true;</span>
+<span class="fc" id="L166">			break;</span>
+		case CONTAINING_AT_START:
+<span class="fc" id="L168">			end++;</span>
+<span class="pc bpc" id="L169" title="1 of 4 branches missed.">			if (end - start &gt; max || end &gt; tokenLength) {</span>
+				// N-gram became too long, or we went past end of document.
+				// We're done with this source hit.
+<span class="nc" id="L172">				break;</span>
+			}
+<span class="fc" id="L174">			atValidNGram = true;</span>
+<span class="fc" id="L175">			break;</span>
+		case CONTAINING_AT_END:
+			// On to next start position.
+<span class="fc" id="L178">			start++;</span>
+<span class="pc bpc" id="L179" title="1 of 4 branches missed.">			if (end - start &lt; min || start &gt; srcStart) {</span>
+				// No more start positions for N-gram; done with this source hit.
+<span class="nc" id="L181">				break;</span>
+			}
+<span class="fc" id="L183">			atValidNGram = true;</span>
+<span class="fc" id="L184">			break;</span>
+		case WITHIN:
+<span class="fc" id="L186">			end++;</span>
+<span class="fc bfc" id="L187" title="All 4 branches covered.">			if (end - start &gt; max || end &gt; srcEnd) {</span>
+				// N-gram became too long, or we went past end of source hit.
+				// On to next start position.
+<span class="fc" id="L190">				start++;</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">				if (start &gt; srcEnd - min) {</span>
+					// No more start positions for N-gram; done with this source hit.
+<span class="fc" id="L193">					break;</span>
+				}
+<span class="fc" id="L195">				end = start + min;</span>
+			}
+<span class="fc" id="L197">			atValidNGram = true;</span>
+<span class="fc" id="L198">			break;</span>
+
+		case MATCHES:
+			// Matches only produces one hit per source hit,
+			// so we're always done with the source hit here.
+<span class="fc" id="L203">			break;</span>
+
+		case STARTS_AT:
+		case ENDS_AT:
+<span class="nc" id="L207">			throw new UnsupportedOperationException(&quot;STARTS_AT and ENDS_AT not implemented for SpansExpandToNGram&quot;);</span>
+		}
+<span class="fc bfc" id="L209" title="All 2 branches covered.">		if (atValidNGram)</span>
+<span class="fc" id="L210">			return start;</span>
+
+<span class="fc" id="L212">		return goToNextClauseSpan();</span>
+	}
+
+	@Override
+	public int advance(int doc) throws IOException {
+<span class="nc" id="L217">		alreadyAtFirstHit = false;</span>
+<span class="nc bnc" id="L218" title="All 2 branches missed.">		if (currentDoc != NO_MORE_DOCS) {</span>
+<span class="nc bnc" id="L219" title="All 2 branches missed.">			if (currentDoc &lt; doc) {</span>
+<span class="nc" id="L220">				currentDoc = clause.advance(doc);</span>
+<span class="nc bnc" id="L221" title="All 2 branches missed.">				if (currentDoc != NO_MORE_DOCS) {</span>
+					while (true) {
+<span class="nc" id="L223">						srcStart = srcEnd = start = end = -1;</span>
+<span class="nc" id="L224">						goToNextClauseSpan();</span>
+<span class="nc bnc" id="L225" title="All 2 branches missed.">						if (start != NO_MORE_POSITIONS) {</span>
+<span class="nc" id="L226">							alreadyAtFirstHit = true;</span>
+<span class="nc" id="L227">							return currentDoc;</span>
+						}
+<span class="nc" id="L229">						currentDoc = clause.nextDoc();</span>
+<span class="nc bnc" id="L230" title="All 2 branches missed.">						if (currentDoc == NO_MORE_DOCS)</span>
+<span class="nc" id="L231">							return NO_MORE_DOCS;</span>
+					}
+				}
+			} else {
+<span class="nc" id="L235">				nextDoc(); // per Lucene's specification, always at least go to the next doc</span>
+			}
+		}
+<span class="nc" id="L238">		return currentDoc;</span>
+	}
+
+	/**
+	 * Go to the next position in the source clause and reset the expansion process.
+	 *
+	 * Note that we may discover we can't do the minimum expansion (because the hit is at the start
+	 * of the document, for example), so we may have to advance the clause again, and may actually
+	 * run out of hits while doing so.
+	 *
+	 * @return the start position if we're at a valid hit and have reset the expansion, NO_MORE_POSITIONS if we're done
+	 * @throws IOException
+	 */
+	private int goToNextClauseSpan() throws IOException {
+<span class="fc" id="L252">		srcStart = clause.nextStartPosition();</span>
+<span class="fc bfc" id="L253" title="All 2 branches covered.">		if (srcStart == NO_MORE_POSITIONS) {</span>
+<span class="fc" id="L254">			start = end = srcEnd = NO_MORE_POSITIONS;</span>
+<span class="fc" id="L255">			return NO_MORE_POSITIONS;</span>
+		}
+		while (true) {
+			// Determine limits and set to initial n-gram
+<span class="fc" id="L259">			srcEnd = clause.endPosition();</span>
+<span class="pc bpc" id="L260" title="2 of 7 branches missed.">			switch (op) {</span>
+			case MATCHES:
+<span class="fc" id="L262">				int len = srcEnd - srcStart;</span>
+<span class="fc bfc" id="L263" title="All 4 branches covered.">				if (len &gt;= min &amp;&amp; len &lt;= max) {</span>
+					// Only one n-gram
+<span class="fc" id="L265">					start = srcStart;</span>
+<span class="fc" id="L266">					end = srcEnd;</span>
+<span class="fc" id="L267">					return start;</span>
+				}
+				// Hit length doesn't match, so no n-grams.
+				break;
+			case CONTAINING:
+				// Do we know this document's length already?
+<span class="pc bpc" id="L273" title="1 of 2 branches missed.">				if (currentDoc != tokenLengthDocId) {</span>
+					// No, determine length now
+<span class="fc" id="L275">					tokenLengthDocId = currentDoc;</span>
+<span class="fc" id="L276">					tokenLength = lengthGetter.getFieldLength(tokenLengthDocId) - subtractFromLength;</span>
+				}
+
+				// First n-gram containing source hit: minimum start position,
+				// smallest possible length
+<span class="fc" id="L281">				start = srcEnd - max;</span>
+<span class="fc bfc" id="L282" title="All 2 branches covered.">				if (start &lt; 0)</span>
+<span class="fc" id="L283">					start = 0;</span>
+<span class="fc" id="L284">				end = Math.max(srcEnd, start + min); // minimum length still containing source hit</span>
+<span class="pc bpc" id="L285" title="2 of 4 branches missed.">				if (end &lt;= start + max &amp;&amp; end &lt;= tokenLength) {</span>
+					// Valid n-gram containing hit.
+<span class="fc" id="L287">					return start;</span>
+				}
+				// First n-gram would go past end of document, so no n-grams.
+				break;
+			case CONTAINING_AT_START:
+				// Do we know this document's length already?
+<span class="pc bpc" id="L293" title="1 of 2 branches missed.">				if (currentDoc != tokenLengthDocId) {</span>
+					// No, determine length now
+<span class="fc" id="L295">					tokenLengthDocId = currentDoc;</span>
+<span class="fc" id="L296">					tokenLength = lengthGetter.getFieldLength(tokenLengthDocId) - subtractFromLength;</span>
+				}
+
+				// First n-gram containing source hit: minimum start position,
+				// smallest possible length
+<span class="fc" id="L301">				start = srcStart;</span>
+<span class="fc" id="L302">				end = Math.max(srcEnd, start + min); // minimum length still containing source hit</span>
+<span class="pc bpc" id="L303" title="2 of 4 branches missed.">				if (end &lt;= start + max &amp;&amp; end &lt;= tokenLength) {</span>
+					// Valid n-gram containing hit.
+<span class="fc" id="L305">					return start;</span>
+				}
+				// First n-gram would go past end of document, so no n-grams.
+				break;
+			case CONTAINING_AT_END:
+				// First n-gram containing source hit: minimum start position, maximum length.
+<span class="fc" id="L311">				start = srcEnd - max;</span>
+<span class="fc bfc" id="L312" title="All 2 branches covered.">				if (start &lt; 0)</span>
+<span class="fc" id="L313">					start = 0;</span>
+<span class="fc" id="L314">				end = srcEnd;</span>
+<span class="pc bpc" id="L315" title="1 of 2 branches missed.">				if (start &lt;= srcStart) {</span>
+					// Valid n-gram containing hit.
+<span class="fc" id="L317">					return start;</span>
+				}
+				// Hit too large to be contained by specified n-grams.
+				break;
+			case WITHIN:
+				// First n-gram within source hit: starts at source start, minimum length
+<span class="fc" id="L323">				start = srcStart;</span>
+<span class="fc" id="L324">				end = start + min;</span>
+<span class="pc bpc" id="L325" title="1 of 2 branches missed.">				if (end &lt;= srcEnd) {</span>
+					// n-gram is contained within hit, so valid.
+<span class="fc" id="L327">					return start;</span>
+				}
+				// Minimum length n-gram doesn't fit in hit, so no n-grams.
+				break;
+			case STARTS_AT:
+			case ENDS_AT:
+<span class="nc" id="L333">				throw new UnsupportedOperationException(&quot;STARTS_AT and ENDS_AT not implemented for SpansExpandToNGram&quot;);</span>
+			}
+
+			// No, try the next hit, if there is one
+<span class="fc bfc" id="L337" title="All 2 branches covered.">			if (nextStartPosition() == NO_MORE_POSITIONS) {</span>
+<span class="fc" id="L338">				start = end = srcStart = srcEnd = NO_MORE_POSITIONS;</span>
+<span class="fc" id="L339">				return NO_MORE_POSITIONS; // No hits left, we're done</span>
+			}
+		}
+	}
+
+	/**
+	 * @return start of the current hit
+	 */
+	@Override
+	public int startPosition() {
+<span class="fc bfc" id="L349" title="All 2 branches covered.">		if (alreadyAtFirstHit)</span>
+<span class="fc" id="L350">			return -1; // .nextStartPosition() not called yet</span>
+<span class="fc" id="L351">		return start;</span>
+	}
+
+	@Override
+	public String toString() {
+<span class="nc" id="L356">		return &quot;SpansExpansion(&quot; + clause + &quot;, &quot; + op + &quot;, &quot; + min + &quot;, &quot; + inf(max) + &quot;)&quot;;</span>
+	}
+
+	@Override
+	public void passHitQueryContextToClauses(HitQueryContext context) {
+<span class="nc" id="L361">		clause.setHitQueryContext(context);</span>
+<span class="nc" id="L362">	}</span>
+
+	@Override
+	public void getCapturedGroups(Span[] capturedGroups) {
+<span class="nc bnc" id="L366" title="All 2 branches missed.">		if (!childClausesCaptureGroups)</span>
+<span class="nc" id="L367">			return;</span>
+<span class="nc" id="L368">		clause.getCapturedGroups(capturedGroups);</span>
+<span class="nc" id="L369">	}</span>
+
+	@Override
+	public int width() {
+<span class="nc" id="L373">		return clause.width();</span>
+	}
+
+	@Override
+	public void collect(SpanCollector collector) throws IOException {
+<span class="nc" id="L378">		clause.collect(collector);</span>
+<span class="nc" id="L379">	}</span>
+
+	@Override
+	public float positionsCost() {
+<span class="nc" id="L383">		return clause.positionsCost();</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

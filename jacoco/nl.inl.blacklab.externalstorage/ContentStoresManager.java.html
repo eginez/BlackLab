@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ContentStoresManager.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.externalstorage</a> &gt; <span class="el_source">ContentStoresManager.java</span></div><h1>ContentStoresManager.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.externalstorage;
+
+import java.util.HashMap;
+import java.util.Map;
+
+import org.apache.lucene.document.Document;
+
+import nl.inl.blacklab.search.ContentAccessor;
+
+<span class="fc" id="L10">public class ContentStoresManager {</span>
+	/**
+	 * ContentAccessors tell us how to get a field's content:
+	 * &lt;ol&gt;
+	 * &lt;li&gt;if there is no contentaccessor: get it from the Lucene index (stored field)&lt;/li&gt;
+	 * &lt;li&gt;from an external source (file, database) if it's not (because the content is very large
+	 * and/or we want faster random access to the content than a stored field can provide)&lt;/li&gt;
+	 * &lt;/ol&gt;
+	 *
+	 * Indexed by complex field name.
+	 */
+<span class="fc" id="L21">	private Map&lt;String, ContentAccessor&gt; contentAccessors = new HashMap&lt;&gt;();</span>
+
+	public void close() {
+		// Close the content accessor(s)
+		// (the ContentStore, and possibly other content accessors
+		// (although that feature is not used right now))
+<span class="fc bfc" id="L27" title="All 2 branches covered.">		for (ContentAccessor ca: contentAccessors.values()) {</span>
+<span class="fc" id="L28">			ca.close();</span>
+<span class="fc" id="L29">		}</span>
+
+<span class="fc" id="L31">	}</span>
+
+	public void put(String field, ContentStore store) {
+<span class="fc" id="L34">		contentAccessors.put(field, new ContentAccessor(field, store));</span>
+<span class="fc" id="L35">	}</span>
+
+	public ContentStore get(String fieldName) {
+<span class="fc" id="L38">		ContentAccessor ca = contentAccessors.get(fieldName);</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">		if (ca == null)</span>
+<span class="fc" id="L40">			return null;</span>
+<span class="fc" id="L41">		return ca.getContentStore();</span>
+	}
+
+	public void deleteDocument(Document d) {
+<span class="nc bnc" id="L45" title="All 2 branches missed.">		for (ContentAccessor ca: contentAccessors.values()) {</span>
+<span class="nc" id="L46">			ca.delete(d);</span>
+<span class="nc" id="L47">		}</span>
+<span class="nc" id="L48">	}</span>
+
+	public boolean exists(String fieldName) {
+<span class="nc" id="L51">		return contentAccessors.containsKey(fieldName);</span>
+	}
+
+	public String[] getSubstrings(String fieldName, Document d, int[] start, int[] end) {
+<span class="nc" id="L55">		ContentAccessor contentAccessor = contentAccessors.get(fieldName);</span>
+<span class="nc bnc" id="L56" title="All 2 branches missed.">		if (contentAccessor == null)</span>
+<span class="nc" id="L57">			return null;</span>
+<span class="nc" id="L58">		return contentAccessor.getSubstringsFromDocument(d, start, end);</span>
+	}
+
+	public String[] getSubstrings(String fieldName, int contentId, int[] start, int[] end) {
+<span class="nc" id="L62">		ContentAccessor contentAccessor = contentAccessors.get(fieldName);</span>
+<span class="nc bnc" id="L63" title="All 2 branches missed.">		if (contentAccessor == null)</span>
+<span class="nc" id="L64">			return null;</span>
+<span class="nc" id="L65">		return contentAccessor.getSubstringsFromDocument(contentId, start, end);</span>
+	}
+
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

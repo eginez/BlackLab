@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SpansConstrained.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">SpansConstrained.java</span></div><h1>SpansConstrained.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.search.lucene;
+
+import java.io.IOException;
+import java.util.Arrays;
+
+import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.search.spans.SpanCollector;
+import org.apache.lucene.search.spans.Spans;
+
+import nl.inl.blacklab.search.Span;
+import nl.inl.blacklab.search.fimatch.ForwardIndexDocument;
+import nl.inl.blacklab.search.fimatch.ForwardIndexAccessor.ForwardIndexAccessorLeafReader;
+import nl.inl.blacklab.search.matchfilter.MatchFilter;
+
+public class SpansConstrained extends BLSpans {
+
+	/** The clause we're filtering */
+	private BLSpans clause;
+
+	/** The constraint with which we're filtering the clause */
+	private MatchFilter constraint;
+
+	/** The hit query context, which contains captured group information */
+	private HitQueryContext context;
+
+	/** The current captured groups */
+	private Span[] capturedGroups;
+
+	/** Maps from term strings to term indices for each property. */
+	private ForwardIndexAccessorLeafReader fiAccessor;
+
+	/** Where to get forward index tokens for the current doc */
+	private ForwardIndexDocument currentFiDoc;
+
+	/** Are we already at the first match in a new document, before nextStartPosition() has been called?
+	 * Necessary because we have to make sure nextDoc()/advance() actually puts us in a document with at
+	 * least one match.
+	 */
+<span class="fc" id="L39">	private boolean alreadyAtFirstMatch = false;</span>
+
+<span class="fc" id="L41">	public SpansConstrained(BLSpans clause, MatchFilter constraint, ForwardIndexAccessorLeafReader fiAccessor) {</span>
+<span class="fc" id="L42">		this.clause = clause;</span>
+<span class="fc" id="L43">		this.constraint = constraint;</span>
+<span class="fc" id="L44">		this.fiAccessor = fiAccessor;</span>
+<span class="fc" id="L45">	}</span>
+
+	@Override
+	protected void passHitQueryContextToClauses(HitQueryContext context) {
+<span class="fc" id="L49">		clause.setHitQueryContext(context);</span>
+<span class="fc" id="L50">	}</span>
+
+	@Override
+	public void setHitQueryContext(HitQueryContext context) {
+<span class="fc" id="L54">		super.setHitQueryContext(context);</span>
+<span class="fc" id="L55">		this.context = context;</span>
+<span class="fc" id="L56">		constraint.setHitQueryContext(context);</span>
+<span class="fc" id="L57">	}</span>
+
+	@Override
+	public void getCapturedGroups(Span[] capturedGroups) {
+<span class="fc" id="L61">		clause.getCapturedGroups(capturedGroups);</span>
+<span class="fc" id="L62">	}</span>
+
+	@Override
+	public int nextDoc() throws IOException {
+<span class="fc" id="L66">		alreadyAtFirstMatch = false;</span>
+
+<span class="fc" id="L68">		int currentDocId = clause.nextDoc();</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">		if (currentDocId == DocIdSetIterator.NO_MORE_DOCS) {</span>
+<span class="fc" id="L70">			currentFiDoc = null;</span>
+<span class="fc" id="L71">			return NO_MORE_DOCS;</span>
+		}
+<span class="fc" id="L73">		return ensureValidDoc();</span>
+	}
+
+	@Override
+	public int advance(int target) throws IOException {
+<span class="nc" id="L78">		alreadyAtFirstMatch = false;</span>
+
+<span class="nc" id="L80">		int currentDocId = clause.advance(target);</span>
+<span class="nc bnc" id="L81" title="All 2 branches missed.">		if (currentDocId == DocIdSetIterator.NO_MORE_DOCS) {</span>
+<span class="nc" id="L82">			currentFiDoc = null;</span>
+<span class="nc" id="L83">			return NO_MORE_DOCS;</span>
+		}
+<span class="nc" id="L85">		return ensureValidDoc();</span>
+	}
+
+	/**
+	 * Ensure that the current document has at least one valid match;
+	 * if not, advance until we find a document with at least one valid match.
+	 *
+	 * @return the current doc id, or NO_MORE_DOCS if there are no more valid docs
+	 * @throws IOException
+	 */
+	private int ensureValidDoc() throws IOException {
+<span class="fc" id="L96">		int currentDocId = clause.docID();</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">		while (currentDocId != NO_MORE_DOCS) {</span>
+<span class="fc" id="L98">			currentFiDoc = fiAccessor.getForwardIndexDoc(currentDocId);</span>
+<span class="fc" id="L99">			clause.nextStartPosition();</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">			if (ensureValidHit() != NO_MORE_POSITIONS) {</span>
+<span class="fc" id="L101">				alreadyAtFirstMatch = true;</span>
+<span class="fc" id="L102">				break;</span>
+			}
+<span class="fc" id="L104">			currentDocId = clause.nextDoc();</span>
+		}
+<span class="fc" id="L106">		return currentDocId;</span>
+	}
+
+	@Override
+	public int nextStartPosition() throws IOException {
+<span class="fc bfc" id="L111" title="All 2 branches covered.">		if (alreadyAtFirstMatch) {</span>
+			// We're already at the first match in the doc. Return it.
+<span class="fc" id="L113">			alreadyAtFirstMatch = false;</span>
+<span class="fc" id="L114">			return clause.startPosition();</span>
+		}
+
+<span class="fc" id="L117">		clause.nextStartPosition();</span>
+<span class="fc" id="L118">		return ensureValidHit();</span>
+	}
+
+	@Override
+	public int advanceStartPosition(int target) throws IOException {
+<span class="nc bnc" id="L123" title="All 2 branches missed.">		if (alreadyAtFirstMatch) {</span>
+<span class="nc" id="L124">			alreadyAtFirstMatch = false;</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">			if (clause.startPosition() &gt;= target)</span>
+<span class="nc" id="L126">				return clause.startPosition();</span>
+		}
+
+<span class="nc" id="L129">		clause.advanceStartPosition(target);</span>
+<span class="nc" id="L130">		return ensureValidHit();</span>
+	}
+
+	/**
+	 * Ensure that the current hit is valid with respect to our constraint;
+	 * if not, advance to the next valid hit.
+	 *
+	 * @return current hit start position if valid, NO_MORE_POSITIONS if we're done in this document
+	 * @throws IOException
+	 */
+	protected int ensureValidHit() throws IOException {
+<span class="fc" id="L141">		int startPos = clause.startPosition();</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">		while (startPos != Spans.NO_MORE_POSITIONS) {</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">			if (capturedGroups == null) {</span>
+<span class="fc" id="L144">				capturedGroups = new Span[context.getCapturedGroupNames().size()];</span>
+			} else {
+<span class="fc" id="L146">				Arrays.fill(capturedGroups, null);</span>
+			}
+<span class="fc" id="L148">			context.getCapturedGroups(capturedGroups);</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">			if (constraint.evaluate(currentFiDoc, capturedGroups).isTruthy())</span>
+<span class="fc" id="L150">				break;</span>
+<span class="fc" id="L151">			startPos = clause.nextStartPosition();</span>
+		}
+<span class="fc" id="L153">		return startPos;</span>
+	}
+
+	@Override
+	public int startPosition() {
+<span class="pc bpc" id="L158" title="1 of 2 branches missed.">		if (alreadyAtFirstMatch)</span>
+<span class="nc" id="L159">			return -1; // nextStartPosition() hasn't been called yet</span>
+<span class="fc" id="L160">		return clause.startPosition();</span>
+	}
+
+	@Override
+	public int endPosition() {
+<span class="pc bpc" id="L165" title="1 of 2 branches missed.">		if (alreadyAtFirstMatch)</span>
+<span class="nc" id="L166">			return -1; // nextStartPosition() hasn't been called yet</span>
+<span class="fc" id="L167">		return clause.endPosition();</span>
+	}
+
+	@Override
+	public int width() {
+<span class="nc" id="L172">		return clause.width();</span>
+	}
+
+	@Override
+	public void collect(SpanCollector collector) throws IOException {
+<span class="nc" id="L177">		clause.collect(collector);</span>
+<span class="nc" id="L178">	}</span>
+
+	@Override
+	public float positionsCost() {
+<span class="nc" id="L182">		return clause.positionsCost();</span>
+	}
+
+	@Override
+	public int docID() {
+<span class="fc" id="L187">		return clause.docID();</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

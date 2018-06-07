@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TokensPerMetaValue.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.testutil</a> &gt; <span class="el_source">TokensPerMetaValue.java</span></div><h1>TokensPerMetaValue.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.testutil;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.Map;
+
+import org.apache.lucene.queryparser.classic.ParseException;
+import org.apache.lucene.search.Query;
+
+import nl.inl.blacklab.analysis.BLDutchAnalyzer;
+import nl.inl.blacklab.perdocument.DocPropertyComplexFieldLength;
+import nl.inl.blacklab.perdocument.DocResults;
+import nl.inl.blacklab.search.Searcher;
+import nl.inl.blacklab.search.indexstructure.IndexStructure;
+import nl.inl.blacklab.search.indexstructure.MetadataFieldDesc;
+import nl.inl.util.LuceneUtil;
+
+/**
+ * Determine the number of tokens in the subcorpus defined by each of the metadatafield values.
+ * (Only for those metadata fields that have a limited number of values, all of which were captured
+ * in the index metadata file).
+ */
+<span class="nc" id="L23">public class TokensPerMetaValue {</span>
+
+	public static void main(String[] args) throws IOException, ParseException {
+
+<span class="nc" id="L27">		String indexDir = &quot;/home/jan/blacklab/gysseling/index&quot;;</span>
+<span class="nc bnc" id="L28" title="All 2 branches missed.">		if (args.length &gt;= 1)</span>
+<span class="nc" id="L29">			indexDir = args[0];</span>
+<span class="nc" id="L30">		String complexFieldName = &quot;contents&quot;;</span>
+<span class="nc bnc" id="L31" title="All 2 branches missed.">		if (args.length &gt;= 2)</span>
+<span class="nc" id="L32">			complexFieldName = args[1];</span>
+
+<span class="nc" id="L34">		Searcher searcher = Searcher.open(new File(indexDir));</span>
+		try {
+			// Loop over all metadata fields
+<span class="nc" id="L37">			IndexStructure indexStructure = searcher.getIndexStructure();</span>
+<span class="nc" id="L38">			System.out.println(&quot;field\tvalue\tnumberOfDocs\tnumberOfTokens&quot;);</span>
+<span class="nc bnc" id="L39" title="All 2 branches missed.">			for (String metaFieldName: indexStructure.getMetadataFields()) {</span>
+				// Check if this field has only a few values
+<span class="nc" id="L41">				MetadataFieldDesc fd = indexStructure.getMetadataFieldDesc(metaFieldName);</span>
+<span class="nc bnc" id="L42" title="All 2 branches missed.">				if (fd.isValueListComplete()) {</span>
+					// Loop over the values
+<span class="nc bnc" id="L44" title="All 2 branches missed.">					for (Map.Entry&lt;String, Integer&gt; entry: fd.getValueDistribution().entrySet()) {</span>
+						// Determine token count for this value
+<span class="nc" id="L46">						String fieldName = fd.getName();</span>
+<span class="nc" id="L47">						Query filter = LuceneUtil.parseLuceneQuery(&quot;\&quot;&quot; + entry.getKey().toLowerCase() + &quot;\&quot;&quot;, new BLDutchAnalyzer(), fieldName);</span>
+<span class="nc" id="L48">						DocResults docs = searcher.queryDocuments(filter);</span>
+<span class="nc" id="L49">						int totalNumberOfTokens = docs.intSum(new DocPropertyComplexFieldLength(complexFieldName));</span>
+<span class="nc" id="L50">						System.out.println(fieldName + &quot;\t&quot; + entry.getKey() + &quot;\t&quot; + entry.getValue() + &quot;\t&quot; + totalNumberOfTokens);</span>
+<span class="nc" id="L51">					}</span>
+				}
+<span class="nc" id="L53">			}</span>
+		} finally {
+<span class="nc" id="L55">			searcher.close();</span>
+<span class="nc" id="L56">		}</span>
+<span class="nc" id="L57">	}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

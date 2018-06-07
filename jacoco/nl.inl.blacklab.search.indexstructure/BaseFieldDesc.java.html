@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BaseFieldDesc.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.indexstructure</a> &gt; <span class="el_source">BaseFieldDesc.java</span></div><h1>BaseFieldDesc.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.search.indexstructure;
+
+import nl.inl.util.StringUtil;
+
+public abstract class BaseFieldDesc {
+	/** Complex field's name */
+	protected String fieldName;
+
+	/** Complex field's name */
+	protected String displayName;
+
+	/** Complex field's name */
+<span class="fc" id="L13">	protected String description = &quot;&quot;;</span>
+
+	public BaseFieldDesc(String fieldName) {
+<span class="fc" id="L16">		this(fieldName, null);</span>
+<span class="fc" id="L17">	}</span>
+
+<span class="fc" id="L19">	public BaseFieldDesc(String fieldName, String displayName) {</span>
+<span class="fc" id="L20">		this.fieldName = fieldName;</span>
+<span class="pc bpc" id="L21" title="1 of 2 branches missed.">		if (displayName == null)</span>
+<span class="fc" id="L22">			this.displayName = StringUtil.camelCaseToDisplayable(fieldName, true);</span>
+		else
+<span class="nc" id="L24">			this.displayName = displayName;</span>
+<span class="fc" id="L25">	}</span>
+
+	/** Get this complex field's name
+	 * @return this field's name */
+	public String getName() {
+<span class="fc" id="L30">		return fieldName;</span>
+	}
+
+	public void setDisplayName(String displayName) {
+<span class="fc" id="L34">		this.displayName = displayName;</span>
+<span class="fc" id="L35">	}</span>
+
+	/** Get this complex field's display name
+	 * @return this field's display name */
+	public String getDisplayName() {
+<span class="fc" id="L40">		return displayName;</span>
+	}
+
+	public void setDescription(String description) {
+<span class="fc" id="L44">		this.description = description;</span>
+<span class="fc" id="L45">	}</span>
+
+	/** Get this complex field's display name
+	 * @return this field's display name */
+	public String getDescription() {
+<span class="fc" id="L50">		return description;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

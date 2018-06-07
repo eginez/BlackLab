@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BLSpansWrapper.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">BLSpansWrapper.java</span></div><h1>BLSpansWrapper.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.lucene;
+
+import java.io.IOException;
+
+import org.apache.lucene.search.spans.SpanCollector;
+import org.apache.lucene.search.spans.SpanOrQuery;
+import org.apache.lucene.search.spans.SpanQuery;
+import org.apache.lucene.search.spans.SpanTermQuery;
+import org.apache.lucene.search.spans.Spans;
+import org.apache.lucene.search.spans.TermSpans;
+
+import nl.inl.blacklab.search.Span;
+
+
+/**
+ * Wrap a &quot;simple&quot; Spans object in a BLSpans object. It will
+ * give the guarantees appropriate for single-term Spans like
+ * that of SpanTermQuery, SpanRegexQuery, etc.
+ */
+public class BLSpansWrapper extends BLSpans {
+
+	private Spans source;
+
+<span class="fc" id="L39">	public BLSpansWrapper(Spans source) {</span>
+<span class="pc bpc" id="L40" title="1 of 2 branches missed.">		if (source == null)</span>
+<span class="nc" id="L41">			throw new IllegalArgumentException(&quot;Cannot wrap null Spans!&quot;);</span>
+
+<span class="pc bpc" id="L43" title="1 of 2 branches missed.">		if (source instanceof BLSpans) {</span>
+<span class="nc" id="L44">			throw new IllegalArgumentException(&quot;No need to wrap spans, already a BLSpans&quot;);</span>
+		}
+
+<span class="pc bpc" id="L47" title="1 of 2 branches missed.">		if (!(source instanceof TermSpans)) {</span>
+			// For anything but the very basic TermSpans,
+			// this wrapper shouldn't be used anymore because everything is already BLSpans.
+			// (which is needed for token tagging)
+			// Just to make sure, print an error for now (will upgrade to
+			// throwing an exception in the future)
+<span class="nc" id="L53">			System.err.println(&quot;### BLSpansWrapper: &quot; + source + &quot; ###&quot;);</span>
+		}
+
+<span class="fc" id="L56">		this.source = source;</span>
+<span class="fc" id="L57">	}</span>
+
+	@Override
+	public boolean equals(Object obj) {
+<span class="nc" id="L61">		return source.equals(obj);</span>
+	}
+
+	@Override
+	public int hashCode() {
+<span class="nc" id="L66">		return source.hashCode();</span>
+	}
+
+	@Override
+	public String toString() {
+<span class="nc" id="L71">		return source.toString();</span>
+	}
+
+	@Deprecated
+	public static BLSpans optWrap(Spans spans) {
+<span class="nc bnc" id="L76" title="All 2 branches missed.">		if (spans == null)</span>
+<span class="nc" id="L77">			return null;</span>
+<span class="nc bnc" id="L78" title="All 2 branches missed.">		if (spans instanceof BLSpans)</span>
+<span class="nc" id="L79">			return (BLSpans)spans;</span>
+<span class="nc" id="L80">		return new BLSpansWrapper(spans);</span>
+	}
+
+	/**
+	 * Rewrite a SpanQuery after rewrite() to a BLSpanQuery equivalent.
+	 *
+	 * This is used for BLSpanOrQuery and BLSpanMultiTermQueryWrapper: we
+	 * let Lucene rewrite these for us, but the result needs to be BL-ified
+	 * so we know we'll get BLSpans (which contain extra methods for optimization).
+	 *
+	 * @param spanQuery the SpanQuery to BL-ify (if it isn't a BLSpanQuery already)
+	 * @return resulting BLSpanQuery, or the input query if it was one already
+	 * @deprecated moved to BLSpanQuery and renamed to wrap().
+	 */
+	@Deprecated
+	public static BLSpanQuery blSpanQueryFrom(SpanQuery spanQuery) {
+<span class="nc bnc" id="L96" title="All 2 branches missed.">		if (spanQuery instanceof BLSpanQuery) {</span>
+			// Already BL-derived, no wrapper needed.
+<span class="nc" id="L98">			return (BLSpanQuery) spanQuery;</span>
+<span class="nc bnc" id="L99" title="All 2 branches missed.">		} else if (spanQuery instanceof SpanOrQuery) {</span>
+			// Translate to a BLSpanOrQuery, recursively translating the clauses.
+<span class="nc" id="L101">			return BLSpanOrQuery.from((SpanOrQuery) spanQuery);</span>
+<span class="nc bnc" id="L102" title="All 2 branches missed.">		} else if (spanQuery instanceof SpanTermQuery) {</span>
+			// Translate to a BLSpanTermQuery.
+<span class="nc" id="L104">			return BLSpanTermQuery.from((SpanTermQuery) spanQuery);</span>
+		} else {
+			// After rewrite, we shouldn't encounter any other non-BLSpanQuery classes.
+<span class="nc" id="L107">			throw new UnsupportedOperationException(&quot;Cannot BL-ify &quot; + spanQuery.getClass().getSimpleName());</span>
+		}
+	}
+
+	@Override
+	public void passHitQueryContextToClauses(HitQueryContext context) {
+<span class="pc bpc" id="L113" title="1 of 2 branches missed.">		if (source instanceof BLSpans) // shouldn't happen, but ok</span>
+<span class="nc" id="L114">			((BLSpans) source).setHitQueryContext(context);</span>
+<span class="fc" id="L115">	}</span>
+
+	@Override
+	public void getCapturedGroups(Span[] capturedGroups) {
+<span class="nc bnc" id="L119" title="All 2 branches missed.">		if (!childClausesCaptureGroups)</span>
+<span class="nc" id="L120">			return;</span>
+<span class="nc bnc" id="L121" title="All 2 branches missed.">		if (source instanceof BLSpans) // shouldn't happen, but ok</span>
+<span class="nc" id="L122">			((BLSpans) source).getCapturedGroups(capturedGroups);</span>
+<span class="nc" id="L123">	}</span>
+
+	@Override
+	public int nextDoc() throws IOException {
+<span class="fc" id="L127">		return source.nextDoc();</span>
+	}
+
+	@Override
+	public int docID() {
+<span class="fc" id="L132">		return source.docID();</span>
+	}
+
+	@Override
+	public int nextStartPosition() throws IOException {
+<span class="fc" id="L137">		return source.nextStartPosition();</span>
+	}
+
+	@Override
+	public int advanceStartPosition(int target) throws IOException {
+<span class="pc bpc" id="L142" title="1 of 2 branches missed.">		if (source instanceof BLSpans) {</span>
+<span class="nc" id="L143">			return ((BLSpans) source).advanceStartPosition(target);</span>
+		}
+		// Naive implementations; subclasses may provide a faster version.
+		int pos;
+		do {
+<span class="fc" id="L148">			pos = source.nextStartPosition();</span>
+<span class="pc bpc" id="L149" title="1 of 4 branches missed.">		} while(pos &lt; target &amp;&amp; pos != NO_MORE_POSITIONS);</span>
+<span class="fc" id="L150">		return pos;</span>
+	}
+
+	@Override
+	public int startPosition() {
+<span class="fc" id="L155">		return source.startPosition();</span>
+	}
+
+	@Override
+	public int endPosition() {
+<span class="fc" id="L160">		return source.endPosition();</span>
+	}
+
+	@Override
+	public int advance(int target) throws IOException {
+<span class="fc" id="L165">		return source.advance(target);</span>
+	}
+
+	@Override
+	public int width() {
+<span class="nc" id="L170">		return source.width();</span>
+	}
+
+	@Override
+	public void collect(SpanCollector collector) throws IOException {
+<span class="fc" id="L175">		source.collect(collector);</span>
+<span class="fc" id="L176">	}</span>
+
+	@Override
+	public float positionsCost() {
+<span class="nc" id="L180">		return source.positionsCost();</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

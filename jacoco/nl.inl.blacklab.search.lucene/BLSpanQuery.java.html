@@ -1,0 +1,362 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BLSpanQuery.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">BLSpanQuery.java</span></div><h1>BLSpanQuery.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.lucene;
+
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.List;
+
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.spans.SpanOrQuery;
+import org.apache.lucene.search.spans.SpanQuery;
+import org.apache.lucene.search.spans.SpanTermQuery;
+
+import nl.inl.blacklab.index.complex.ComplexFieldUtil;
+import nl.inl.blacklab.search.fimatch.Nfa;
+import nl.inl.blacklab.search.fimatch.NfaTwoWay;
+import nl.inl.blacklab.search.fimatch.ForwardIndexAccessor;
+
+/**
+ * A required interface for a BlackLab SpanQuery. All our queries must be
+ * derived from this so we know they will produce BLSpans (which
+ * contains extra methods for optimization).
+ */
+<span class="fc" id="L38">public abstract class BLSpanQuery extends SpanQuery {</span>
+
+	public static final int MAX_UNLIMITED = Integer.MAX_VALUE;
+
+	/**
+	 * Rewrite a SpanQuery after rewrite() to a BLSpanQuery equivalent.
+	 *
+	 * This is used for BLSpanOrQuery and BLSpanMultiTermQueryWrapper: we
+	 * let Lucene rewrite these for us, but the result needs to be BL-ified
+	 * so we know we'll get BLSpans (which contain extra methods for optimization).
+	 *
+	 * @param spanQuery the SpanQuery to BL-ify (if it isn't a BLSpanQuery already)
+	 * @return resulting BLSpanQuery, or the input query if it was one already
+	 */
+	public static BLSpanQuery wrap(SpanQuery spanQuery) {
+<span class="fc bfc" id="L53" title="All 2 branches covered.">		if (spanQuery instanceof BLSpanQuery) {</span>
+			// Already BL-derived, no wrapper needed.
+<span class="fc" id="L55">			return (BLSpanQuery) spanQuery;</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">		} else if (spanQuery instanceof SpanOrQuery) {</span>
+			// Translate to a BLSpanOrQuery, recursively translating the clauses.
+<span class="fc" id="L58">			return BLSpanOrQuery.from((SpanOrQuery) spanQuery);</span>
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">		} else if (spanQuery instanceof SpanTermQuery) {</span>
+			// Translate to a BLSpanTermQuery.
+<span class="fc" id="L61">			return BLSpanTermQuery.from((SpanTermQuery) spanQuery);</span>
+		} else {
+			// After rewrite, we shouldn't encounter any other non-BLSpanQuery classes.
+<span class="nc" id="L64">			throw new UnsupportedOperationException(&quot;Cannot BL-ify &quot; + spanQuery.getClass().getSimpleName());</span>
+		}
+	}
+
+	/**
+	 * Add two values for maximum number of repetitions, taking &quot;infinite&quot; into account.
+	 *
+	 * -1 or Integer.MAX_VALUE means infinite. Adding infinite to any other value
+	 * produces infinite again (-1 if either value is -1; otherwise, Integer.MAX_VALUE
+	 * if either value is Integer.MAX_VALUE).
+	 *
+	 * @param a first max. repetitions value
+	 * @param b first max. repetitions value
+	 * @return sum of the max. repetitions values
+	 */
+	public static int addMaxValues(int a, int b) {
+<span class="pc bpc" id="L80" title="2 of 4 branches missed.">		if (a &lt; 0 || b &lt; 0)</span>
+<span class="nc" id="L81">			throw new RuntimeException(&quot;max values cannot be negative (possible use of old -1 == max, now BLSpanQuery.MAX_UNLIMITED)&quot;);</span>
+		// Is either value infinite?
+<span class="fc bfc" id="L83" title="All 4 branches covered.">		if (a == Integer.MAX_VALUE || b == Integer.MAX_VALUE)</span>
+<span class="fc" id="L84">			return Integer.MAX_VALUE; // Yes, result is infinite</span>
+		// Add regular values
+<span class="fc" id="L86">		return a + b;</span>
+	}
+
+	static &lt;T extends SpanQuery&gt; String clausesToString(String field, List&lt;T&gt; clauses) {
+<span class="fc" id="L90">		StringBuilder b = new StringBuilder();</span>
+<span class="fc" id="L91">		int n = 0;</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">		for (T clause: clauses) {</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">			if (b.length() &gt; 0)</span>
+<span class="fc" id="L94">				b.append(&quot;, &quot;);</span>
+<span class="fc" id="L95">			b.append(clause.toString(field));</span>
+<span class="fc" id="L96">			n++;</span>
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">			if (n &gt; 100) {</span>
+<span class="nc" id="L98">				b.append(&quot;...&quot;);</span>
+<span class="nc" id="L99">				break;</span>
+			}
+<span class="fc" id="L101">		}</span>
+<span class="fc" id="L102">		return b.toString();</span>
+	}
+
+	@SafeVarargs
+	static &lt;T extends SpanQuery&gt; String clausesToString(String field, T... clauses) {
+<span class="fc" id="L107">		return clausesToString(field, Arrays.asList(clauses));</span>
+	}
+
+	public static BLSpanQuery ensureSortedUnique(BLSpanQuery spanQuery) {
+<span class="fc bfc" id="L111" title="All 2 branches covered.">		if (spanQuery.hitsStartPointSorted()) {</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">			if (spanQuery.hitsAreUnique())</span>
+<span class="fc" id="L113">				return spanQuery;</span>
+<span class="fc" id="L114">			return new SpanQueryUnique(spanQuery);</span>
+		}
+<span class="fc bfc" id="L116" title="All 2 branches covered.">		return new SpanQuerySorted(spanQuery, false, !spanQuery.hitsAreUnique());</span>
+	}
+
+	public static BLSpanQuery ensureSorted(BLSpanQuery spanQuery) {
+<span class="pc bpc" id="L120" title="1 of 2 branches missed.">		if (spanQuery.hitsStartPointSorted()) {</span>
+<span class="fc" id="L121">			return spanQuery;</span>
+		}
+<span class="nc" id="L123">		return new SpanQuerySorted(spanQuery, false, false);</span>
+	}
+
+	public static String inf(int max) {
+<span class="fc bfc" id="L127" title="All 2 branches covered.">		return max == MAX_UNLIMITED ? &quot;INF&quot; : &quot;&quot; + max;</span>
+	}
+
+	@Override
+	public abstract String toString(String field);
+
+	@Override
+	public abstract int hashCode();
+
+	@Override
+	public abstract boolean equals(Object obj);
+
+	/**
+	 * Called before rewrite() to optimize certain parts of the query before
+	 * they are rewritten (e.g. match regex terms using NFA instead of OR).
+	 *
+	 * For now, only SpanQuerySequence overrides this to make sure certain clause
+	 * combinations are performed before rewrite().
+	 *
+	 * @param reader index reader
+	 * @return optimized query
+	 * @throws IOException
+	 */
+	public BLSpanQuery optimize(IndexReader reader) throws IOException {
+<span class="fc" id="L151">		return this; // by default, don't do any optimization</span>
+	}
+
+	@Override
+	public abstract BLSpanQuery rewrite(IndexReader reader) throws IOException;
+
+	@Override
+	public abstract BLSpanWeight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException;
+
+	/**
+	 * Does this query match the empty sequence?
+	 *
+	 * For example, the query [word=&quot;cow&quot;]* matches the empty sequence. We need to know this so we
+	 * can rewrite to the appropriate queries. A query of the form &quot;AB*&quot; would be translated into
+	 * &quot;A|AB+&quot;, so each component of the query actually generates non-empty matches.
+	 *
+	 * We default to no because most queries don't match the empty sequence.
+	 *
+	 * @return true if this query matches the empty sequence, false otherwise
+	 */
+	public boolean matchesEmptySequence() {
+<span class="fc" id="L172">		return false;</span>
+	}
+
+	/**
+	 * Return a version of this clause that cannot match the empty sequence.
+	 * @return a version that doesn't match the empty sequence
+	 */
+	BLSpanQuery noEmpty() {
+<span class="pc bpc" id="L180" title="1 of 2 branches missed.">		if (!matchesEmptySequence())</span>
+<span class="fc" id="L181">			return this;</span>
+<span class="nc" id="L182">		throw new UnsupportedOperationException(&quot;noEmpty() must be implemented!&quot;);</span>
+	}
+
+	/**
+	 * Return an inverted version of this query.
+	 *
+	 * @return the inverted query
+	 */
+	public BLSpanQuery inverted() {
+<span class="fc" id="L191">		return new SpanQueryNot(this);</span>
+	}
+
+	/**
+	 * Is it okay to invert this query for optimization?
+	 *
+	 * Heuristic used to determine when to optimize
+	 * a query by inverting one or more of its subqueries.
+	 *
+	 * @return true if it is, false if not
+	 */
+	boolean okayToInvertForOptimization() {
+<span class="fc" id="L203">		return false;</span>
+	}
+
+	/**
+	 * Is this query only a negative clause, producing all tokens that
+	 * don't satisfy certain conditions?
+	 *
+	 * Used for optimization decisions, i.e. in BLSpanOrQuery.rewrite().
+	 *
+	 * @return true if it's negative-only, false if not
+	 */
+	public boolean isSingleTokenNot() {
+<span class="fc" id="L215">		return false;</span>
+	}
+
+	/**
+	 * Are all our hits single tokens?
+	 * @return true if they are, false if not
+	 */
+	public boolean producesSingleTokens() {
+<span class="pc bpc" id="L223" title="2 of 4 branches missed.">		return hitsAllSameLength() &amp;&amp; hitsLengthMin() == 1;</span>
+	}
+
+	/**
+	 * Do our hits have constant length?
+	 * @return true if they do, false if not
+	 */
+	public abstract boolean hitsAllSameLength();
+
+	/**
+	 * How long could our shortest hit be?
+	 * @return length of the shortest hit possible
+	 */
+	public abstract int hitsLengthMin();
+
+	/**
+	 * How long could our longest hit be?
+	 * @return length of the longest hit possible, or Integer.MAX_VALUE if unlimited
+	 */
+	public abstract int hitsLengthMax();
+
+	/**
+	 * When hit B follows hit A, is it guaranteed that B.end &amp;gt;= A.end?
+	 * Also, if A.end == B.end, is B.start &amp;gt; A.start?
+	 *
+	 * @return true if this is guaranteed, false if not
+	 */
+	public abstract boolean hitsEndPointSorted();
+
+	/**
+	 * When hit B follows hit A, is it guaranteed that B.start &amp;gt;= A.start?
+	 * Also, if A.start == B.start, is B.end &amp;gt; A.end?
+	 *
+	 * @return true if this is guaranteed, false if not
+	 */
+	public abstract boolean hitsStartPointSorted();
+
+	/**
+	 * Is it guaranteed that no two hits have the same start position?
+	 * @return true if this is guaranteed, false if not
+	 */
+	public abstract boolean hitsHaveUniqueStart();
+
+	/**
+	 * Is it guaranteed that no two hits have the same end position?
+	 * @return true if this is guaranteed, false if not
+	 */
+	public abstract boolean hitsHaveUniqueEnd();
+
+	/**
+	 * Is it guaranteed that no two hits have the same start and end position?
+	 * @return true if this is guaranteed, false if not
+	 */
+	public abstract boolean hitsAreUnique();
+
+	/**
+	 * Can this query &quot;internalize&quot; the given neighbouring clause?
+	 *
+	 * Internalizing means adding the clause to its children, which is often more efficient
+	 * because we create longer sequences that match fewer hits and may themselves be further
+	 * optimized. An example is SpanQueryPosFilter, which can be combined with fixed-length
+	 * neighbouring clauses (updating the SpanQueryPosFilters' left or right adjustment setting to
+	 * match) to reduce the number of hits that have to be filter.
+	 *
+	 * @param clause clause we want to internalize
+	 * @param onTheRight if true, clause is a right neighbour of this query; if false, a left neighbour
+	 * @return true iff clause can be internalized
+	 */
+	public boolean canInternalizeNeighbour(BLSpanQuery clause, boolean onTheRight) {
+<span class="fc" id="L292">		return false;</span>
+	}
+
+	/**
+	 * Internalize the given clause.
+	 *
+	 * See canInternalizeNeighbour() for more information.
+	 *
+	 * @param clause clause we want to internalize
+	 * @param onTheRight if true, clause is a right neighbour of this query; if false, a left neighbour
+	 * @return new query with clause internalized
+	 */
+	public BLSpanQuery internalizeNeighbour(BLSpanQuery clause, boolean onTheRight) {
+<span class="nc" id="L305">		throw new UnsupportedOperationException(&quot;Neighbouring clause &quot; + clause + &quot; can not be internalized by &quot; + this);</span>
+	}
+
+	public Nfa getNfa(ForwardIndexAccessor fiAccessor, int direction) {
+<span class="nc" id="L309">		throw new UnsupportedOperationException(&quot;Cannot create NFA; query should have been rewritten or cannot be matched using forward index&quot;);</span>
+	}
+
+	public boolean canMakeNfa() {
+<span class="fc" id="L313">		return false;</span>
+	}
+
+	public NfaTwoWay getNfaTwoWay(ForwardIndexAccessor fiAccessor, int nativeDirection) {
+<span class="fc" id="L317">		Nfa nfa = getNfa(fiAccessor, nativeDirection);</span>
+<span class="fc" id="L318">		Nfa nfaRev = getNfa(fiAccessor, -nativeDirection);</span>
+<span class="fc" id="L319">		NfaTwoWay nfaTwoWay = new NfaTwoWay(nfa, nfaRev);</span>
+<span class="fc" id="L320">		return nfaTwoWay;</span>
+	}
+
+	/**
+	 * Return an (very rough) indication of how many hits this
+	 * clause might return.
+	 *
+	 * Used to decide what parts of the query
+	 * to match using the forward index.
+	 *
+	 * Based on term frequency, which are combined using simple
+	 * rules of thumb.
+	 *
+	 * Another way to think of this is an indication of how much
+	 * computation this clause will require when matching using the
+	 * reverse index.
+	 *
+	 * @param reader the index reader
+	 *
+	 * @return rough estimation of the number of hits
+	 */
+	public abstract long reverseMatchingCost(IndexReader reader);
+
+	/**
+	 * Return an (very rough) indication of how expensive finding a match
+	 * for this query using an NFA would be.
+	 *
+	 * Used to decide what parts of the query to match using the forward index.
+	 *
+	 * @return rough estimation of the NFA complexity
+	 */
+	public abstract int forwardMatchingCost();
+
+	@Override
+	public String getField() {
+		// Return only base name of complex field!
+<span class="fc" id="L356">		return ComplexFieldUtil.getBaseName(getRealField());</span>
+	}
+
+	public abstract String getRealField();
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

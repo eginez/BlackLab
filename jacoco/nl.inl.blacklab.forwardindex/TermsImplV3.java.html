@@ -1,0 +1,679 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TermsImplV3.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.forwardindex</a> &gt; <span class="el_source">TermsImplV3.java</span></div><h1>TermsImplV3.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.forwardindex;
+
+import java.io.File;
+import java.io.RandomAccessFile;
+import java.nio.IntBuffer;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileChannel.MapMode;
+import java.text.CollationKey;
+import java.text.Collator;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.Map;
+import java.util.TreeMap;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.eclipse.collections.api.set.primitive.MutableIntSet;
+import org.eclipse.collections.impl.factory.Maps;
+
+/**
+ * Keeps a first-come-first-serve list of unique terms.
+ * Each term gets a unique index number. These numbers are
+ * stored in the forward index to conserve space and allow quick
+ * lookups of terms occurring in specific positions.
+ *
+ * This version of the class stores the terms in a more efficient way so it
+ * saves and loads faster, and includes the case-insensitive sorting order.
+ */
+<span class="pc bpc" id="L45" title="1 of 2 branches missed.">class TermsImplV3 extends Terms {</span>
+	/** We set this to a lower value on Windows because we can't properly
+	 *  truncate the file due to the file still being mapped (there is no clean way to unmap a mapped file in Java,
+	 *  and Windows doesn't allow truncating a mapped file). The lower value on Windows prevents too much wasted space. */
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">	private static final int DEFAULT_MAX_MAP_SIZE = File.separatorChar == '\\' ? 100000000 : Integer.MAX_VALUE - 100;</span>
+
+	/** Maximum size for blocks of term strings. */
+<span class="fc" id="L52">	private static final int DEFAULT_MAX_BLOCK_SIZE = DEFAULT_MAX_MAP_SIZE;</span>
+
+	/** Number of sort buffers we store in the terms file (case-sensitive/insensitive and inverted buffers for both as well) */
+	private static final int NUM_SORT_BUFFERS = 4;
+
+	/** Number of bytes per int */
+	private static final int BYTES_PER_INT = Integer.SIZE / Byte.SIZE;
+
+<span class="fc" id="L60">	protected static final Logger logger = LogManager.getLogger(TermsImplV3.class);</span>
+
+	/** First index in array and number of elements from array */
+	static class FirstAndNumber {
+		public int first;
+
+		public int number;
+
+<span class="fc" id="L68">		public FirstAndNumber(int first, int number) {</span>
+<span class="fc" id="L69">			this.first = first;</span>
+<span class="fc" id="L70">			this.number = number;</span>
+<span class="fc" id="L71">		}</span>
+
+	}
+
+	/** How many terms total are there? (always valid) */
+<span class="fc" id="L76">	int numberOfTerms = 0;</span>
+
+	/** Search mode only: the terms, by index number. */
+	String[] terms;
+
+	/** The index number of each sorting position. Inverse of sortPositionPerId[] array.
+	 *  Only valid when indexMode == false. */
+	int[] idPerSortPosition;
+
+	/** The index number of each case-insensitive sorting position. Inverse of
+	 *  sortPositionPerIdInsensitive[] array. Only valid when indexMode == false. */
+	int[] idPerSortPositionInsensitive;
+
+	/** The sorting position for each index number. Inverse of idPerSortPosition[]
+	 *  array. Only valid when indexMode == false. */
+	int[] sortPositionPerId;
+
+	/** The case-insensitive sorting position for each index number.
+	 *  Only valid when indexMode == false. */
+	int[] sortPositionPerIdInsensitive;
+
+	/**
+	 * Mapping from term to its unique index number. We use a SortedMap because we wish to
+	 * store the sorted index numbers later (to speed up sorting).
+	 */
+	Map&lt;CollationKey, Integer&gt; termIndex;
+
+	/**
+	 * The first index in the sortPositionPerIdInsensitive[] array
+	 * that matches each term, and the number of matching terms that follow.
+	 * Used while building NFAs to quickly fetch all indices matching
+	 * a term case-insensitively. Only valid in search mode.
+	 */
+	Map&lt;CollationKey, FirstAndNumber&gt; termIndexInsensitive;
+
+	/** If true, we're indexing data and adding terms. If false, we're searching and just retrieving terms. */
+	private boolean indexMode;
+
+	/** If true, termIndex is a valid mapping from term to term id. */
+	private boolean termIndexBuilt;
+
+	/**
+	 * Collator to use for string comparisons
+	 */
+	final Collator collator;
+
+	/**
+	 * Collator to use for insensitive string comparisons
+	 */
+	Collator collatorInsensitive;
+
+	/** Use new blocks-based terms file, that can grow larger than 2 GB? */
+<span class="fc" id="L128">	private boolean useBlockBasedTermsFile = true;</span>
+
+	/** The maximum block size to use while writing the terms file.
+	 *  Ususally around the limit of 2GB, but for testing, we can set this to
+	 *  a lower value. */
+<span class="fc" id="L133">	private int maxBlockSize = DEFAULT_MAX_BLOCK_SIZE;</span>
+
+	/** The maximum block size to use while writing the terms file.
+	 *  Ususally around the limit of 2GB, but for testing, we can set this to
+	 *  a lower value. Note that this should be significantly larger than maxBlockSize,
+	 *  because we also need to store offsets. */
+<span class="fc" id="L139">	private int maxMapSize = DEFAULT_MAX_MAP_SIZE;</span>
+
+<span class="fc" id="L141">	TermsImplV3(boolean indexMode, Collators collators, File termsFile, boolean useBlockBasedTermsFile) {</span>
+<span class="fc" id="L142">		this.indexMode = indexMode;</span>
+<span class="fc" id="L143">		this.collator = collators.get(true, true);</span>
+<span class="fc" id="L144">		this.collatorInsensitive = collators.get(false, false);</span>
+
+<span class="fc bfc" id="L146" title="All 2 branches covered.">		if (indexMode) {</span>
+			// Index mode: create a SortedMap based on the specified Collator.
+			// (used later to get the terms in sort order)
+<span class="fc" id="L149">			this.termIndex = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L150">			this.termIndexInsensitive = null;</span>
+		} else {
+			// We already have the sort order, so TreeMap is not necessary here.
+<span class="fc" id="L153">			this.termIndex = Maps.mutable.empty();</span>
+<span class="fc" id="L154">			this.termIndexInsensitive = Maps.mutable.empty();</span>
+		}
+<span class="fc" id="L156">		termIndexBuilt = true;</span>
+<span class="fc" id="L157">		setBlockBasedFile(useBlockBasedTermsFile);</span>
+<span class="pc bpc" id="L158" title="1 of 4 branches missed.">		if (termsFile != null &amp;&amp; termsFile.exists())</span>
+<span class="fc" id="L159">			read(termsFile);</span>
+<span class="fc" id="L160">	}</span>
+
+	@Override
+	public int indexOf(String term) {
+
+<span class="fc bfc" id="L165" title="All 2 branches covered.">		if (!termIndexBuilt) {</span>
+			// We havent' filled termIndex based on terms[] yet.
+			// Do so now. (so the first call to this method might be
+			// slow in search mode, but it's only used to deserialize
+			// HitPropValueContext*, which doesn't happen a lot)
+<span class="fc" id="L170">			buildTermIndex();</span>
+		}
+
+		// Do we have the term index available (fastest method)?
+<span class="pc bpc" id="L174" title="1 of 2 branches missed.">		if (termIndexBuilt) {</span>
+<span class="fc" id="L175">			synchronized (this) {</span>
+				// Yes, use the available term index.
+<span class="fc" id="L177">			    CollationKey key = this.collator.getCollationKey(term);</span>
+<span class="fc" id="L178">				Integer index = termIndex.get(key);</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">				if (index != null)</span>
+<span class="fc" id="L180">					return index;</span>
+<span class="pc bpc" id="L181" title="1 of 2 branches missed.">				if (!indexMode)</span>
+<span class="nc" id="L182">					return NO_TERM; // term not found</span>
+<span class="fc" id="L183">				index = termIndex.size();</span>
+<span class="fc" id="L184">				termIndex.put(key, index);</span>
+<span class="fc" id="L185">				return index;</span>
+<span class="nc" id="L186">			}</span>
+		}
+
+		// No. (this means we are in search mode, because in
+		//      index mode the term index is always available)
+		// Do a binary search to find term.
+		// Note that the binary search is done on the sorted terms,
+		// so we need to guess an ordinal, convert it to a term index,
+		// then check the term string, and repeat until we find a match.
+<span class="nc" id="L195">		int min = 0, max = idPerSortPosition.length - 1;</span>
+		while (true) {
+<span class="nc" id="L197">			int guessedOrdinal = (min + max) / 2;</span>
+<span class="nc" id="L198">			int guessedIndex = idPerSortPosition[guessedOrdinal];</span>
+<span class="nc" id="L199">			String guessedTerm = get(guessedIndex);</span>
+<span class="nc" id="L200">			int cmp = collator.compare(term, guessedTerm);</span>
+<span class="nc bnc" id="L201" title="All 2 branches missed.">			if (cmp == 0)</span>
+<span class="nc" id="L202">				return guessedIndex; // found</span>
+<span class="nc bnc" id="L203" title="All 2 branches missed.">			if (cmp &lt; 0)</span>
+<span class="nc" id="L204">				max = guessedOrdinal - 1;</span>
+			else
+<span class="nc" id="L206">				min = guessedOrdinal + 1;</span>
+<span class="nc bnc" id="L207" title="All 2 branches missed.">			if (max &lt; min)</span>
+<span class="nc" id="L208">				return NO_TERM; // not found</span>
+<span class="nc" id="L209">		}</span>
+	}
+
+	@Override
+	public void indexOf(MutableIntSet results, String term, boolean caseSensitive, boolean diacSensitive) {
+		// NOTE: we don't do diacritics and case-sensitivity separately, but could in the future.
+		//  right now, diacSensitive is ignored and caseSensitive is used for both.
+<span class="pc bpc" id="L216" title="1 of 2 branches missed.">		int[] idLookup = caseSensitive ? idPerSortPosition : idPerSortPositionInsensitive;</span>
+<span class="pc bpc" id="L217" title="1 of 2 branches missed.">		Collator coll = caseSensitive ? collator : collatorInsensitive;</span>
+
+		// Do we have the term index available (fastest method)?
+<span class="fc" id="L220">		CollationKey key = coll.getCollationKey(term);</span>
+<span class="pc bpc" id="L221" title="1 of 2 branches missed.">		if (termIndexBuilt) {</span>
+			// Yes, use the available term index.
+			// NOTE: insensitive index is only available in search mode.
+<span class="nc bnc" id="L224" title="All 2 branches missed.">			if (caseSensitive) {</span>
+				// Case-/accent-sensitive. Look up the term's id.
+<span class="nc" id="L226">				results.add(termIndex.get(key));</span>
+<span class="nc" id="L227">				return;</span>
+<span class="nc bnc" id="L228" title="All 2 branches missed.">			} else if (termIndexInsensitive != null) {</span>
+				// Case-/accent-insensitive. Find the relevant stretch of sort positions and look up the corresponding ids.
+<span class="nc" id="L230">				FirstAndNumber firstAndNumber = termIndexInsensitive.get(key);</span>
+<span class="nc bnc" id="L231" title="All 2 branches missed.">				for (int i = firstAndNumber.first; i &lt; firstAndNumber.number; i++) {</span>
+<span class="nc" id="L232">					results.add(idLookup[i]);</span>
+				}
+<span class="nc" id="L234">				return;</span>
+			}
+		}
+
+		// No termIndex available.
+		// (this means we are in search mode, because in index mode the term index is always available)
+		// Do a binary search to find term.
+		// Note that the binary search is done on the sorted terms,
+		// so we need to guess an ordinal, convert it to a term index,
+		// then check the term string, and repeat until we find a match.
+<span class="fc" id="L244">		int min = 0, max = idLookup.length - 1;</span>
+<span class="fc bfc" id="L245" title="All 2 branches covered.">		while (max &gt;= min) {</span>
+<span class="fc" id="L246">			int guessedOrdinal = (min + max) / 2;</span>
+<span class="fc" id="L247">			int guessedIndex = idLookup[guessedOrdinal];</span>
+<span class="fc" id="L248">			String guessedTerm = get(guessedIndex);</span>
+<span class="fc" id="L249">			CollationKey termKey = coll.getCollationKey(term);</span>
+<span class="fc" id="L250">			CollationKey guessedKey = coll.getCollationKey(guessedTerm);</span>
+<span class="fc" id="L251">			int cmp = termKey.compareTo(guessedKey); //coll.compare(term, guessedTerm);</span>
+<span class="fc bfc" id="L252" title="All 2 branches covered.">			if (cmp == 0) {</span>
+				// Found a match. Look both ways to see if there's more matching terms.
+<span class="fc" id="L254">				results.add(guessedIndex);</span>
+<span class="pc bpc" id="L255" title="1 of 2 branches missed.">				if (!caseSensitive) {</span>
+<span class="pc bfc" id="L256" title="All 2 branches covered.">					for (int testOrdinal = guessedOrdinal - 1; testOrdinal &gt;= min; testOrdinal--) {</span>
+<span class="fc" id="L257">						int testIndex = idLookup[testOrdinal];</span>
+<span class="fc" id="L258">						CollationKey testKey = coll.getCollationKey(get(testIndex));</span>
+                        //if (coll.compare(term, get(testIndex)) != 0)
+<span class="pc bpc" id="L260" title="1 of 2 branches missed.">                        if (termKey.compareTo(testKey) != 0)</span>
+<span class="fc" id="L261">							break;</span>
+<span class="nc" id="L262">						results.add(testIndex);</span>
+					}
+<span class="fc bfc" id="L264" title="All 2 branches covered.">					for (int testOrdinal = guessedOrdinal + 1; testOrdinal &lt;= max; testOrdinal++) {</span>
+<span class="fc" id="L265">						int testIndex = idLookup[testOrdinal];</span>
+<span class="fc" id="L266">                        CollationKey testKey = coll.getCollationKey(get(testIndex));</span>
+						//if (coll.compare(term, get(testIndex)) != 0)
+<span class="fc bfc" id="L268" title="All 2 branches covered.">	                    if (termKey.compareTo(testKey) != 0)</span>
+<span class="fc" id="L269">							break;</span>
+<span class="fc" id="L270">						results.add(testIndex);</span>
+					}
+				}
+				// found
+<span class="fc" id="L274">				return;</span>
+			}
+<span class="fc bfc" id="L276" title="All 2 branches covered.">			if (cmp &lt; 0)</span>
+<span class="fc" id="L277">				max = guessedOrdinal - 1;</span>
+			else
+<span class="fc" id="L279">				min = guessedOrdinal + 1;</span>
+<span class="fc" id="L280">		}</span>
+		// not found
+<span class="fc" id="L282">	}</span>
+
+	@Override
+	public boolean termsEqual(int[] termId, boolean caseSensitive, boolean diacSensitive) {
+		// NOTE: we don't do diacritics and case-sensitivity separately, but could in the future.
+		//  right now, diacSensitive is ignored and caseSensitive is used for both.
+<span class="pc bpc" id="L288" title="1 of 2 branches missed.">		int[] idLookup = caseSensitive ? sortPositionPerId : sortPositionPerIdInsensitive;</span>
+<span class="fc" id="L289">		int id0 = idLookup[termId[0]];</span>
+<span class="fc bfc" id="L290" title="All 2 branches covered.">		for (int i = 1; i &lt; termId.length; i++) {</span>
+<span class="pc bpc" id="L291" title="1 of 4 branches missed.">			if (termId[i] == -1 || id0 != idLookup[termId[i]])</span>
+<span class="fc" id="L292">				return false;</span>
+		}
+<span class="fc" id="L294">		return true;</span>
+	}
+
+	@Override
+	public synchronized void buildTermIndex() {
+<span class="pc bpc" id="L299" title="1 of 2 branches missed.">		if (termIndexBuilt)</span>
+<span class="nc" id="L300">			return;</span>
+
+		// Build the case-sensitive term index.
+<span class="fc" id="L303">		int n = numberOfTerms();</span>
+<span class="fc bfc" id="L304" title="All 2 branches covered.">		for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc" id="L305">			termIndex.put(collator.getCollationKey(get(i)), i);</span>
+		}
+
+<span class="pc bpc" id="L308" title="1 of 2 branches missed.">		if (termIndexInsensitive != null) {</span>
+			// Now, store the first index in the sortPositionPerIdInsensitive[] array
+			// that matches each term, and the number of matching terms that follow.
+			// This can be used while building NFAs to quickly fetch all indices matching
+			// a term case-insensitively.
+<span class="fc" id="L313">			CollationKey prevTermKey = collatorInsensitive.getCollationKey(&quot;&quot;);</span>
+<span class="fc" id="L314">			FirstAndNumber currentItem = null;</span>
+<span class="fc bfc" id="L315" title="All 2 branches covered.">			for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc" id="L316">				String term = get(idPerSortPositionInsensitive[i]);</span>
+<span class="fc" id="L317">				CollationKey termKey = collatorInsensitive.getCollationKey(term);</span>
+<span class="fc bfc" id="L318" title="All 2 branches covered.">				if (!termKey.equals(prevTermKey)) {</span>
+<span class="fc bfc" id="L319" title="All 2 branches covered.">					if (currentItem != null)</span>
+<span class="fc" id="L320">						currentItem.number = i - currentItem.first;</span>
+<span class="fc" id="L321">					currentItem = new FirstAndNumber(i, 0);</span>
+<span class="fc" id="L322">					termIndexInsensitive.put(termKey, currentItem);</span>
+<span class="fc" id="L323">					prevTermKey = termKey;</span>
+				}
+			}
+<span class="pc bpc" id="L326" title="1 of 2 branches missed.">			if (currentItem != null) {</span>
+<span class="fc" id="L327">				currentItem.number = n - currentItem.first;</span>
+			}
+		}
+
+<span class="fc" id="L331">		termIndexBuilt = true;</span>
+<span class="fc" id="L332">	}</span>
+
+	@Override
+	public synchronized void clear() {
+<span class="nc bnc" id="L336" title="All 2 branches missed.">		if (!indexMode)</span>
+<span class="nc" id="L337">			throw new RuntimeException(&quot;Cannot clear, not in index mode&quot;);</span>
+<span class="nc" id="L338">		termIndex.clear();</span>
+<span class="nc bnc" id="L339" title="All 2 branches missed.">		if (termIndexInsensitive != null)</span>
+<span class="nc" id="L340">			termIndexInsensitive.clear();</span>
+<span class="nc" id="L341">		termIndexBuilt = true;</span>
+<span class="nc" id="L342">	}</span>
+
+	private synchronized void read(File termsFile) {
+<span class="fc" id="L345">		termIndex.clear();</span>
+<span class="pc bpc" id="L346" title="1 of 2 branches missed.">		if (termIndexInsensitive != null)</span>
+<span class="fc" id="L347">			termIndexInsensitive.clear();</span>
+		try {
+<span class="pc" id="L349">			try (RandomAccessFile raf = new RandomAccessFile(termsFile, &quot;r&quot;)) {</span>
+<span class="pc" id="L350">				try (FileChannel fc = raf.getChannel()) {</span>
+<span class="fc" id="L351">					long fileLength = termsFile.length();</span>
+<span class="fc" id="L352">					long fileMapStart = 0;</span>
+<span class="fc" id="L353">					long fileMapLength = Math.min(maxMapSize, fileLength);</span>
+<span class="fc" id="L354">					MappedByteBuffer buf = fc.map(MapMode.READ_ONLY, fileMapStart, fileMapLength);</span>
+<span class="fc" id="L355">					int n = buf.getInt();</span>
+<span class="fc" id="L356">					IntBuffer ib = buf.asIntBuffer();</span>
+<span class="fc" id="L357">					numberOfTerms = n;</span>
+<span class="fc" id="L358">					int[] termStringOffsets = new int[n + 1];</span>
+<span class="fc" id="L359">					terms = new String[n];</span>
+
+<span class="pc bpc" id="L361" title="1 of 2 branches missed.">					if (useBlockBasedTermsFile) {</span>
+						// New format, multiple blocks of term strings if necessary,
+						// so term strings may total over 2 GB.
+
+						// Read the term string offsets and string data block
+<span class="fc" id="L366">						int currentTerm = 0;</span>
+<span class="fc bfc" id="L367" title="All 2 branches covered.">						while (currentTerm &lt; n) {</span>
+
+<span class="fc" id="L369">							int numTermsThisBlock = ib.get();</span>
+<span class="fc" id="L370">							ib.get(termStringOffsets, currentTerm, numTermsThisBlock); // term</span>
+																						// string
+																						// offsets
+
+							// Read term strings data
+<span class="fc" id="L375">							int dataBlockSize = termStringOffsets[currentTerm + numTermsThisBlock] = ib.get();</span>
+<span class="fc" id="L376">							buf.position(buf.position() + BYTES_PER_INT * (numTermsThisBlock + 2));</span>
+<span class="fc" id="L377">							byte[] termStringsThisBlock = new byte[dataBlockSize];</span>
+<span class="fc" id="L378">							buf.get(termStringsThisBlock);</span>
+
+							// Now instantiate String objects from the offsets and byte data
+<span class="fc" id="L381">							int firstTermInBlock = currentTerm;</span>
+<span class="fc bfc" id="L382" title="All 2 branches covered.">							for (; currentTerm &lt; firstTermInBlock + numTermsThisBlock; currentTerm++) {</span>
+<span class="fc" id="L383">								int offset = termStringOffsets[currentTerm];</span>
+<span class="fc" id="L384">								int length = termStringOffsets[currentTerm + 1] - offset;</span>
+<span class="fc" id="L385">								String str = new String(termStringsThisBlock, offset, length, DEFAULT_CHARSET);</span>
+
+								// We need to find term for id while searching
+<span class="fc" id="L388">								terms[currentTerm] = str;</span>
+							}
+
+							// Re-map a new part of the file before we read the next block.
+							// (and before we read the sort buffers)
+<span class="fc" id="L393">							long bytesRead = buf.position();</span>
+<span class="fc" id="L394">							fileMapStart += bytesRead;</span>
+<span class="fc" id="L395">							fileMapLength = Math.min(maxMapSize, fileLength - fileMapStart);</span>
+<span class="pc bpc" id="L396" title="1 of 2 branches missed.">							if (fileMapLength &gt; 0) {</span>
+<span class="fc" id="L397">								buf = fc.map(MapMode.READ_ONLY, fileMapStart, fileMapLength);</span>
+<span class="fc" id="L398">								ib = buf.asIntBuffer();</span>
+							}
+<span class="fc" id="L400">						}</span>
+
+<span class="fc" id="L402">					} else {</span>
+						// Old format, single term strings block.
+						// Causes problems when term strings total over 2 GB.
+
+<span class="nc" id="L406">						ib.get(termStringOffsets); // term string offsets</span>
+<span class="nc" id="L407">						int termStringsByteSize = ib.get(); // data block size</span>
+
+						// termStringByteSize fits in an int, and terms
+						// fits in a single byte array. Use the old code.
+<span class="nc" id="L411">						buf.position(buf.position() + BYTES_PER_INT + BYTES_PER_INT * termStringOffsets.length);</span>
+<span class="nc" id="L412">						byte[] termStrings = new byte[termStringsByteSize];</span>
+<span class="nc" id="L413">						buf.get(termStrings);</span>
+<span class="nc" id="L414">						ib = buf.asIntBuffer();</span>
+
+						// Now instantiate String objects from the offsets and byte data
+<span class="nc" id="L417">						terms = new String[n];</span>
+<span class="nc bnc" id="L418" title="All 2 branches missed.">						for (int id = 0; id &lt; n; id++) {</span>
+<span class="nc" id="L419">							int offset = termStringOffsets[id];</span>
+<span class="nc" id="L420">							int length = termStringOffsets[id + 1] - offset;</span>
+<span class="nc" id="L421">							String str = new String(termStrings, offset, length, DEFAULT_CHARSET);</span>
+
+							// We need to find term for id while searching
+<span class="nc" id="L424">							terms[id] = str;</span>
+						}
+					}
+
+<span class="pc bpc" id="L428" title="1 of 2 branches missed.">					if (indexMode) {</span>
+<span class="nc" id="L429">						termIndexBuilt = false;</span>
+<span class="nc" id="L430">						buildTermIndex(); // We need to find id for term quickly while indexing</span>
+<span class="nc" id="L431">						terms = null; // useless in index mode because we can't add to it, and we don't need it anyway</span>
+					} else {
+<span class="fc" id="L433">						termIndexBuilt = false; // termIndex hasn't been filled yet</span>
+
+						// Read the sort order arrays
+<span class="fc" id="L436">						sortPositionPerId = new int[n];</span>
+<span class="fc" id="L437">						sortPositionPerIdInsensitive = new int[n];</span>
+<span class="fc" id="L438">						ib.position(ib.position() + n); // Advance past unused sortPos -&gt; id array (left in there for file compatibility)</span>
+<span class="fc" id="L439">						ib.get(sortPositionPerId);</span>
+<span class="fc" id="L440">						ib.position(ib.position() + n); // Advance past unused sortPos -&gt; id array (left in there for file compatibility)</span>
+<span class="fc" id="L441">						ib.get(sortPositionPerIdInsensitive);</span>
+
+						// Invert sortPositionPerId[] array, so we can later do a binary search through our
+						// terms to find a specific one. (only needed to deserialize sort/group criteria from URL)
+<span class="fc" id="L445">						idPerSortPosition = new int[n];</span>
+<span class="fc" id="L446">						idPerSortPositionInsensitive = new int[n];</span>
+<span class="fc" id="L447">						Arrays.fill(idPerSortPositionInsensitive, -1);</span>
+<span class="fc bfc" id="L448" title="All 2 branches covered.">						for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc" id="L449">							idPerSortPosition[sortPositionPerId[i]] = i;</span>
+<span class="fc" id="L450">							int x = sortPositionPerIdInsensitive[i];</span>
+							// Multiple terms can have the same (case-insensitive)
+							// sort position. Skip over previous terms so each term is
+							// in the array and we can look at adjacent terms to recover all
+							// the terms with the same sort position later.
+<span class="fc bfc" id="L455" title="All 2 branches covered.">							while (idPerSortPositionInsensitive[x] &gt;= 0)</span>
+<span class="fc" id="L456">								x++;</span>
+<span class="fc" id="L457">							idPerSortPositionInsensitive[x] = i;</span>
+						}
+					}
+<span class="pc bpc" id="L460" title="6 of 8 branches missed.">				}</span>
+<span class="pc bpc" id="L461" title="6 of 8 branches missed.">			}</span>
+<span class="nc" id="L462">		} catch (Exception e) {</span>
+<span class="nc" id="L463">			throw new RuntimeException(e);</span>
+<span class="fc" id="L464">		}</span>
+<span class="fc" id="L465">	}</span>
+
+	@Override
+	public synchronized void write(File termsFile) {
+<span class="pc bpc" id="L469" title="1 of 2 branches missed.">		if (!indexMode)</span>
+<span class="nc" id="L470">			throw new RuntimeException(&quot;Term.write(): not in index mode!&quot;);</span>
+
+		try {
+			// Open the terms file
+<span class="pc" id="L474">			try (RandomAccessFile raf = new RandomAccessFile(termsFile, &quot;rw&quot;)) {</span>
+<span class="pc" id="L475">				try (FileChannel fc = raf.getChannel()) {</span>
+<span class="fc" id="L476">					int n = termIndex.size();</span>
+
+					// Fill the terms[] array
+<span class="fc" id="L479">					terms = new String[n];</span>
+<span class="fc" id="L480">					long termStringsByteSize = 0;</span>
+<span class="fc bfc" id="L481" title="All 2 branches covered.">					for (Map.Entry&lt;CollationKey, Integer&gt; entry: termIndex.entrySet()) {</span>
+<span class="fc" id="L482">					    String term = entry.getKey().getSourceString();</span>
+<span class="fc" id="L483">						terms[entry.getValue()] = term;</span>
+<span class="fc" id="L484">						termStringsByteSize += term.getBytes(DEFAULT_CHARSET).length;</span>
+<span class="fc" id="L485">					}</span>
+
+					// Calculate the file length and map the file
+					MappedByteBuffer buf;
+					IntBuffer ib;
+<span class="pc bpc" id="L490" title="1 of 2 branches missed.">					if (!useBlockBasedTermsFile) {</span>
+<span class="nc" id="L491">						long fileLength = 2 * BYTES_PER_INT + (n + 1) * BYTES_PER_INT + termStringsByteSize + NUM_SORT_BUFFERS * BYTES_PER_INT * n;</span>
+<span class="nc" id="L492">						fc.truncate(fileLength); // truncate if necessary</span>
+<span class="nc" id="L493">						buf = fc.map(MapMode.READ_WRITE, 0, fileLength);</span>
+<span class="nc" id="L494">						buf.putInt(n); // Start with the number of terms</span>
+<span class="nc" id="L495">						ib = buf.asIntBuffer();</span>
+
+						// Terms file is small enough to fit in a single byte array.
+						// Use the old code.
+
+						// Calculate byte offsets for all the terms and fill data array
+<span class="nc" id="L501">						int currentOffset = 0;</span>
+<span class="nc" id="L502">						int[] termStringOffsets = new int[n + 1];</span>
+<span class="nc" id="L503">						byte[] termStrings = new byte[(int)termStringsByteSize];</span>
+<span class="nc bnc" id="L504" title="All 2 branches missed.">						for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc" id="L505">							termStringOffsets[i] = currentOffset;</span>
+<span class="nc" id="L506">							byte[] termBytes = terms[i].getBytes(DEFAULT_CHARSET);</span>
+<span class="nc" id="L507">							System.arraycopy(termBytes, 0, termStrings, currentOffset, termBytes.length);</span>
+<span class="nc" id="L508">							currentOffset += termBytes.length;</span>
+						}
+<span class="nc" id="L510">						termStringOffsets[n] = currentOffset;</span>
+
+						// Write offset and data arrays to file
+<span class="nc" id="L513">						ib.put(termStringOffsets);</span>
+<span class="nc" id="L514">						ib.put((int)termStringsByteSize); // size of the data block to follow</span>
+<span class="nc" id="L515">						buf.position(buf.position() + BYTES_PER_INT + BYTES_PER_INT * termStringOffsets.length); // advance past offsets array</span>
+<span class="nc" id="L516">						buf.put(termStrings);</span>
+<span class="nc" id="L517">						ib = buf.asIntBuffer();</span>
+<span class="nc" id="L518">					} else {</span>
+<span class="fc" id="L519">						long fileMapStart = 0, fileMapLength = maxMapSize;</span>
+<span class="fc" id="L520">						buf = fc.map(MapMode.READ_WRITE, fileMapStart, fileMapLength);</span>
+<span class="fc" id="L521">						buf.putInt(n); // Start with the number of terms      //@4</span>
+<span class="fc" id="L522">						ib = buf.asIntBuffer();</span>
+<span class="fc" id="L523">						long fileLength = BYTES_PER_INT;</span>
+
+						// Terms file is too large to fit in a single byte array.
+						// Use the new code.
+<span class="fc" id="L527">						int currentTerm = 0;</span>
+<span class="fc" id="L528">						long bytesLeftToWrite = termStringsByteSize;</span>
+<span class="fc" id="L529">						int[] termStringOffsets = new int[n];</span>
+<span class="fc bfc" id="L530" title="All 2 branches covered.">						while (currentTerm &lt; n) {</span>
+<span class="fc" id="L531">							int firstTermInBlock = currentTerm;</span>
+<span class="fc" id="L532">							int blockSize = (int)Math.min(bytesLeftToWrite, maxBlockSize);</span>
+
+							// Calculate byte offsets for all the terms and fill data array
+<span class="fc" id="L535">							int currentOffset = 0;</span>
+<span class="fc" id="L536">							byte[] termStrings = new byte[blockSize];</span>
+<span class="fc bfc" id="L537" title="All 2 branches covered.">							while (currentTerm &lt; n) {</span>
+<span class="fc" id="L538">								termStringOffsets[currentTerm] = currentOffset;</span>
+<span class="fc" id="L539">								byte[] termBytes = terms[currentTerm].getBytes(DEFAULT_CHARSET);</span>
+<span class="fc bfc" id="L540" title="All 2 branches covered.">								if (currentOffset + termBytes.length &gt; blockSize) {</span>
+									// Block is full. Write it and continue with next block.
+<span class="fc" id="L542">									break;</span>
+								}
+<span class="fc" id="L544">								System.arraycopy(termBytes, 0, termStrings, currentOffset, termBytes.length);</span>
+<span class="fc" id="L545">								currentOffset += termBytes.length;</span>
+<span class="fc" id="L546">								currentTerm++;</span>
+<span class="fc" id="L547">								bytesLeftToWrite -= termBytes.length;</span>
+<span class="fc" id="L548">							}</span>
+
+							// Write offset and data arrays to file
+<span class="fc" id="L551">							int numTermsThisBlock = currentTerm - firstTermInBlock;</span>
+
+<span class="fc" id="L553">							long blockSizeBytes = 2 * BYTES_PER_INT + numTermsThisBlock * BYTES_PER_INT + currentOffset;</span>
+
+<span class="fc" id="L555">							ib.put(numTermsThisBlock); //@4</span>
+<span class="fc" id="L556">							ib.put(termStringOffsets, firstTermInBlock, numTermsThisBlock); //@4 * numTermsThisBlock</span>
+<span class="fc" id="L557">							ib.put(currentOffset); // include the offset after the last term at position termStringOffsets[n]</span>
+							                       // (doubles as the size of the data block to follow) //@4
+<span class="fc" id="L559">							int newPosition = buf.position() + BYTES_PER_INT * (2 + numTermsThisBlock);</span>
+<span class="fc" id="L560">							buf.position(newPosition); // advance past offsets array</span>
+<span class="fc" id="L561">							buf.put(termStrings, 0, currentOffset); //@blockSize (max. maxBlockSize)</span>
+<span class="fc" id="L562">							ib = buf.asIntBuffer();</span>
+<span class="fc" id="L563">							fileLength += blockSizeBytes;</span>
+
+							// Re-map a new part of the file before we write the next block.
+							// (and eventually, the sort buffers, see below)
+<span class="fc" id="L567">							fileMapStart += buf.position();</span>
+<span class="fc" id="L568">							buf = fc.map(MapMode.READ_WRITE, fileMapStart, fileMapLength);</span>
+<span class="fc" id="L569">							ib = buf.asIntBuffer();</span>
+<span class="fc" id="L570">						}</span>
+
+						// Determine total file length (by adding the sort buffer byte length to the
+						// running total) and truncate the file if necessary
+						// (we can do this now, even though we still have to write the sort buffers,
+						// because we know how large the file will eventually be)
+<span class="fc" id="L576">						fileLength += NUM_SORT_BUFFERS * BYTES_PER_INT * n;</span>
+<span class="pc bpc" id="L577" title="1 of 2 branches missed.">						if (File.separatorChar != '\\') // causes problems on Windows</span>
+<span class="fc" id="L578">							fc.truncate(fileLength);</span>
+					}
+
+					// Write the case-sensitive sort order
+					// Because termIndex is a SortedMap, values are returned in key-sorted order.
+					// In other words, the index numbers are in order of sorted terms, so the id
+					// for 'aardvark' comes before the id for 'ape', etc.
+<span class="fc" id="L585">					int i = 0;</span>
+<span class="fc" id="L586">					sortPositionPerId = new int[n];</span>
+<span class="fc" id="L587">					Integer[] insensitive = new Integer[n];</span>
+<span class="fc bfc" id="L588" title="All 2 branches covered.">					for (int id: termIndex.values()) {</span>
+<span class="fc" id="L589">						sortPositionPerId[id] = i;</span>
+<span class="fc" id="L590">						insensitive[i] = id; // fill this so we can re-sort later, faster b/c already partially sorted</span>
+<span class="fc" id="L591">						i++;</span>
+<span class="fc" id="L592">					}</span>
+<span class="fc" id="L593">					ib.put(new int[n]); // NOT USED ANYMORE, JUST FOR FILE COMPATIBILITY</span>
+<span class="fc" id="L594">					ib.put(sortPositionPerId);</span>
+
+					// Now, sort case-insensitively and write those arrays as well
+<span class="fc" id="L597">					Arrays.sort(insensitive, new Comparator&lt;Integer&gt;() {</span>
+						@Override
+						public int compare(Integer a, Integer b) {
+<span class="fc" id="L600">							return collatorInsensitive.compare(terms[a], terms[b]);</span>
+						}
+					});
+					// Copy into the sortPositionPerIdInsensitive array, making sure that
+					// identical values get identical sort positions!
+<span class="fc" id="L605">					sortPositionPerIdInsensitive = new int[n];</span>
+<span class="fc" id="L606">					int sortPos = 0;</span>
+<span class="fc bfc" id="L607" title="All 2 branches covered.">					for (i = 0; i &lt; n; i++) {</span>
+<span class="fc bfc" id="L608" title="All 4 branches covered.">						if (i == 0 || collatorInsensitive.compare(terms[insensitive[i - 1]], terms[insensitive[i]]) != 0) {</span>
+							// Not identical to previous value: gets its own sort position.
+							// If a value is identical to the previous one, it gets the same sort position.
+<span class="fc" id="L611">							sortPos = i;</span>
+						}
+<span class="fc" id="L613">						sortPositionPerIdInsensitive[insensitive[i]] = sortPos;</span>
+					}
+<span class="fc" id="L615">					ib.put(new int[n]); // NOT USED ANYMORE, JUST FOR FILE COMPATIBILITY</span>
+<span class="fc" id="L616">					ib.put(sortPositionPerIdInsensitive);</span>
+<span class="pc bpc" id="L617" title="6 of 8 branches missed.">				}</span>
+<span class="pc bpc" id="L618" title="6 of 8 branches missed.">			}</span>
+<span class="nc" id="L619">		} catch (Exception e) {</span>
+<span class="nc" id="L620">			throw new RuntimeException(e);</span>
+<span class="fc" id="L621">		}</span>
+<span class="fc" id="L622">	}</span>
+
+	@Override
+	public String get(Integer index) {
+<span class="pc bpc" id="L626" title="3 of 6 branches missed.">		assert index &gt;= 0 &amp;&amp; index &lt; numberOfTerms : &quot;Term index out of range (&quot; + index + &quot;, numterms = &quot; + numberOfTerms + &quot;)&quot;;</span>
+<span class="fc" id="L627">		return terms[index];</span>
+	}
+
+	@Override
+	public int numberOfTerms() {
+<span class="fc" id="L632">		return numberOfTerms;</span>
+	}
+
+	@Override
+	public void toSortOrder(int[] tokenId, int[] sortOrder, boolean sensitive) {
+<span class="pc bpc" id="L637" title="1 of 2 branches missed.">		if (sensitive) {</span>
+<span class="fc bfc" id="L638" title="All 2 branches covered.">			for (int i = 0; i &lt; tokenId.length; i++) {</span>
+<span class="fc bfc" id="L639" title="All 2 branches covered.">				if (tokenId[i] == NO_TERM)</span>
+<span class="fc" id="L640">					sortOrder[i] = NO_TERM;</span>
+				else
+<span class="fc" id="L642">					sortOrder[i] = sortPositionPerId[tokenId[i]];</span>
+			}
+		} else {
+<span class="nc bnc" id="L645" title="All 2 branches missed.">			for (int i = 0; i &lt; tokenId.length; i++) {</span>
+<span class="nc bnc" id="L646" title="All 2 branches missed.">				if (tokenId[i] == NO_TERM)</span>
+<span class="nc" id="L647">					sortOrder[i] = NO_TERM;</span>
+				else
+<span class="nc" id="L649">					sortOrder[i] = sortPositionPerIdInsensitive[tokenId[i]];</span>
+			}
+		}
+<span class="fc" id="L652">	}</span>
+
+	@Override
+	public int compareSortPosition(int tokenId1, int tokenId2, boolean sensitive) {
+<span class="nc bnc" id="L656" title="All 2 branches missed.">		if (sensitive) {</span>
+<span class="nc" id="L657">			return sortPositionPerId[tokenId1] - sortPositionPerId[tokenId2];</span>
+		}
+<span class="nc" id="L659">		return sortPositionPerIdInsensitive[tokenId1] - sortPositionPerIdInsensitive[tokenId2];</span>
+	}
+
+	@Override
+	public int idToSortPosition(int id, boolean sensitive) {
+<span class="pc bpc" id="L664" title="1 of 2 branches missed.">		return sensitive ? sortPositionPerId[id] : sortPositionPerIdInsensitive[id];</span>
+	}
+
+	@Override
+	protected void setBlockBasedFile(boolean useBlockBasedTermsFile) {
+<span class="fc" id="L669">		this.useBlockBasedTermsFile = useBlockBasedTermsFile;</span>
+<span class="fc" id="L670">	}</span>
+
+	public void setMaxBlockSize(int maxBlockSize) {
+<span class="pc bpc" id="L673" title="1 of 2 branches missed.">		if ((long)maxBlockSize &gt; ((long)DEFAULT_MAX_MAP_SIZE))</span>
+<span class="nc" id="L674">			throw new RuntimeException(&quot;Max. block size too large, max. &quot; + DEFAULT_MAX_MAP_SIZE);</span>
+<span class="fc" id="L675">		this.maxBlockSize = maxBlockSize;</span>
+<span class="fc" id="L676">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

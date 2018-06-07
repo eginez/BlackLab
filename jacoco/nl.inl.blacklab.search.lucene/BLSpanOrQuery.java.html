@@ -1,0 +1,758 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BLSpanOrQuery.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">BLSpanOrQuery.java</span></div><h1>BLSpanOrQuery.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.search.lucene;
+
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.index.TermContext;
+import org.apache.lucene.search.DisiPriorityQueue;
+import org.apache.lucene.search.DisiWrapper;
+import org.apache.lucene.search.DisjunctionDISIApproximation;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.TwoPhaseIterator;
+import org.apache.lucene.search.spans.SpanCollector;
+import org.apache.lucene.search.spans.SpanOrQuery;
+import org.apache.lucene.search.spans.SpanQuery;
+import org.apache.lucene.search.spans.SpanTermQuery;
+import org.apache.lucene.search.spans.SpanWeight;
+import org.apache.lucene.search.spans.Spans;
+import org.apache.lucene.util.PriorityQueue;
+
+import nl.inl.blacklab.index.complex.ComplexFieldUtil;
+import nl.inl.blacklab.search.Span;
+import nl.inl.blacklab.search.fimatch.ForwardIndexAccessor;
+import nl.inl.blacklab.search.fimatch.Nfa;
+import nl.inl.blacklab.search.fimatch.NfaState;
+
+/** Matches the union of its clauses.
+ */
+public final class BLSpanOrQuery extends BLSpanQuery {
+
+	SpanOrQuery inner;
+
+	String field;
+
+	private String luceneField;
+
+	/** If we know all our hits have the same length, this will be that length.
+	 *  If not, or if we don't know, this will be -1. */
+<span class="fc" id="L63">	private int fixedHitLength = -1;</span>
+
+	/** Are all our clauses simple term queries? Yes if true, not sure if false. */
+<span class="fc" id="L66">	private boolean clausesAreSimpleTermsInSameProperty = false;</span>
+
+	/** Construct a SpanOrQuery merging the provided clauses.
+	 * All clauses must have the same field.
+	 * @param clauses clauses to OR together
+	 */
+<span class="fc" id="L72">	public BLSpanOrQuery(BLSpanQuery... clauses) {</span>
+<span class="fc" id="L73">		inner = new SpanOrQuery(clauses);</span>
+<span class="fc" id="L74">		this.field = inner.getField();</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">		this.luceneField = clauses.length &gt; 0 ? clauses[0].getRealField() : field;</span>
+<span class="fc" id="L76">	}</span>
+
+	static BLSpanOrQuery from(SpanOrQuery in) {
+<span class="fc" id="L79">		SpanQuery[] clauses = in.getClauses();</span>
+<span class="fc" id="L80">		BLSpanQuery[] blClauses = new BLSpanQuery[clauses.length];</span>
+<span class="fc" id="L81">		String field = null;</span>
+<span class="fc" id="L82">		boolean allInSameField = true;</span>
+<span class="fc" id="L83">		boolean allSimpleTerms = true;</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">		for (int i = 0; i &lt; clauses.length; i++) {</span>
+<span class="pc bpc" id="L85" title="2 of 4 branches missed.">			if (allSimpleTerms &amp;&amp; allInSameField) {</span>
+<span class="pc bpc" id="L86" title="3 of 4 branches missed.">				if (! (clauses[i] instanceof SpanTermQuery || clauses[i] instanceof BLSpanTermQuery) )</span>
+<span class="nc" id="L87">					allSimpleTerms = false;</span>
+				else {
+<span class="fc bfc" id="L89" title="All 2 branches covered.">					if (field == null)</span>
+<span class="fc" id="L90">						field = clauses[i].getField();</span>
+					else {
+<span class="pc bpc" id="L92" title="1 of 2 branches missed.">						if (!field.equals(clauses[i].getField()))</span>
+<span class="nc" id="L93">							allInSameField = false;</span>
+					}
+				}
+			}
+<span class="fc" id="L97">			blClauses[i] = BLSpanQuery.wrap(clauses[i]);</span>
+		}
+<span class="fc" id="L99">		BLSpanOrQuery out = new BLSpanOrQuery(blClauses);</span>
+<span class="pc bpc" id="L100" title="2 of 4 branches missed.">		if (allSimpleTerms &amp;&amp; allInSameField)</span>
+<span class="fc" id="L101">			out.setClausesAreSimpleTermsInSameProperty(true);</span>
+<span class="fc" id="L102">		return out;</span>
+	}
+
+	/** Return the clauses whose spans are matched.
+	 * @return the clauses
+	 */
+	public SpanQuery[] getClauses() {
+<span class="fc" id="L109">		return inner.getClauses();</span>
+	}
+
+	/**
+	 * Explicitly set the field for this query. Required because some queries
+	 * rewrite to 0-clause or queries, and we need to be able to call get[Real]Field()
+	 * later.
+	 *
+	 * @param luceneField
+	 *            the Lucene field for this query (what getRealField() returns)
+	 */
+	public void setField(String luceneField) {
+<span class="fc" id="L121">		this.luceneField = luceneField;</span>
+<span class="fc" id="L122">		this.field = ComplexFieldUtil.getBaseName(luceneField);</span>
+<span class="fc" id="L123">	}</span>
+
+	@Override
+	public String getField() {
+<span class="fc" id="L127">		return field;</span>
+	}
+
+	@Override
+	public String getRealField() {
+<span class="fc" id="L132">		return luceneField;</span>
+	}
+
+	@Override
+	public BLSpanQuery rewrite(IndexReader reader) throws IOException {
+
+		// Flatten nested OR queries.
+		// This doesn't change the query because the OR operator is associative.
+<span class="fc" id="L140">		boolean anyRewritten = false;</span>
+<span class="fc" id="L141">		boolean onlyNotClauses = true;</span>
+<span class="fc" id="L142">		boolean allClausesSingleToken = true;</span>
+<span class="fc" id="L143">		List&lt;BLSpanQuery&gt; rewrittenCl = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">		for (SpanQuery ch: inner.getClauses()) {</span>
+<span class="fc" id="L145">			BLSpanQuery child = (BLSpanQuery)ch;</span>
+<span class="fc" id="L146">			BLSpanQuery rewritten = child.rewrite(reader);</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">			if (rewritten instanceof BLSpanOrQuery) {</span>
+				// Flatten.
+				// Child OR operation we want to flatten into this OR operation.
+				// Replace the child, incorporating its children into this OR operation.
+<span class="fc bfc" id="L151" title="All 2 branches covered.">				for (SpanQuery cl: ((BLSpanOrQuery)rewritten).getClauses()) {</span>
+<span class="fc" id="L152">					BLSpanQuery clause = (BLSpanQuery)cl;</span>
+<span class="pc bpc" id="L153" title="2 of 4 branches missed.">					if (!clause.hitsAllSameLength() || clause.hitsLengthMax() != 1)</span>
+<span class="nc" id="L154">						allClausesSingleToken = false;</span>
+<span class="pc bpc" id="L155" title="1 of 2 branches missed.">					if (!clause.isSingleTokenNot())</span>
+<span class="fc" id="L156">						onlyNotClauses = false;</span>
+<span class="fc" id="L157">					rewrittenCl.add(clause);</span>
+				}
+<span class="fc" id="L159">				anyRewritten = true;</span>
+			} else {
+<span class="fc bfc" id="L161" title="All 4 branches covered.">				if (!rewritten.hitsAllSameLength() || rewritten.hitsLengthMax() != 1)</span>
+<span class="fc" id="L162">					allClausesSingleToken = false;</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">				if (!rewritten.isSingleTokenNot())</span>
+<span class="fc" id="L164">					onlyNotClauses = false;</span>
+				// Just add it.
+<span class="fc" id="L166">				rewrittenCl.add(rewritten);</span>
+<span class="fc bfc" id="L167" title="All 2 branches covered.">				if (rewritten != child)</span>
+<span class="fc" id="L168">					anyRewritten = true;</span>
+			}
+		}
+
+		// Rewrites OR queries containing only NOT children into &quot;NAND&quot; queries.
+		// (only possible if all OR queries have token length 1!)
+		// This saves on NOT queries and helps us isolate problematic subclauses which
+		// we can then rewrite to more efficient NOTCONTAINING clauses.
+<span class="pc bpc" id="L176" title="2 of 6 branches missed.">		if (rewrittenCl.size() &gt; 0 &amp;&amp; onlyNotClauses &amp;&amp; allClausesSingleToken) {</span>
+			// At least one clause starts with NOT.
+			// Node should be rewritten to AND. Invert all clauses.
+<span class="fc bfc" id="L179" title="All 2 branches covered.">			for (int i = 0; i &lt; rewrittenCl.size(); i++) {</span>
+<span class="fc" id="L180">				rewrittenCl.set(i, rewrittenCl.get(i).inverted());</span>
+			}
+			// Note extra rewrite at the end to make sure AND NOT structure is correctly built.
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">			if (rewrittenCl.size() == 1)</span>
+<span class="nc" id="L184">				return rewrittenCl.get(0).inverted();</span>
+<span class="fc" id="L185">			return (new SpanQueryAnd(rewrittenCl).inverted()).rewrite(reader);</span>
+		}
+
+<span class="fc bfc" id="L188" title="All 2 branches covered.">		if (anyRewritten) {</span>
+			// Some clauses were rewritten.
+<span class="pc bpc" id="L190" title="1 of 2 branches missed.">			if (rewrittenCl.size() == 1)</span>
+<span class="nc" id="L191">				return rewrittenCl.get(0);</span>
+<span class="fc" id="L192">			BLSpanOrQuery result = new BLSpanOrQuery(rewrittenCl.toArray(new BLSpanQuery[0]));</span>
+<span class="fc" id="L193">			result.setHitsAreFixedLength(fixedHitLength);</span>
+<span class="fc" id="L194">			result.setClausesAreSimpleTermsInSameProperty(clausesAreSimpleTermsInSameProperty);</span>
+<span class="fc" id="L195">			return result;</span>
+		}
+
+		// Node need not be rewritten; return as-is
+<span class="fc bfc" id="L199" title="All 2 branches covered.">		if (inner.getClauses().length == 1)</span>
+<span class="fc" id="L200">			return BLSpanQuery.wrap(inner.getClauses()[0]);</span>
+<span class="fc" id="L201">		return this;</span>
+	}
+
+	@Override
+	public boolean matchesEmptySequence() {
+<span class="pc bpc" id="L206" title="1 of 2 branches missed.">		if (fixedHitLength == 0)</span>
+<span class="nc" id="L207">			return true;</span>
+<span class="fc bfc" id="L208" title="All 2 branches covered.">		if (fixedHitLength &gt; 0)</span>
+<span class="fc" id="L209">			return false;</span>
+
+<span class="fc bfc" id="L211" title="All 2 branches covered.">		for (SpanQuery cl: getClauses()) {</span>
+<span class="fc" id="L212">			BLSpanQuery clause = (BLSpanQuery)cl;</span>
+<span class="pc bpc" id="L213" title="1 of 2 branches missed.">			if (clause.matchesEmptySequence())</span>
+<span class="nc" id="L214">				return true;</span>
+		}
+<span class="fc" id="L216">		return false;</span>
+	}
+
+	@Override
+	public BLSpanQuery noEmpty() {
+<span class="pc bpc" id="L221" title="1 of 2 branches missed.">		if (!matchesEmptySequence())</span>
+<span class="fc" id="L222">			return this;</span>
+<span class="nc" id="L223">		List&lt;BLSpanQuery&gt; newCl = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L224" title="All 2 branches missed.">		for (SpanQuery cl: inner.getClauses()) {</span>
+<span class="nc" id="L225">			newCl.add(((BLSpanQuery)cl).noEmpty());</span>
+		}
+<span class="nc" id="L227">		BLSpanOrQuery result = new BLSpanOrQuery(newCl.toArray(new BLSpanQuery[0]));</span>
+<span class="nc" id="L228">		result.setHitsAreFixedLength(fixedHitLength);</span>
+<span class="nc" id="L229">		result.setClausesAreSimpleTermsInSameProperty(clausesAreSimpleTermsInSameProperty);</span>
+<span class="nc" id="L230">		return result;</span>
+	}
+
+	@Override
+	public boolean hitsAllSameLength() {
+<span class="fc bfc" id="L235" title="All 2 branches covered.">		if (fixedHitLength &gt;= 0)</span>
+<span class="fc" id="L236">			return true;</span>
+<span class="pc bpc" id="L237" title="1 of 2 branches missed.">		if (getClauses().length == 0) {</span>
+<span class="nc" id="L238">			return true;</span>
+		}
+<span class="fc" id="L240">		int l = ((BLSpanQuery)getClauses()[0]).hitsLengthMin();</span>
+<span class="fc bfc" id="L241" title="All 2 branches covered.">		for (SpanQuery cl: getClauses()) {</span>
+<span class="fc" id="L242">			BLSpanQuery clause = (BLSpanQuery)cl;</span>
+<span class="pc bpc" id="L243" title="2 of 4 branches missed.">			if (!clause.hitsAllSameLength() || clause.hitsLengthMin() != l)</span>
+<span class="nc" id="L244">				return false;</span>
+		}
+<span class="fc" id="L246">		fixedHitLength = l; // save for next time</span>
+<span class="fc" id="L247">		return true;</span>
+	}
+
+	@Override
+	public int hitsLengthMin() {
+<span class="nc bnc" id="L252" title="All 2 branches missed.">		if (fixedHitLength &gt;= 0)</span>
+<span class="nc" id="L253">			return fixedHitLength;</span>
+<span class="nc" id="L254">		int n = Integer.MAX_VALUE;</span>
+<span class="nc bnc" id="L255" title="All 2 branches missed.">		for (SpanQuery cl: getClauses()) {</span>
+<span class="nc" id="L256">			BLSpanQuery clause = (BLSpanQuery)cl;</span>
+<span class="nc" id="L257">			n = Math.min(n, clause.hitsLengthMin());</span>
+		}
+<span class="nc bnc" id="L259" title="All 2 branches missed.">		return n == Integer.MAX_VALUE ? 0 : n;</span>
+	}
+
+	@Override
+	public int hitsLengthMax() {
+<span class="pc bpc" id="L264" title="1 of 2 branches missed.">		if (fixedHitLength &gt;= 0)</span>
+<span class="fc" id="L265">			return fixedHitLength;</span>
+<span class="nc" id="L266">		int n = 0;</span>
+<span class="nc bnc" id="L267" title="All 2 branches missed.">		for (SpanQuery cl: getClauses()) {</span>
+<span class="nc" id="L268">			BLSpanQuery clause = (BLSpanQuery)cl;</span>
+<span class="nc" id="L269">			int l = clause.hitsLengthMax();</span>
+<span class="nc" id="L270">			n = Math.max(n, l);</span>
+<span class="nc bnc" id="L271" title="All 2 branches missed.">			if (n == Integer.MAX_VALUE)</span>
+<span class="nc" id="L272">				return n; // infinite</span>
+		}
+<span class="nc" id="L274">		return n;</span>
+	}
+
+	@Override
+	public boolean hitsEndPointSorted() {
+<span class="fc" id="L279">		return hitsAllSameLength();</span>
+	}
+
+	@Override
+	public boolean hitsStartPointSorted() {
+		// Our way of merging guarantees this
+<span class="fc" id="L285">		return true;</span>
+	}
+
+	@Override
+	public boolean hitsHaveUniqueStart() {
+		// Cannot guarantee because we're merging from different sources.
+<span class="fc" id="L291">		return false;</span>
+	}
+
+	@Override
+	public boolean hitsHaveUniqueEnd() {
+		// Cannot guarantee because we're merging from different sources.
+<span class="fc" id="L297">		return false;</span>
+	}
+
+	@Override
+	public boolean hitsAreUnique() {
+		// Cannot guarantee because we're merging from different sources.
+<span class="fc" id="L303">		return false;</span>
+	}
+
+	@Override
+	public String toString(String field) {
+<span class="fc" id="L308">		return &quot;OR(&quot; + clausesToString(field, inner.getClauses()) + &quot;)&quot;;</span>
+	}
+
+	@Override
+	public boolean equals(Object o) {
+<span class="pc bpc" id="L313" title="1 of 2 branches missed.">		if (this == o)</span>
+<span class="nc" id="L314">			return true;</span>
+<span class="fc bfc" id="L315" title="All 2 branches covered.">		if (o instanceof BLSpanOrQuery) {</span>
+<span class="fc" id="L316">			return inner.equals(((BLSpanOrQuery)o).inner);</span>
+		}
+<span class="fc" id="L318">		return false;</span>
+	}
+
+	@Override
+	public int hashCode() {
+<span class="nc" id="L323">		return inner.hashCode() ^ 0xB1ACC1AB;</span>
+	}
+
+	@Override
+	public BLSpanWeight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
+<span class="fc" id="L328">		List&lt;BLSpanWeight&gt; subWeights = new ArrayList&lt;&gt;(inner.getClauses().length);</span>
+<span class="fc bfc" id="L329" title="All 2 branches covered.">		for (SpanQuery q: inner.getClauses()) {</span>
+<span class="fc" id="L330">			BLSpanWeight weight = ((BLSpanQuery)q).createWeight(searcher, false);</span>
+<span class="fc" id="L331">			subWeights.add(weight);</span>
+		}
+<span class="pc bpc" id="L333" title="1 of 2 branches missed.">		Map&lt;Term, TermContext&gt; contexts = needsScores ? getTermContexts(subWeights.toArray(new SpanWeight[0])) : null;</span>
+<span class="fc" id="L334">		return new SpanOrWeight(searcher, contexts, subWeights);</span>
+	}
+
+	public class SpanOrWeight extends BLSpanWeight {
+		final List&lt;BLSpanWeight&gt; subWeights;
+
+<span class="fc" id="L340">		public SpanOrWeight(IndexSearcher searcher, Map&lt;Term, TermContext&gt; terms, List&lt;BLSpanWeight&gt; subWeights) throws IOException {</span>
+<span class="fc" id="L341">			super(BLSpanOrQuery.this, searcher, terms);</span>
+<span class="fc" id="L342">			this.subWeights = subWeights;</span>
+<span class="fc" id="L343">		}</span>
+
+		@Override
+		public void extractTerms(Set&lt;Term&gt; terms) {
+<span class="fc bfc" id="L347" title="All 2 branches covered.">			for (final BLSpanWeight w: subWeights) {</span>
+<span class="fc" id="L348">				w.extractTerms(terms);</span>
+<span class="fc" id="L349">			}</span>
+<span class="fc" id="L350">		}</span>
+
+		@Override
+		public void extractTermContexts(Map&lt;Term, TermContext&gt; contexts) {
+<span class="nc bnc" id="L354" title="All 2 branches missed.">			for (BLSpanWeight w: subWeights) {</span>
+<span class="nc" id="L355">				w.extractTermContexts(contexts);</span>
+<span class="nc" id="L356">			}</span>
+<span class="nc" id="L357">		}</span>
+
+		class SpanPositionQueue extends PriorityQueue&lt;Spans&gt; {
+<span class="fc" id="L360">			SpanPositionQueue(int maxSize) {</span>
+<span class="fc" id="L361">				super(maxSize, false); // do not prepopulate</span>
+<span class="fc" id="L362">			}</span>
+
+			@Override
+			protected boolean lessThan(Spans s1, Spans s2) {
+<span class="fc" id="L366">				int start1 = s1.startPosition();</span>
+<span class="fc" id="L367">				int start2 = s2.startPosition();</span>
+<span class="fc bfc" id="L368" title="All 6 branches covered.">				return (start1 &lt; start2) ? true : (start1 == start2) ? s1.endPosition() &lt; s2.endPosition() : false;</span>
+			}
+		}
+
+		@Override
+		public BLSpans getSpans(final LeafReaderContext context, Postings requiredPostings) throws IOException {
+
+<span class="fc" id="L375">			final ArrayList&lt;Spans&gt; subSpans = new ArrayList&lt;&gt;(inner.getClauses().length);</span>
+
+<span class="fc bfc" id="L377" title="All 2 branches covered.">			for (SpanWeight w: subWeights) {</span>
+<span class="fc" id="L378">				Spans spans = w.getSpans(context, requiredPostings);</span>
+<span class="fc bfc" id="L379" title="All 2 branches covered.">				if (spans != null) {</span>
+<span class="fc" id="L380">					subSpans.add(spans);</span>
+				}
+<span class="fc" id="L382">			}</span>
+
+<span class="pc bpc" id="L384" title="1 of 2 branches missed.">			if (subSpans.isEmpty()) {</span>
+<span class="nc" id="L385">				return null;</span>
+<span class="fc bfc" id="L386" title="All 2 branches covered.">			} else if (subSpans.size() == 1) {</span>
+				//BL we need everything to be a BLSpans, or capturing (and optimizations) won't work properly
+				//   that's why we bypass ScoringWrapperSpans here.
+<span class="pc bpc" id="L389" title="1 of 2 branches missed.">				return subSpans.get(0) instanceof BLSpans ? (BLSpans)subSpans.get(0) : new BLSpansWrapper(subSpans.get(0));</span>
+				//return new BLSpansWrapper(new ScoringWrapperSpans(subSpans.get(0), getSimScorer(context)));
+			}
+
+<span class="fc" id="L393">			final DisiPriorityQueue byDocQueue = new DisiPriorityQueue(subSpans.size());</span>
+<span class="fc bfc" id="L394" title="All 2 branches covered.">			for (Spans spans: subSpans) {</span>
+<span class="fc" id="L395">				byDocQueue.add(new DisiWrapper(spans));</span>
+<span class="fc" id="L396">			}</span>
+
+<span class="fc" id="L398">			final SpanPositionQueue byPositionQueue = new SpanPositionQueue(subSpans.size()); // when</span>
+																								// empty
+																								// use
+																								// -1
+
+<span class="pc bpc" id="L403" title="1 of 2 branches missed.">			return new BLSpans() {</span>
+<span class="fc" id="L404">				Spans topPositionSpans = null;</span>
+
+				@Override
+				public int nextDoc() throws IOException {
+<span class="fc" id="L408">					topPositionSpans = null;</span>
+<span class="fc" id="L409">					DisiWrapper topDocSpans = byDocQueue.top();</span>
+<span class="fc" id="L410">					int currentDoc = topDocSpans.doc;</span>
+					do {
+<span class="fc" id="L412">						topDocSpans.doc = topDocSpans.iterator.nextDoc();</span>
+<span class="fc" id="L413">						topDocSpans = byDocQueue.updateTop();</span>
+<span class="fc bfc" id="L414" title="All 2 branches covered.">					} while (topDocSpans.doc == currentDoc);</span>
+<span class="fc" id="L415">					return topDocSpans.doc;</span>
+				}
+
+				@Override
+				public int advance(int target) throws IOException {
+<span class="fc" id="L420">					topPositionSpans = null;</span>
+<span class="fc" id="L421">					DisiWrapper topDocSpans = byDocQueue.top();</span>
+					do {
+<span class="fc" id="L423">						topDocSpans.doc = topDocSpans.iterator.advance(target);</span>
+<span class="fc" id="L424">						topDocSpans = byDocQueue.updateTop();</span>
+<span class="fc bfc" id="L425" title="All 2 branches covered.">					} while (topDocSpans.doc &lt; target);</span>
+<span class="fc" id="L426">					return topDocSpans.doc;</span>
+				}
+
+				@Override
+				public int docID() {
+<span class="fc" id="L431">					DisiWrapper topDocSpans = byDocQueue.top();</span>
+<span class="fc" id="L432">					return topDocSpans.doc;</span>
+				}
+
+				@Override
+				public TwoPhaseIterator asTwoPhaseIterator() {
+<span class="nc" id="L437">					float sumMatchCost = 0; // See also DisjunctionScorer.asTwoPhaseIterator()</span>
+<span class="nc" id="L438">					long sumApproxCost = 0;</span>
+
+<span class="nc bnc" id="L440" title="All 2 branches missed.">					for (DisiWrapper w: byDocQueue) {</span>
+<span class="nc bnc" id="L441" title="All 2 branches missed.">						if (w.twoPhaseView != null) {</span>
+<span class="nc bnc" id="L442" title="All 2 branches missed.">							long costWeight = (w.cost &lt;= 1) ? 1 : w.cost;</span>
+<span class="nc" id="L443">							sumMatchCost += w.twoPhaseView.matchCost() * costWeight;</span>
+<span class="nc" id="L444">							sumApproxCost += costWeight;</span>
+						}
+<span class="nc" id="L446">					}</span>
+
+<span class="nc bnc" id="L448" title="All 2 branches missed.">					if (sumApproxCost == 0) { // no sub spans supports approximations</span>
+<span class="nc" id="L449">						computePositionsCost();</span>
+<span class="nc" id="L450">						return null;</span>
+					}
+
+<span class="nc" id="L453">					final float matchCost = sumMatchCost / sumApproxCost;</span>
+
+<span class="nc" id="L455">					return new TwoPhaseIterator(new DisjunctionDISIApproximation(byDocQueue)) {</span>
+						@Override
+						public boolean matches() throws IOException {
+<span class="nc" id="L458">							return twoPhaseCurrentDocMatches();</span>
+						}
+
+						@Override
+						public float matchCost() {
+<span class="nc" id="L463">							return matchCost;</span>
+						}
+					};
+				}
+
+<span class="fc" id="L468">				float positionsCost = -1;</span>
+
+				void computePositionsCost() {
+<span class="nc" id="L471">					float sumPositionsCost = 0;</span>
+<span class="nc" id="L472">					long sumCost = 0;</span>
+<span class="nc bnc" id="L473" title="All 2 branches missed.">					for (DisiWrapper w: byDocQueue) {</span>
+<span class="nc bnc" id="L474" title="All 2 branches missed.">						long costWeight = (w.cost &lt;= 1) ? 1 : w.cost;</span>
+<span class="nc" id="L475">						sumPositionsCost += w.spans.positionsCost() * costWeight;</span>
+<span class="nc" id="L476">						sumCost += costWeight;</span>
+<span class="nc" id="L477">					}</span>
+<span class="nc" id="L478">					positionsCost = sumPositionsCost / sumCost;</span>
+<span class="nc" id="L479">				}</span>
+
+				@Override
+				public float positionsCost() {
+					// This may be called when asTwoPhaseIterator returned null,
+					// which happens when none of the sub spans supports approximations.
+<span class="nc bnc" id="L485" title="All 4 branches missed.">					assert positionsCost &gt; 0;</span>
+<span class="nc" id="L486">					return positionsCost;</span>
+				}
+
+<span class="fc" id="L489">				int lastDocTwoPhaseMatched = -1;</span>
+
+				boolean twoPhaseCurrentDocMatches() throws IOException {
+<span class="nc" id="L492">					DisiWrapper listAtCurrentDoc = byDocQueue.topList();</span>
+					// remove the head of the list as long as it does not match
+<span class="nc" id="L494">					final int currentDoc = listAtCurrentDoc.doc;</span>
+<span class="nc bnc" id="L495" title="All 2 branches missed.">					while (listAtCurrentDoc.twoPhaseView != null) {</span>
+<span class="nc bnc" id="L496" title="All 2 branches missed.">						if (listAtCurrentDoc.twoPhaseView.matches()) {</span>
+							// use this spans for positions at current doc:
+<span class="nc" id="L498">							listAtCurrentDoc.lastApproxMatchDoc = currentDoc;</span>
+<span class="nc" id="L499">							break;</span>
+						}
+						// do not use this spans for positions at current doc:
+<span class="nc" id="L502">						listAtCurrentDoc.lastApproxNonMatchDoc = currentDoc;</span>
+<span class="nc" id="L503">						listAtCurrentDoc = listAtCurrentDoc.next;</span>
+<span class="nc bnc" id="L504" title="All 2 branches missed.">						if (listAtCurrentDoc == null) {</span>
+<span class="nc" id="L505">							return false;</span>
+						}
+					}
+<span class="nc" id="L508">					lastDocTwoPhaseMatched = currentDoc;</span>
+<span class="nc" id="L509">					topPositionSpans = null;</span>
+<span class="nc" id="L510">					return true;</span>
+				}
+
+				void fillPositionQueue() throws IOException { // called at first nextStartPosition
+<span class="pc bpc" id="L514" title="2 of 4 branches missed.">					assert byPositionQueue.size() == 0;</span>
+					// add all matching Spans at current doc to byPositionQueue
+<span class="fc" id="L516">					DisiWrapper listAtCurrentDoc = byDocQueue.topList();</span>
+<span class="fc bfc" id="L517" title="All 2 branches covered.">					while (listAtCurrentDoc != null) {</span>
+<span class="fc" id="L518">						Spans spansAtDoc = listAtCurrentDoc.spans;</span>
+<span class="pc bpc" id="L519" title="1 of 2 branches missed.">						if (lastDocTwoPhaseMatched == listAtCurrentDoc.doc) { // matched by</span>
+																				// DisjunctionDisiApproximation
+<span class="nc bnc" id="L521" title="All 2 branches missed.">							if (listAtCurrentDoc.twoPhaseView != null) { // matched by approximation</span>
+<span class="nc bnc" id="L522" title="All 2 branches missed.">								if (listAtCurrentDoc.lastApproxNonMatchDoc == listAtCurrentDoc.doc) { // matches()</span>
+																										// returned
+																										// false
+<span class="nc" id="L525">									spansAtDoc = null;</span>
+								} else {
+<span class="nc bnc" id="L527" title="All 2 branches missed.">									if (listAtCurrentDoc.lastApproxMatchDoc != listAtCurrentDoc.doc) {</span>
+<span class="nc bnc" id="L528" title="All 2 branches missed.">										if (!listAtCurrentDoc.twoPhaseView.matches()) {</span>
+<span class="nc" id="L529">											spansAtDoc = null;</span>
+										}
+									}
+								}
+							}
+						}
+
+<span class="pc bpc" id="L536" title="1 of 2 branches missed.">						if (spansAtDoc != null) {</span>
+<span class="pc bpc" id="L537" title="2 of 4 branches missed.">							assert spansAtDoc.docID() == listAtCurrentDoc.doc;</span>
+<span class="pc bpc" id="L538" title="2 of 4 branches missed.">							assert spansAtDoc.startPosition() == -1;</span>
+<span class="fc" id="L539">							spansAtDoc.nextStartPosition();</span>
+<span class="pc bpc" id="L540" title="2 of 4 branches missed.">							assert spansAtDoc.startPosition() != NO_MORE_POSITIONS;</span>
+<span class="fc" id="L541">							byPositionQueue.add(spansAtDoc);</span>
+						}
+<span class="fc" id="L543">						listAtCurrentDoc = listAtCurrentDoc.next;</span>
+<span class="fc" id="L544">					}</span>
+<span class="pc bpc" id="L545" title="2 of 4 branches missed.">					assert byPositionQueue.size() &gt; 0;</span>
+<span class="fc" id="L546">				}</span>
+
+				@Override
+				public int nextStartPosition() throws IOException {
+<span class="fc bfc" id="L550" title="All 2 branches covered.">					if (topPositionSpans == null) {</span>
+<span class="fc" id="L551">						byPositionQueue.clear();</span>
+<span class="fc" id="L552">						fillPositionQueue(); // fills byPositionQueue at first position</span>
+<span class="fc" id="L553">						topPositionSpans = byPositionQueue.top();</span>
+					} else {
+<span class="fc" id="L555">						topPositionSpans.nextStartPosition();</span>
+<span class="fc" id="L556">						topPositionSpans = byPositionQueue.updateTop();</span>
+					}
+<span class="fc" id="L558">					return topPositionSpans.startPosition();</span>
+				}
+
+				@Override
+				public int startPosition() {
+<span class="pc bpc" id="L563" title="1 of 2 branches missed.">					return topPositionSpans == null ? -1 : topPositionSpans.startPosition();</span>
+				}
+
+				@Override
+				public int endPosition() {
+<span class="fc bfc" id="L568" title="All 2 branches covered.">					return topPositionSpans == null ? -1 : topPositionSpans.endPosition();</span>
+				}
+
+				@Override
+				public int width() {
+<span class="nc" id="L573">					return topPositionSpans.width();</span>
+				}
+
+				@Override
+				public void collect(SpanCollector collector) throws IOException {
+<span class="nc" id="L578">					topPositionSpans.collect(collector);</span>
+<span class="nc" id="L579">				}</span>
+
+				@Override
+				public String toString() {
+<span class="nc" id="L583">					return &quot;BLspanOr(&quot; + BLSpanOrQuery.this + &quot;)@&quot; + docID() + &quot;: &quot; + startPosition() + &quot; - &quot; + endPosition();</span>
+				}
+
+<span class="fc" id="L586">				long cost = -1;</span>
+
+				@Override
+				public long cost() {
+<span class="nc bnc" id="L590" title="All 2 branches missed.">					if (cost == -1) {</span>
+<span class="nc" id="L591">						cost = 0;</span>
+<span class="nc bnc" id="L592" title="All 2 branches missed.">						for (Spans spans: subSpans) {</span>
+<span class="nc" id="L593">							cost += spans.cost();</span>
+<span class="nc" id="L594">						}</span>
+					}
+<span class="nc" id="L596">					return cost;</span>
+				}
+
+				// BL
+
+				@Override
+				public void passHitQueryContextToClauses(HitQueryContext theContext) {
+<span class="fc bfc" id="L603" title="All 2 branches covered.">					for (Spans spans : subSpans) {</span>
+<span class="fc" id="L604">						((BLSpans)spans).setHitQueryContext(theContext);</span>
+<span class="fc" id="L605">					}</span>
+<span class="fc" id="L606">				}</span>
+
+				@Override
+				public void getCapturedGroups(Span[] capturedGroups) {
+<span class="pc bpc" id="L610" title="1 of 2 branches missed.">					if (!childClausesCaptureGroups)</span>
+<span class="nc" id="L611">						return;</span>
+<span class="fc" id="L612">					((BLSpans) topPositionSpans).getCapturedGroups(capturedGroups);</span>
+<span class="fc" id="L613">				}</span>
+			};
+		}
+	}
+
+	@Override
+	public Nfa getNfa(ForwardIndexAccessor fiAccessor, int direction) {
+		// See if this is really just an expanded wildcard/regex query, and if so,
+		// rewrite it to a NfaStateToken instead.
+<span class="fc" id="L622">		Set&lt;String&gt; terms = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L623">		boolean canBeTokenState = getNfaTokenStateTerms(terms);</span>
+<span class="fc bfc" id="L624" title="All 2 branches covered.">		if (canBeTokenState) {</span>
+			// Yep. Rewrite to a large NfaStateToken.
+<span class="fc" id="L626">			NfaState tokenState = NfaState.token(luceneField, terms, null);</span>
+<span class="fc" id="L627">			return new Nfa(tokenState, Arrays.asList(tokenState));</span>
+		}
+
+<span class="fc" id="L630">		List&lt;NfaState&gt; states = new ArrayList&lt;&gt;();</span>
+//		List&lt;NfaState&gt; dangling = new ArrayList&lt;&gt;();
+<span class="fc bfc" id="L632" title="All 2 branches covered.">		for (SpanQuery cl: getClauses()) {</span>
+<span class="fc" id="L633">			BLSpanQuery clause = (BLSpanQuery)cl;</span>
+<span class="fc" id="L634">			Nfa frag = clause.getNfa(fiAccessor, direction);</span>
+<span class="fc" id="L635">			states.add(frag.getStartingState());</span>
+//			dangling.addAll(frag.getDanglingArrows());
+		}
+<span class="fc" id="L638">		NfaState orAcyclic = NfaState.or(false, states, hitsAllSameLength());</span>
+<span class="fc" id="L639">		return new Nfa(orAcyclic, Arrays.asList(orAcyclic));</span>
+	}
+
+	/**
+	 * Checks if this OR node could be converted into a single
+	 * NFA token state with a list of terms, and collects the terms.
+	 *
+	 * @param terms terms for the NFA token state, if possible (or null if we're not interested in the terms)
+	 * @return true if this node can be converted into a single NFA token state
+	 */
+	protected boolean getNfaTokenStateTerms(Set&lt;String&gt; terms) {
+<span class="fc" id="L650">		boolean canBeTokenState = false;</span>
+<span class="pc bpc" id="L651" title="1 of 4 branches missed.">		if (hitsAllSameLength() &amp;&amp; hitsLengthMax() == 1) {</span>
+<span class="fc" id="L652">			canBeTokenState = true;</span>
+<span class="fc" id="L653">			String luceneField = null;</span>
+<span class="pc bpc" id="L654" title="3 of 4 branches missed.">			if (terms == null &amp;&amp; clausesAreSimpleTermsInSameProperty) {</span>
+				// We know all our clauses are simple terms, and we
+				// don't care about which terms at this point. Just return true.
+<span class="nc" id="L657">				return true;</span>
+			}
+<span class="pc bpc" id="L659" title="1 of 2 branches missed.">			for (SpanQuery cl: getClauses()) {</span>
+<span class="nc bnc" id="L660" title="All 4 branches missed.">				if (!clausesAreSimpleTermsInSameProperty &amp;&amp; !(cl instanceof BLSpanTermQuery)) {</span>
+					// Not all simple term queries. Can't rewrite to token state.
+<span class="nc" id="L662">					canBeTokenState = false;</span>
+<span class="nc" id="L663">					break;</span>
+				}
+<span class="nc" id="L665">				BLSpanTermQuery blcl = (BLSpanTermQuery)cl;</span>
+<span class="nc bnc" id="L666" title="All 2 branches missed.">				if (!clausesAreSimpleTermsInSameProperty) {</span>
+					// We don't know if all our clauses are in the same property. Check.
+<span class="nc bnc" id="L668" title="All 2 branches missed.">					if (luceneField == null) {</span>
+<span class="nc" id="L669">						luceneField = blcl.getRealField();</span>
+<span class="nc bnc" id="L670" title="All 2 branches missed.">					} else if (!luceneField.equals(blcl.getRealField())) {</span>
+						// Not all in the same property. Can't rewrite to token state.
+<span class="nc" id="L672">						canBeTokenState = false;</span>
+<span class="nc" id="L673">						break;</span>
+					}
+				}
+<span class="nc bnc" id="L676" title="All 2 branches missed.">				if (terms != null)</span>
+<span class="nc" id="L677">					terms.add(blcl.getTerm().text());</span>
+			}
+		}
+<span class="fc bfc" id="L680" title="All 2 branches covered.">		if (canBeTokenState)</span>
+<span class="fc" id="L681">			clausesAreSimpleTermsInSameProperty = true; // save this result for next time</span>
+<span class="fc" id="L682">		return canBeTokenState;</span>
+	}
+
+	@Override
+	public boolean canMakeNfa() {
+<span class="pc bpc" id="L687" title="1 of 2 branches missed.">		if (clausesAreSimpleTermsInSameProperty)</span>
+<span class="fc" id="L688">			return true;</span>
+<span class="nc bnc" id="L689" title="All 2 branches missed.">		for (SpanQuery cl: getClauses()) {</span>
+<span class="nc" id="L690">			BLSpanQuery clause = (BLSpanQuery)cl;</span>
+<span class="nc bnc" id="L691" title="All 2 branches missed.">			if (!clause.canMakeNfa())</span>
+<span class="nc" id="L692">				return false;</span>
+		}
+<span class="nc" id="L694">		return true;</span>
+	}
+
+	@Override
+	public long reverseMatchingCost(IndexReader reader) {
+		// Add the costs of our clauses, since we won't
+		// be able to skip any hits.
+<span class="fc" id="L701">		int cost = 0;</span>
+<span class="fc" id="L702">		SpanQuery[] clauses = getClauses();</span>
+<span class="fc bfc" id="L703" title="All 2 branches covered.">		if (clauses.length == 0)</span>
+<span class="fc" id="L704">			return 0;</span>
+<span class="fc" id="L705">		int skip = getCostCalculationSkip(clauses.length);</span>
+<span class="fc" id="L706">		int clausesCalculated = 0;</span>
+<span class="fc bfc" id="L707" title="All 2 branches covered.">		for (int i = 0; i &lt; clauses.length; i++) {</span>
+<span class="fc" id="L708">			BLSpanQuery clause = (BLSpanQuery)clauses[i];</span>
+<span class="fc" id="L709">			cost += clause.reverseMatchingCost(reader);</span>
+<span class="fc" id="L710">			clausesCalculated++;</span>
+<span class="fc" id="L711">			i += skip;</span>
+		}
+<span class="fc" id="L713">		return cost * clauses.length / clausesCalculated;</span>
+	}
+
+	/** For great numbers of clauses, approximate by only calculating cost of some terms
+	 * @param n number of clauses
+	 * @return number of clauses to skip after every calculation
+	 */
+	protected static int getCostCalculationSkip(int n) {
+<span class="pc bpc" id="L721" title="1 of 2 branches missed.">		return n &gt;= 30 ? (n - 30) / 30 : 0;</span>
+	}
+
+	@Override
+	public int forwardMatchingCost() {
+<span class="fc" id="L726">		SpanQuery[] clauses = getClauses();</span>
+<span class="pc bpc" id="L727" title="1 of 2 branches missed.">		if (clausesAreSimpleTermsInSameProperty) {</span>
+<span class="fc" id="L728">			return clauses.length * BLSpanTermQuery.FIXED_FORWARD_MATCHING_COST;</span>
+		}
+<span class="nc" id="L730">		boolean producesSingleState = getNfaTokenStateTerms(null);</span>
+<span class="nc bnc" id="L731" title="All 2 branches missed.">		if (!producesSingleState) {</span>
+			// Add the costs of our clauses.
+<span class="nc" id="L733">			int cost = 1;</span>
+<span class="nc bnc" id="L734" title="All 2 branches missed.">			if (clauses.length == 0)</span>
+<span class="nc" id="L735">				return 0;</span>
+<span class="nc" id="L736">			int skip = getCostCalculationSkip(clauses.length);</span>
+<span class="nc" id="L737">			int clausesCalculated = 0;</span>
+<span class="nc bnc" id="L738" title="All 2 branches missed.">			for (int i = 0; i &lt; clauses.length; i++) {</span>
+<span class="nc" id="L739">				BLSpanQuery clause = (BLSpanQuery)clauses[i];</span>
+<span class="nc" id="L740">				cost += clause.forwardMatchingCost();</span>
+<span class="nc" id="L741">				clausesCalculated++;</span>
+<span class="nc" id="L742">				i += skip;</span>
+			}
+<span class="nc" id="L744">			return cost * clauses.length / clausesCalculated;</span>
+		}
+<span class="nc" id="L746">		return 1;</span>
+	}
+
+	public void setHitsAreFixedLength(int i) {
+<span class="fc" id="L750">		fixedHitLength = i;</span>
+<span class="fc" id="L751">	}</span>
+
+	public void setClausesAreSimpleTermsInSameProperty(boolean b) {
+<span class="fc" id="L754">		clausesAreSimpleTermsInSameProperty = b;</span>
+<span class="fc" id="L755">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

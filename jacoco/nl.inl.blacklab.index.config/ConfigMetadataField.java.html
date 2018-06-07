@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ConfigMetadataField.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.index.config</a> &gt; <span class="el_source">ConfigMetadataField.java</span></div><h1>ConfigMetadataField.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.index.config;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import nl.inl.blacklab.search.indexstructure.FieldType;
+import nl.inl.blacklab.search.indexstructure.MetadataFieldDesc.UnknownCondition;
+
+/** Configuration for metadata field(s). */
+public class ConfigMetadataField {
+
+    /** Metadata field name (or name XPath, if forEach) */
+    private String name;
+
+    /** Where to find metadata value */
+    private String valuePath;
+
+    /** If null: regular metadata field definition. Otherwise, find all nodes matching this XPath,
+     *  then evaluate fieldName and valuePath as XPaths for each matching node.
+     */
+    private String forEachPath;
+
+    /** How to process annotation values (if at all) */
+<span class="fc" id="L27">    private List&lt;ConfigProcessStep&gt; process = new ArrayList&lt;&gt;();</span>
+
+    /** How to index the field (tokenized|untokenized|numeric) */
+<span class="fc" id="L30">    private FieldType type = FieldType.TOKENIZED;</span>
+
+    /** When to index the unknownValue: NEVER|MISSING|EMPTY|MISSING_OR_EMPTY (default: NEVER) */
+<span class="fc" id="L33">    private UnknownCondition unknownCondition = UnknownCondition.NEVER;</span>
+
+    /** What to index when unknownCondition is true (default: unknown) */
+<span class="fc" id="L36">    private String unknownValue = &quot;unknown&quot;;</span>
+
+    /** Analyzer to use for this field */
+<span class="fc" id="L39">    private String analyzer = &quot;&quot;;</span>
+
+    /** How to display the field in the interface (optional) */
+<span class="fc" id="L42">    private String displayName = &quot;&quot;;</span>
+
+    /** How to describe the field in the interface (optional) */
+<span class="fc" id="L45">    private String description = &quot;&quot;;</span>
+
+    /** What UI element to show in the interface (optional) */
+<span class="fc" id="L48">    private String uiType = &quot;&quot;;</span>
+
+    /** Mapping from value to displayValue (optional) */
+<span class="fc" id="L51">    private Map&lt;String, String&gt; displayValues = new HashMap&lt;&gt;();</span>
+
+    /** Order in which to display the values (optional) */
+<span class="fc" id="L54">    private List&lt;String&gt; displayOrder = new ArrayList&lt;&gt;();</span>
+
+<span class="fc" id="L56">    public ConfigMetadataField() {</span>
+<span class="fc" id="L57">    }</span>
+
+    public ConfigMetadataField(String name, String valuePath) {
+<span class="nc" id="L60">        this(name, valuePath, null);</span>
+<span class="nc" id="L61">    }</span>
+
+<span class="fc" id="L63">    public ConfigMetadataField(String fieldName, String valuePath, String forEachPath) {</span>
+<span class="fc" id="L64">        setName(fieldName);</span>
+<span class="fc" id="L65">        setValuePath(valuePath);</span>
+<span class="fc" id="L66">        setForEachPath(forEachPath);</span>
+<span class="fc" id="L67">    }</span>
+
+    public ConfigMetadataField copy() {
+<span class="fc" id="L70">        ConfigMetadataField cp = new ConfigMetadataField(name, valuePath, forEachPath);</span>
+<span class="fc" id="L71">        cp.setProcess(process);</span>
+<span class="fc" id="L72">        cp.setDisplayName(displayName);</span>
+<span class="fc" id="L73">        cp.setDescription(description);</span>
+<span class="fc" id="L74">        cp.setType(type);</span>
+<span class="fc" id="L75">        cp.setUiType(uiType);</span>
+<span class="fc" id="L76">        cp.setUnknownCondition(unknownCondition);</span>
+<span class="fc" id="L77">        cp.setUnknownValue(unknownValue);</span>
+<span class="fc" id="L78">        cp.setAnalyzer(analyzer);</span>
+<span class="fc" id="L79">        cp.displayValues.putAll(displayValues);</span>
+<span class="fc" id="L80">        cp.displayOrder.addAll(displayOrder);</span>
+<span class="fc" id="L81">        return cp;</span>
+    }
+
+    public void validate() {
+<span class="fc" id="L85">        String t = &quot;metadata field&quot;;</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        ConfigInputFormat.req(name, t, isForEach() ? &quot;namePath&quot; : &quot;name&quot;);</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">        for (ConfigProcessStep step: process) {</span>
+<span class="fc" id="L88">            step.validate();</span>
+<span class="fc" id="L89">        }</span>
+<span class="fc" id="L90">    }</span>
+
+    public void setForEachPath(String forEachPath) {
+<span class="fc" id="L93">        this.forEachPath = forEachPath;</span>
+<span class="fc" id="L94">    }</span>
+
+    public void setName(String name) {
+<span class="fc" id="L97">        this.name = name;</span>
+<span class="fc" id="L98">    }</span>
+
+    public void setValuePath(String valuePath) {
+<span class="fc" id="L101">        this.valuePath = valuePath;</span>
+<span class="fc" id="L102">    }</span>
+
+    public String getName() {
+<span class="fc" id="L105">        return name;</span>
+    }
+
+    public String getValuePath() {
+<span class="nc" id="L109">        return valuePath;</span>
+    }
+
+    public String getForEachPath() {
+<span class="nc" id="L113">        return forEachPath;</span>
+    }
+
+    public boolean isForEach() {
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        return forEachPath != null;</span>
+    }
+
+    public String getDisplayName() {
+<span class="nc" id="L121">        return displayName;</span>
+    }
+
+    public void setDisplayName(String displayName) {
+<span class="fc" id="L125">        this.displayName = displayName;</span>
+<span class="fc" id="L126">    }</span>
+
+    public String getDescription() {
+<span class="nc" id="L129">        return description;</span>
+    }
+
+    public void setDescription(String description) {
+<span class="fc" id="L133">        this.description = description;</span>
+<span class="fc" id="L134">    }</span>
+
+    public String getUiType() {
+<span class="nc" id="L137">        return uiType;</span>
+    }
+
+    public void setUiType(String uiType) {
+<span class="fc" id="L141">        this.uiType = uiType;</span>
+<span class="fc" id="L142">    }</span>
+
+    public UnknownCondition getUnknownCondition() {
+<span class="nc" id="L145">        return unknownCondition;</span>
+    }
+
+    public void setUnknownCondition(UnknownCondition unknownCondition) {
+<span class="fc" id="L149">        this.unknownCondition = unknownCondition;</span>
+<span class="fc" id="L150">    }</span>
+
+    public String getUnknownValue() {
+<span class="nc" id="L153">        return unknownValue;</span>
+    }
+
+    public void setUnknownValue(String unknownValue) {
+<span class="fc" id="L157">        this.unknownValue = unknownValue;</span>
+<span class="fc" id="L158">    }</span>
+
+    public String getAnalyzer() {
+<span class="fc" id="L161">        return analyzer;</span>
+    }
+
+    public void setAnalyzer(String analyzer) {
+<span class="fc" id="L165">        this.analyzer = analyzer;</span>
+<span class="fc" id="L166">    }</span>
+
+    public FieldType getType() {
+<span class="nc" id="L169">        return type;</span>
+    }
+
+    public void setType(FieldType type) {
+<span class="fc" id="L173">        this.type = type;</span>
+<span class="fc" id="L174">    }</span>
+
+    public Map&lt;String, String&gt; getDisplayValues() {
+<span class="nc" id="L177">        return Collections.unmodifiableMap(displayValues);</span>
+    }
+
+    public void addDisplayValue(String value, String displayValue) {
+<span class="nc" id="L181">        displayValues.put(value, displayValue);</span>
+<span class="nc" id="L182">    }</span>
+
+    public void addDisplayValues(Map&lt;String, String&gt; displayValues) {
+<span class="nc" id="L185">        displayValues.putAll(displayValues);</span>
+<span class="nc" id="L186">    }</span>
+
+    public List&lt;String&gt; getDisplayOrder() {
+<span class="nc" id="L189">        return Collections.unmodifiableList(displayOrder);</span>
+    }
+
+    public List&lt;ConfigProcessStep&gt; getProcess() {
+<span class="nc" id="L193">        return process;</span>
+    }
+
+    public void setProcess(List&lt;ConfigProcessStep&gt; process) {
+<span class="fc" id="L197">        this.process.clear();</span>
+<span class="fc" id="L198">        this.process.addAll(process);</span>
+<span class="fc" id="L199">    }</span>
+
+    public void addDisplayOrder(List&lt;String&gt; fields) {
+<span class="nc" id="L202">        displayOrder.addAll(fields);</span>
+<span class="nc" id="L203">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

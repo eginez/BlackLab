@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SpanQueryNoHits.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">SpanQueryNoHits.java</span></div><h1>SpanQueryNoHits.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.search.lucene;
+
+import java.io.IOException;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.index.TermContext;
+import org.apache.lucene.search.IndexSearcher;
+
+/**
+ * A query matching nothing.
+ */
+public class SpanQueryNoHits extends BLSpanQuery {
+
+	private String luceneField;
+
+<span class="nc" id="L20">	public SpanQueryNoHits(String luceneField) {</span>
+<span class="nc" id="L21">		this.luceneField = luceneField;</span>
+<span class="nc" id="L22">	}</span>
+
+	@Override
+	public boolean equals(Object obj) {
+<span class="nc bnc" id="L26" title="All 2 branches missed.">		if (obj instanceof SpanQueryNoHits) {</span>
+<span class="nc" id="L27">			SpanQueryNoHits tp = ((SpanQueryNoHits) obj);</span>
+<span class="nc" id="L28">			return luceneField.equals(tp.luceneField);</span>
+		}
+<span class="nc" id="L30">		return false;</span>
+	}
+
+	@Override
+	public BLSpanWeight createWeight(final IndexSearcher searcher, boolean needsScores) throws IOException {
+<span class="nc" id="L35">		return new BLSpanWeight(SpanQueryNoHits.this, searcher, null) {</span>
+			@Override
+			public void extractTerms(Set&lt;Term&gt; terms) {
+				// No terms
+<span class="nc" id="L39">			}</span>
+
+			@Override
+			public void extractTermContexts(Map&lt;Term, TermContext&gt; contexts) {
+				// No terms
+<span class="nc" id="L44">			}</span>
+
+			@Override
+			public BLSpans getSpans(final LeafReaderContext context, Postings requiredPostings) throws IOException {
+<span class="nc" id="L48">				return null; // no hits</span>
+			}
+		};
+	}
+
+	@Override
+	public String toString(String field) {
+<span class="nc" id="L55">		return &quot;NOTOKENS()&quot;;</span>
+	}
+
+	@Override
+	public String getRealField() {
+<span class="nc" id="L60">		return luceneField;</span>
+	}
+
+	@Override
+	public int hashCode() {
+<span class="nc" id="L65">		return luceneField.hashCode();</span>
+	}
+
+	@Override
+	public BLSpanQuery inverted() {
+<span class="nc" id="L70">		return new SpanQueryAnyToken(1, 1, luceneField);</span>
+	}
+
+	@Override
+	public boolean hitsAllSameLength() {
+<span class="nc" id="L75">		return true;</span>
+	}
+
+	@Override
+	public int hitsLengthMin() {
+<span class="nc" id="L80">		return 1;</span>
+	}
+
+	@Override
+	public int hitsLengthMax() {
+<span class="nc" id="L85">		return 1;</span>
+	}
+
+	@Override
+	public boolean hitsEndPointSorted() {
+<span class="nc" id="L90">		return hitsAllSameLength();</span>
+	}
+
+	@Override
+	public boolean hitsStartPointSorted() {
+<span class="nc" id="L95">		return true;</span>
+	}
+
+	@Override
+	public boolean hitsHaveUniqueStart() {
+<span class="nc" id="L100">		return true;</span>
+	}
+
+	@Override
+	public boolean hitsHaveUniqueEnd() {
+<span class="nc" id="L105">		return true;</span>
+	}
+
+	@Override
+	public boolean hitsAreUnique() {
+<span class="nc" id="L110">		return true;</span>
+	}
+
+	@Override
+	public boolean canMakeNfa() {
+<span class="nc" id="L115">		return false;</span>
+	}
+
+	@Override
+	public long reverseMatchingCost(IndexReader reader) {
+<span class="nc" id="L120">		return 0; // no hits, no cost</span>
+	}
+
+	@Override
+	public int forwardMatchingCost() {
+<span class="nc" id="L125">		return 0; // no hits, no cost</span>
+	}
+
+	@Override
+	public BLSpanQuery rewrite(IndexReader reader) throws IOException {
+<span class="nc" id="L130">		return this;</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

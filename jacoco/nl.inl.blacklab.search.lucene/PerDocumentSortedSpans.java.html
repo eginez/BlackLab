@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PerDocumentSortedSpans.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">PerDocumentSortedSpans.java</span></div><h1>PerDocumentSortedSpans.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.lucene;
+
+import java.io.IOException;
+import java.util.Comparator;
+
+import org.apache.lucene.search.spans.SpanCollector;
+import nl.inl.blacklab.search.Hit;
+import nl.inl.blacklab.search.Span;
+
+/**
+ * Sort the given Spans per document, according to the given comparator.
+ */
+class PerDocumentSortedSpans extends BLSpans {
+
+<span class="fc" id="L30">	final static Comparator&lt;Hit&gt; cmpStartPoint = new SpanComparatorStartPoint();</span>
+
+<span class="fc" id="L32">	final static Comparator&lt;Hit&gt; cmpEndPoint = new SpanComparatorEndPoint();</span>
+
+	protected BLSpans source;
+
+<span class="fc" id="L36">	private int curDoc = -1, curStart = -1, curEnd = -1;</span>
+
+	private SpansInBuckets bucketedSpans;
+
+	private boolean eliminateDuplicates;
+
+	private int prevStart, prevEnd;
+
+<span class="fc" id="L44">	private int indexInBucket = -2; // -2 == no bucket yet; -1 == just started a bucket</span>
+
+<span class="fc" id="L46">	public PerDocumentSortedSpans(BLSpans src, Comparator&lt;Hit&gt; comparator, boolean eliminateDuplicates) {</span>
+<span class="fc" id="L47">		this.source = src;</span>
+
+		// Wrap a HitsPerDocument and show it to the client as a normal, sequential Spans.
+<span class="fc" id="L50">		bucketedSpans = new SpansInBucketsPerDocumentSorted(src, comparator);</span>
+
+<span class="fc" id="L52">		this.eliminateDuplicates = eliminateDuplicates;</span>
+<span class="fc" id="L53">	}</span>
+
+	@Override
+	public int docID() {
+<span class="fc" id="L57">		return curDoc;</span>
+	}
+
+	@Override
+	public int startPosition() {
+<span class="fc bfc" id="L62" title="All 2 branches covered.">		if (indexInBucket &lt; 0)</span>
+<span class="fc" id="L63">			return -1;</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">		if (indexInBucket &gt;= bucketedSpans.bucketSize())</span>
+<span class="fc" id="L65">			return NO_MORE_POSITIONS;</span>
+<span class="fc" id="L66">		return curStart;</span>
+	}
+
+	@Override
+	public int endPosition() {
+<span class="fc bfc" id="L71" title="All 2 branches covered.">		if (indexInBucket &lt; 0)</span>
+<span class="fc" id="L72">			return -1;</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">		if (indexInBucket &gt;= bucketedSpans.bucketSize())</span>
+<span class="fc" id="L74">			return NO_MORE_POSITIONS;</span>
+<span class="fc" id="L75">		return curEnd;</span>
+	}
+
+	@Override
+	public Hit getHit() {
+<span class="pc bpc" id="L80" title="2 of 4 branches missed.">		if (indexInBucket &lt; 0 || indexInBucket &gt;= bucketedSpans.bucketSize())</span>
+<span class="nc" id="L81">			return null;</span>
+<span class="fc" id="L82">		return bucketedSpans.getHit(indexInBucket);</span>
+	}
+
+	@Override
+	public int nextDoc() throws IOException {
+<span class="fc" id="L87">		curDoc = bucketedSpans.nextDoc();</span>
+<span class="fc" id="L88">		indexInBucket = -2;</span>
+<span class="fc" id="L89">		curStart = -1;</span>
+<span class="fc" id="L90">		curEnd = -1;</span>
+<span class="fc" id="L91">		return curDoc;</span>
+	}
+
+	@Override
+	public int nextStartPosition() throws IOException {
+<span class="fc bfc" id="L96" title="All 2 branches covered.">		if (!eliminateDuplicates) {</span>
+			// No need to eliminate duplicates
+<span class="fc bfc" id="L98" title="All 4 branches covered.">			if (indexInBucket == -2 || indexInBucket &gt;= bucketedSpans.bucketSize() - 1) {</span>
+				// Bucket exhausted or no bucket yet; get one
+<span class="fc bfc" id="L100" title="All 2 branches covered.">				if (bucketedSpans.nextBucket() == SpansInBuckets.NO_MORE_BUCKETS) {</span>
+<span class="fc" id="L101">					indexInBucket = SpansInBuckets.NO_MORE_BUCKETS;</span>
+<span class="fc" id="L102">					return NO_MORE_POSITIONS;</span>
+				}
+<span class="fc" id="L104">				indexInBucket = -1;</span>
+			}
+<span class="fc" id="L106">			indexInBucket++;</span>
+<span class="fc" id="L107">			curStart = bucketedSpans.startPosition(indexInBucket);</span>
+<span class="fc" id="L108">			curEnd = bucketedSpans.endPosition(indexInBucket);</span>
+		} else {
+			// Eliminate any duplicates
+			do {
+<span class="fc bfc" id="L112" title="All 4 branches covered.">				if (indexInBucket == -2 || indexInBucket &gt;= bucketedSpans.bucketSize() - 1) {</span>
+					// Bucket exhausted or no bucket yet; get one
+<span class="fc bfc" id="L114" title="All 2 branches covered.">					if (bucketedSpans.nextBucket() == SpansInBuckets.NO_MORE_BUCKETS) {</span>
+<span class="fc" id="L115">						indexInBucket = SpansInBuckets.NO_MORE_BUCKETS;</span>
+<span class="fc" id="L116">						return NO_MORE_POSITIONS;</span>
+					}
+<span class="fc" id="L118">					indexInBucket = -1;</span>
+				}
+<span class="fc bfc" id="L120" title="All 2 branches covered.">				if (indexInBucket &gt;= 0) {</span>
+<span class="fc" id="L121">					prevStart = bucketedSpans.startPosition(indexInBucket);</span>
+<span class="fc" id="L122">					prevEnd = bucketedSpans.endPosition(indexInBucket);</span>
+				} else {
+<span class="fc" id="L124">					prevStart = prevEnd = -1;</span>
+				}
+<span class="fc" id="L126">				indexInBucket++;</span>
+<span class="fc" id="L127">				curStart = bucketedSpans.startPosition(indexInBucket);</span>
+<span class="fc" id="L128">				curEnd = bucketedSpans.endPosition(indexInBucket);</span>
+<span class="pc bpc" id="L129" title="1 of 4 branches missed.">			} while (prevStart == curStart &amp;&amp; prevEnd == curEnd);</span>
+		}
+<span class="fc" id="L131">		return curStart;</span>
+	}
+
+	@Override
+	public int advance(int target) throws IOException {
+<span class="nc" id="L136">		curDoc = bucketedSpans.advance(target);</span>
+<span class="nc" id="L137">		indexInBucket = -2;</span>
+<span class="nc" id="L138">		curStart = -1;</span>
+<span class="nc" id="L139">		curEnd = -1;</span>
+<span class="nc" id="L140">		return curDoc;</span>
+	}
+
+	@Override
+	public String toString() {
+<span class="nc" id="L145">		return bucketedSpans.toString();</span>
+	}
+
+	@Override
+	public void passHitQueryContextToClauses(HitQueryContext context) {
+<span class="fc" id="L150">		bucketedSpans.setHitQueryContext(context);</span>
+<span class="fc" id="L151">	}</span>
+
+	@Override
+	public void getCapturedGroups(Span[] capturedGroups) {
+<span class="pc bpc" id="L155" title="2 of 4 branches missed.">		if (indexInBucket &lt; 0 || indexInBucket &gt;= bucketedSpans.bucketSize())</span>
+<span class="nc" id="L156">			return;</span>
+<span class="fc" id="L157">		bucketedSpans.getCapturedGroups(indexInBucket, capturedGroups);</span>
+<span class="fc" id="L158">	}</span>
+
+	@Override
+	public int width() {
+<span class="nc" id="L162">		return 0; // should maybe be bucketedSpans.width(indexInBucket) ? but we don't use .width()</span>
+	}
+
+	@Override
+	public void collect(SpanCollector collector) throws IOException {
+		// BucketedSpans should collect payload as well, but for now, we don't use
+		// payload beyond a &quot;simple&quot; SpanQuery like SpanQueryTags.
+		// bucketedSpans.collect(collector);
+<span class="nc" id="L170">	}</span>
+
+	@Override
+	public float positionsCost() {
+<span class="nc" id="L174">		return 0; // should maybe be bucketedSpans.positionsCost()</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

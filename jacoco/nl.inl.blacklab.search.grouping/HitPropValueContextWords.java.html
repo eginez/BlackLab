@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HitPropValueContextWords.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.grouping</a> &gt; <span class="el_source">HitPropValueContextWords.java</span></div><h1>HitPropValueContextWords.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.search.grouping;
+
+import java.util.Arrays;
+import java.util.List;
+
+import nl.inl.blacklab.forwardindex.Terms;
+import nl.inl.blacklab.index.complex.ComplexFieldUtil;
+import nl.inl.blacklab.search.Hits;
+import nl.inl.util.ArrayUtil;
+
+public class HitPropValueContextWords extends HitPropValueContext {
+	int[] valueTokenId;
+
+	int[] valueSortOrder;
+
+	boolean sensitive;
+
+	public HitPropValueContextWords(Hits hits, String propName, int[] value, boolean sensitive) {
+<span class="fc" id="L19">		super(hits, propName);</span>
+<span class="fc" id="L20">		this.valueTokenId = value;</span>
+<span class="fc" id="L21">		this.sensitive = sensitive;</span>
+<span class="fc" id="L22">		valueSortOrder = new int[value.length];</span>
+<span class="fc" id="L23">		terms.toSortOrder(value, valueSortOrder, sensitive);</span>
+<span class="fc" id="L24">	}</span>
+
+	@Override
+	public int compareTo(Object o) {
+<span class="fc" id="L28">		return ArrayUtil.compareArrays(valueSortOrder, ((HitPropValueContextWords) o).valueSortOrder);</span>
+	}
+
+	@Override
+	public int hashCode() {
+<span class="fc" id="L33">		return Arrays.hashCode(valueSortOrder);</span>
+	}
+
+	public static HitPropValue deserialize(Hits hits, String info) {
+<span class="nc" id="L37">		String[] parts = PropValSerializeUtil.splitParts(info);</span>
+<span class="nc" id="L38">		String fieldName = hits.settings().concordanceField();</span>
+<span class="nc" id="L39">		String propName = parts[0];</span>
+<span class="nc" id="L40">		boolean sensitive = parts[1].equalsIgnoreCase(&quot;s&quot;);</span>
+<span class="nc" id="L41">		int[] ids = new int[parts.length - 2];</span>
+<span class="nc" id="L42">		Terms termsObj = hits.getSearcher().getForwardIndex(ComplexFieldUtil.propertyField(fieldName, propName)).getTerms();</span>
+<span class="nc bnc" id="L43" title="All 2 branches missed.">		for (int i = 2; i &lt; parts.length; i++) {</span>
+<span class="nc" id="L44">			ids[i - 2] = termsObj.deserializeToken(parts[i]);</span>
+		}
+<span class="nc" id="L46">		return new HitPropValueContextWords(hits, propName, ids, sensitive);</span>
+	}
+
+	@Override
+	public String toString() {
+<span class="nc" id="L51">		StringBuilder b = new StringBuilder();</span>
+<span class="nc bnc" id="L52" title="All 2 branches missed.">		for (int v: valueTokenId) {</span>
+<span class="nc bnc" id="L53" title="All 2 branches missed.">			String word = v &lt; 0 ? &quot;-&quot; : terms.get(v);</span>
+<span class="nc bnc" id="L54" title="All 2 branches missed.">			if (word.length() &gt; 0) {</span>
+<span class="nc bnc" id="L55" title="All 2 branches missed.">				if (b.length() &gt; 0)</span>
+<span class="nc" id="L56">					b.append(&quot; &quot;);</span>
+<span class="nc" id="L57">				b.append(word);</span>
+			}
+		}
+<span class="nc" id="L60">		return b.toString();</span>
+	}
+
+	@Override
+	public String serialize() {
+<span class="nc" id="L65">		String[] parts = new String[valueTokenId.length + 3];</span>
+<span class="nc" id="L66">		parts[0] = &quot;cws&quot;;</span>
+<span class="nc" id="L67">		parts[1] = propName;</span>
+<span class="nc bnc" id="L68" title="All 2 branches missed.">		parts[2] = (sensitive ? &quot;s&quot; : &quot;i&quot;);</span>
+<span class="nc bnc" id="L69" title="All 2 branches missed.">		for (int i = 0; i &lt; valueTokenId.length; i++) {</span>
+<span class="nc" id="L70">			parts[i + 3] = terms.serializeTerm(valueTokenId[i]);</span>
+		}
+<span class="nc" id="L72">		return PropValSerializeUtil.combineParts(parts);</span>
+	}
+
+	@Override
+	public List&lt;String&gt; getPropValues() {
+<span class="nc" id="L77">		return Arrays.asList(this.toString());</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

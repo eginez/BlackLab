@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ConfigStandoffAnnotations.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.index.config</a> &gt; <span class="el_source">ConfigStandoffAnnotations.java</span></div><h1>ConfigStandoffAnnotations.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.index.config;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+/**
+ * Configuration for a block of standoff annotations (annotations that
+ * don't reside under the word tag but elsewhere in the document).
+ */
+public class ConfigStandoffAnnotations implements ConfigWithAnnotations {
+
+	/** Path to the elements containing the values to index
+	 *  (values may apply to multiple token positions)
+	 */
+    private String path;
+
+    /** Unique id of the token position(s) to index these values at.
+     *  A uniqueId must be defined for words.
+     */
+    private String refTokenPositionIdPath;
+
+    /** The annotations to index at the referenced token positions. */
+<span class="pc" id="L23">    private Map&lt;String, ConfigAnnotation&gt; annotations = new LinkedHashMap&lt;&gt;();</span>
+
+<span class="fc" id="L25">    public ConfigStandoffAnnotations() {</span>
+<span class="fc" id="L26">    }</span>
+
+<span class="nc" id="L28">    public ConfigStandoffAnnotations(String path, String refTokenPositionIdPath) {</span>
+<span class="nc" id="L29">        this.path = path;</span>
+<span class="nc" id="L30">        this.refTokenPositionIdPath = refTokenPositionIdPath;</span>
+<span class="nc" id="L31">    }</span>
+
+    public void validate() {
+<span class="fc" id="L34">        String t = &quot;standoff annotations&quot;;</span>
+<span class="fc" id="L35">        ConfigInputFormat.req(path, t, &quot;path&quot;);</span>
+<span class="fc" id="L36">        ConfigInputFormat.req(refTokenPositionIdPath, t, &quot;refTokenPositionIdPath&quot;);</span>
+<span class="fc bfc" id="L37" title="All 2 branches covered.">        for (ConfigAnnotation a: annotations.values())</span>
+<span class="fc" id="L38">            a.validate();</span>
+<span class="fc" id="L39">    }</span>
+
+    public ConfigStandoffAnnotations copy() {
+<span class="nc" id="L42">        ConfigStandoffAnnotations result = new ConfigStandoffAnnotations(path, refTokenPositionIdPath);</span>
+<span class="nc bnc" id="L43" title="All 2 branches missed.">        for (ConfigAnnotation a: annotations.values()) {</span>
+<span class="nc" id="L44">            result.addAnnotation(a.copy());</span>
+<span class="nc" id="L45">        }</span>
+<span class="nc" id="L46">        return result;</span>
+    }
+
+    public String getPath() {
+<span class="nc" id="L50">        return path;</span>
+    }
+
+    public void setPath(String path) {
+<span class="fc" id="L54">        this.path = path;</span>
+<span class="fc" id="L55">    }</span>
+
+    public String getRefTokenPositionIdPath() {
+<span class="nc" id="L58">        return refTokenPositionIdPath;</span>
+    }
+
+    public void setRefTokenPositionIdPath(String refTokenPositionIdPath) {
+<span class="fc" id="L62">        this.refTokenPositionIdPath = refTokenPositionIdPath;</span>
+<span class="fc" id="L63">    }</span>
+
+    @Override
+    public Map&lt;String, ConfigAnnotation&gt; getAnnotations() {
+<span class="nc" id="L67">        return annotations;</span>
+    }
+
+    @Override
+    public void addAnnotation(ConfigAnnotation annotation) {
+<span class="fc" id="L72">        this.annotations.put(annotation.getName(), annotation);</span>
+<span class="fc" id="L73">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

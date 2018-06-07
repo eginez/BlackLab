@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>YamlJsonReader.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.index.config</a> &gt; <span class="el_source">YamlJsonReader.java</span></div><h1>YamlJsonReader.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.index.config;
+
+import java.util.Map.Entry;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.ValueNode;
+
+/**
+ * Base class for a class that interprets a JSON structure.
+ *
+ * Contains utility methods that make it easy to check types
+ * and throw descriptive errors.
+ */
+<span class="nc" id="L16">public class YamlJsonReader {</span>
+
+    public static ObjectNode obj(JsonNode node, String name) {
+<span class="pc bpc" id="L19" title="1 of 2 branches missed.">        if (!(node instanceof ObjectNode))</span>
+<span class="nc" id="L20">            throw new InputFormatConfigException(name + &quot; must be an object&quot;);</span>
+<span class="fc" id="L21">        return (ObjectNode) node;</span>
+    }
+
+    public static ObjectNode obj(Entry&lt;String, JsonNode&gt; e) {
+<span class="fc" id="L25">        return obj(e.getValue(), e.getKey());</span>
+    }
+
+    public static ArrayNode array(JsonNode node, String name) {
+<span class="pc bpc" id="L29" title="1 of 2 branches missed.">        if (!(node instanceof ArrayNode))</span>
+<span class="nc" id="L30">            throw new InputFormatConfigException(name + &quot; must be an array&quot;);</span>
+<span class="fc" id="L31">        return (ArrayNode) node;</span>
+    }
+
+    public static ArrayNode array(Entry&lt;String, JsonNode&gt; e) {
+<span class="fc" id="L35">        return array(e.getValue(), e.getKey());</span>
+    }
+
+    public static String str(JsonNode node, String name) {
+<span class="pc bpc" id="L39" title="1 of 2 branches missed.">        if (!(node instanceof ValueNode))</span>
+<span class="nc" id="L40">            throw new InputFormatConfigException(name + &quot; must be a string value&quot;);</span>
+<span class="fc" id="L41">        return node.asText();</span>
+    }
+
+    public static String str(Entry&lt;String, JsonNode&gt; e) {
+<span class="fc" id="L45">        return str(e.getValue(), e.getKey());</span>
+    }
+
+    public static boolean bool(JsonNode node, String name) {
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">        if (!(node instanceof ValueNode))</span>
+<span class="nc" id="L50">            throw new InputFormatConfigException(name + &quot; must be a boolean value&quot;);</span>
+<span class="fc" id="L51">        return node.asBoolean();</span>
+    }
+
+    public static boolean bool(Entry&lt;String, JsonNode&gt; e) {
+<span class="fc" id="L55">        return bool(e.getValue(), e.getKey());</span>
+    }
+
+    public static int integer(JsonNode node, String name) {
+<span class="nc bnc" id="L59" title="All 2 branches missed.">        if (!(node instanceof ValueNode))</span>
+<span class="nc" id="L60">            throw new InputFormatConfigException(name + &quot; must be an integer value&quot;);</span>
+<span class="nc" id="L61">        return node.asInt();</span>
+    }
+
+    public static int integer(Entry&lt;String, JsonNode&gt; e) {
+<span class="nc" id="L65">        return integer(e.getValue(), e.getKey());</span>
+    }
+
+    public static long longint(JsonNode node, String name) {
+<span class="nc bnc" id="L69" title="All 2 branches missed.">        if (!(node instanceof ValueNode))</span>
+<span class="nc" id="L70">            throw new InputFormatConfigException(name + &quot; must be a (long) integer value&quot;);</span>
+<span class="nc" id="L71">        return node.asLong();</span>
+    }
+
+    public static long longint(Entry&lt;String, JsonNode&gt; e) {
+<span class="nc" id="L75">        return longint(e.getValue(), e.getKey());</span>
+    }
+
+    public static double numeric(JsonNode node, String name) {
+<span class="nc bnc" id="L79" title="All 2 branches missed.">        if (!(node instanceof ValueNode))</span>
+<span class="nc" id="L80">            throw new InputFormatConfigException(name + &quot; must be a numeric value&quot;);</span>
+<span class="nc" id="L81">        return node.asDouble();</span>
+    }
+
+    public static double numeric(Entry&lt;String, JsonNode&gt; e) {
+<span class="nc" id="L85">        return numeric(e.getValue(), e.getKey());</span>
+    }
+
+    public static char character(JsonNode node, String name) {
+<span class="nc bnc" id="L89" title="All 2 branches missed.">        if (!(node instanceof ValueNode))</span>
+<span class="nc" id="L90">            throw new InputFormatConfigException(name + &quot; must be a single character&quot;);</span>
+<span class="nc" id="L91">        String txt = node.asText();</span>
+<span class="nc bnc" id="L92" title="All 2 branches missed.">        if (txt.length() != 1)</span>
+<span class="nc" id="L93">            throw new InputFormatConfigException(name + &quot; must be a single character&quot;);</span>
+<span class="nc" id="L94">        return txt.charAt(0);</span>
+    }
+
+    public static char character(Entry&lt;String, JsonNode&gt; e) {
+<span class="nc" id="L98">        return character(e.getValue(), e.getKey());</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

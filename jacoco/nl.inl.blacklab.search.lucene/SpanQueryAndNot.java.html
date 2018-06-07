@@ -1,0 +1,430 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SpanQueryAndNot.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">SpanQueryAndNot.java</span></div><h1>SpanQueryAndNot.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.lucene;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.index.TermContext;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.spans.SpanQuery;
+import org.apache.lucene.search.spans.SpanWeight;
+import nl.inl.blacklab.index.complex.ComplexFieldUtil;
+import nl.inl.blacklab.search.fimatch.Nfa;
+import nl.inl.blacklab.search.fimatch.NfaState;
+import nl.inl.blacklab.search.fimatch.ForwardIndexAccessor;
+
+/**
+ * A SpanQuery for an AND NOT query.
+ * Produces all spans matching all the &quot;include&quot; parts, except for those
+ * that match any span in the &quot;exclude&quot; part.
+ */
+public class SpanQueryAndNot extends BLSpanQuery {
+
+	private List&lt;BLSpanQuery&gt; include;
+
+	private List&lt;BLSpanQuery&gt; exclude;
+
+<span class="fc" id="L48">	public SpanQueryAndNot(List&lt;BLSpanQuery&gt; include, List&lt;BLSpanQuery&gt; exclude) {</span>
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">		this.include = include == null ? new ArrayList&lt;&gt;() : include;</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">		this.exclude = exclude == null ? new ArrayList&lt;&gt;() : exclude;</span>
+<span class="pc bpc" id="L51" title="3 of 4 branches missed.">		if (this.include.size() == 0 &amp;&amp; this.exclude.size() == 0)</span>
+<span class="nc" id="L52">			throw new RuntimeException(&quot;ANDNOT query without clauses&quot;);</span>
+<span class="fc" id="L53">		checkBaseFieldName();</span>
+<span class="fc" id="L54">	}</span>
+
+	private void checkBaseFieldName() {
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">		if (include.size() &gt; 0) {</span>
+<span class="fc" id="L58">			String baseFieldName = ComplexFieldUtil.getBaseName(include.get(0).getField());</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">			for (BLSpanQuery clause: include) {</span>
+<span class="fc" id="L60">				String f = ComplexFieldUtil.getBaseName(clause.getField());</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">				if (!baseFieldName.equals(f))</span>
+<span class="fc" id="L62">					throw new RuntimeException(&quot;Mix of incompatible fields in query (&quot;</span>
+							+ baseFieldName + &quot; and &quot; + f + &quot;)&quot;);
+<span class="fc" id="L64">			}</span>
+		}
+<span class="fc" id="L66">	}</span>
+
+	@Override
+	public BLSpanQuery inverted() {
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">		if (exclude.isEmpty()) {</span>
+			// In this case, it's better to just wrap this in TextPatternNot,
+			// so it will be recognized by other rewrite()s.
+<span class="fc" id="L73">			return super.inverted();</span>
+		}
+
+		// ! ( (a &amp; b) &amp; !(c &amp; d) ) --&gt; !a | !b | (c &amp; d)
+<span class="nc" id="L77">		List&lt;BLSpanQuery&gt; inclNeg = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L78" title="All 2 branches missed.">		for (BLSpanQuery tp: include) {</span>
+<span class="nc" id="L79">			inclNeg.add(tp.inverted());</span>
+<span class="nc" id="L80">		}</span>
+<span class="nc bnc" id="L81" title="All 2 branches missed.">		if (exclude.size() == 1)</span>
+<span class="nc" id="L82">			inclNeg.add(exclude.get(0));</span>
+		else
+<span class="nc" id="L84">			inclNeg.add(new SpanQueryAndNot(exclude, null));</span>
+<span class="nc" id="L85">		return new BLSpanOrQuery(inclNeg.toArray(new BLSpanQuery[0]));</span>
+	}
+
+	@Override
+	protected boolean okayToInvertForOptimization() {
+		// Inverting is &quot;free&quot; if it will still be an AND NOT query (i.e. will have a positive component).
+<span class="pc bpc" id="L91" title="2 of 4 branches missed.">		return producesSingleTokens() &amp;&amp; !exclude.isEmpty();</span>
+	}
+
+	@Override
+	public boolean isSingleTokenNot() {
+<span class="pc bpc" id="L96" title="2 of 4 branches missed.">		return producesSingleTokens() &amp;&amp; include.isEmpty();</span>
+	}
+
+	@Override
+	public BLSpanQuery rewrite(IndexReader reader) throws IOException {
+
+		// Flatten nested AND queries, and invert negative-only clauses.
+		// This doesn't change the query because the AND operator is associative.
+<span class="fc" id="L104">		boolean anyRewritten = false;</span>
+<span class="fc" id="L105">		List&lt;BLSpanQuery&gt; flatCl = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L106">		List&lt;BLSpanQuery&gt; flatNotCl = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L107">		boolean isNot = false;</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">		for (List&lt;BLSpanQuery&gt; cl: Arrays.asList(include, exclude)) {</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">			for (BLSpanQuery child: cl) {</span>
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">				List&lt;BLSpanQuery&gt; clPos = isNot ? flatNotCl : flatCl;</span>
+<span class="pc bpc" id="L111" title="1 of 2 branches missed.">				List&lt;BLSpanQuery&gt; clNeg = isNot ? flatCl : flatNotCl;</span>
+<span class="fc" id="L112">				boolean isTPAndNot = child instanceof SpanQueryAndNot;</span>
+<span class="fc bfc" id="L113" title="All 4 branches covered.">				if (!isTPAndNot &amp;&amp; child.isSingleTokenNot()) {</span>
+					// &quot;Switch sides&quot;: invert the clause, and
+					// swap the lists we add clauses to.
+<span class="fc" id="L116">					child = child.inverted();</span>
+<span class="fc" id="L117">					List&lt;BLSpanQuery&gt; temp = clPos;</span>
+<span class="fc" id="L118">					clPos = clNeg;</span>
+<span class="fc" id="L119">					clNeg = temp;</span>
+<span class="fc" id="L120">					anyRewritten = true;</span>
+<span class="fc" id="L121">					isTPAndNot = child instanceof SpanQueryAndNot;</span>
+				}
+<span class="fc bfc" id="L123" title="All 2 branches covered.">				if (isTPAndNot) {</span>
+					// Flatten.
+					// Child AND operation we want to flatten into this AND operation.
+					// Replace the child, incorporating its children into this AND operation.
+<span class="fc" id="L127">					clPos.addAll(((SpanQueryAndNot)child).include);</span>
+<span class="fc" id="L128">					clNeg.addAll(((SpanQueryAndNot)child).exclude);</span>
+<span class="fc" id="L129">					anyRewritten = true;</span>
+				} else {
+					// Just add it.
+<span class="fc" id="L132">					clPos.add(child);</span>
+				}
+<span class="fc" id="L134">			}</span>
+<span class="fc" id="L135">			isNot = true;</span>
+<span class="fc" id="L136">		}</span>
+
+		// Rewrite clauses, and again flatten/invert if necessary.
+<span class="fc" id="L139">		List&lt;BLSpanQuery&gt; rewrCl = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L140">		List&lt;BLSpanQuery&gt; rewrNotCl = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L141">		isNot = false;</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">		for (List&lt;BLSpanQuery&gt; cl: Arrays.asList(flatCl, flatNotCl)) {</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">			for (BLSpanQuery child: cl) {</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">				List&lt;BLSpanQuery&gt; clPos = isNot ? rewrNotCl : rewrCl;</span>
+<span class="fc bfc" id="L145" title="All 2 branches covered.">				List&lt;BLSpanQuery&gt; clNeg = isNot ? rewrCl : rewrNotCl;</span>
+<span class="fc" id="L146">				BLSpanQuery rewritten = child.rewrite(reader);</span>
+<span class="fc" id="L147">				boolean isTPAndNot = rewritten instanceof SpanQueryAndNot;</span>
+<span class="pc bpc" id="L148" title="1 of 4 branches missed.">				if (!isTPAndNot &amp;&amp; rewritten.isSingleTokenNot()) {</span>
+					// &quot;Switch sides&quot;: invert the clause, and
+					// swap the lists we add clauses to.
+<span class="fc" id="L151">					rewritten = rewritten.inverted();</span>
+<span class="fc" id="L152">					List&lt;BLSpanQuery&gt; temp = clPos;</span>
+<span class="fc" id="L153">					clPos = clNeg;</span>
+<span class="fc" id="L154">					clNeg = temp;</span>
+<span class="fc" id="L155">					anyRewritten = true;</span>
+<span class="fc" id="L156">					isTPAndNot = rewritten instanceof SpanQueryAndNot;</span>
+				}
+<span class="pc bpc" id="L158" title="1 of 2 branches missed.">				if (isTPAndNot) {</span>
+					// Flatten.
+					// Child AND operation we want to flatten into this AND operation.
+					// Replace the child, incorporating its children into this AND operation.
+<span class="nc" id="L162">					clPos.addAll(((SpanQueryAndNot)rewritten).include);</span>
+<span class="nc" id="L163">					clNeg.addAll(((SpanQueryAndNot)rewritten).exclude);</span>
+<span class="nc" id="L164">					anyRewritten = true;</span>
+				} else {
+					// Just add it.
+<span class="fc" id="L167">					clPos.add(rewritten);</span>
+<span class="fc bfc" id="L168" title="All 2 branches covered.">					if (rewritten != child)</span>
+<span class="fc" id="L169">						anyRewritten = true;</span>
+				}
+<span class="fc" id="L171">			}</span>
+<span class="fc" id="L172">			isNot = true;</span>
+<span class="fc" id="L173">		}</span>
+
+<span class="fc bfc" id="L175" title="All 2 branches covered.">		if (rewrCl.isEmpty()) {</span>
+			// All-negative; node should be rewritten to OR.
+<span class="pc bpc" id="L177" title="1 of 2 branches missed.">			if (rewrNotCl.size() == 1)</span>
+<span class="nc" id="L178">				return rewrCl.get(0).inverted().rewrite(reader);</span>
+<span class="fc" id="L179">			return (new BLSpanOrQuery(rewrNotCl.toArray(new BLSpanQuery[0]))).inverted().rewrite(reader);</span>
+		}
+
+<span class="pc bpc" id="L182" title="1 of 4 branches missed.">		if (rewrCl.size() == 1 &amp;&amp; rewrNotCl.isEmpty()) {</span>
+			// Single positive clause
+<span class="nc" id="L184">			return rewrCl.get(0);</span>
+		}
+
+<span class="pc bpc" id="L187" title="1 of 4 branches missed.">		if (!anyRewritten &amp;&amp; exclude.isEmpty()) {</span>
+			// Nothing needs to be rewritten.
+<span class="fc" id="L189">			return this;</span>
+		}
+
+		// Combination of positive and possibly negative clauses
+<span class="fc bfc" id="L193" title="All 2 branches covered.">		BLSpanQuery includeResult = rewrCl.size() == 1 ? rewrCl.get(0) : new SpanQueryAndNot(rewrCl, null);</span>
+<span class="pc bpc" id="L194" title="1 of 2 branches missed.">		if (rewrNotCl.isEmpty())</span>
+<span class="nc" id="L195">			return includeResult.rewrite(reader);</span>
+<span class="pc bpc" id="L196" title="1 of 2 branches missed.">		BLSpanQuery excludeResult = rewrNotCl.size() == 1 ? rewrNotCl.get(0) : new BLSpanOrQuery(rewrNotCl.toArray(new BLSpanQuery[0]));</span>
+<span class="fc" id="L197">		return new SpanQueryPositionFilter(includeResult, excludeResult, SpanQueryPositionFilter.Operation.MATCHES, true).rewrite(reader);</span>
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+<span class="fc bfc" id="L202" title="All 2 branches covered.">		if (obj instanceof SpanQueryAndNot) {</span>
+<span class="fc bfc" id="L203" title="All 2 branches covered.">			return include.equals(((SpanQueryAndNot) obj).include) &amp;&amp;</span>
+<span class="pc bpc" id="L204" title="1 of 2 branches missed.">					exclude.equals(((SpanQueryAndNot) obj).exclude);</span>
+		}
+<span class="fc" id="L206">		return false;</span>
+	}
+
+	@Override
+	public int hashCode() {
+<span class="nc" id="L211">		return include.hashCode() + exclude.hashCode();</span>
+	}
+
+	@Override
+	public BLSpanWeight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
+<span class="nc bnc" id="L216" title="All 2 branches missed.">		if (exclude.size() &gt; 0)</span>
+<span class="nc" id="L217">			throw new RuntimeException(&quot;Query should've been rewritten! (exclude clauses left)&quot;);</span>
+
+<span class="nc" id="L219">		List&lt;BLSpanWeight&gt; weights = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L220" title="All 2 branches missed.">		for (BLSpanQuery clause: include) {</span>
+<span class="nc" id="L221">			weights.add(clause.createWeight(searcher, needsScores));</span>
+<span class="nc" id="L222">		}</span>
+<span class="nc bnc" id="L223" title="All 2 branches missed.">		Map&lt;Term, TermContext&gt; contexts = needsScores ? getTermContexts(weights.toArray(new SpanWeight[0])) : null;</span>
+<span class="nc" id="L224">		return new SpanWeightAnd(weights, searcher, contexts);</span>
+	}
+
+	class SpanWeightAnd extends BLSpanWeight {
+
+		final List&lt;BLSpanWeight&gt; weights;
+
+<span class="nc" id="L231">		public SpanWeightAnd(List&lt;BLSpanWeight&gt; weights, IndexSearcher searcher, Map&lt;Term, TermContext&gt; terms) throws IOException {</span>
+<span class="nc" id="L232">			super(SpanQueryAndNot.this, searcher, terms);</span>
+<span class="nc" id="L233">			this.weights = weights;</span>
+<span class="nc" id="L234">		}</span>
+
+		@Override
+		public void extractTerms(Set&lt;Term&gt; terms) {
+<span class="nc bnc" id="L238" title="All 2 branches missed.">			for (BLSpanWeight weight: weights) {</span>
+<span class="nc" id="L239">				weight.extractTerms(terms);</span>
+<span class="nc" id="L240">			}</span>
+<span class="nc" id="L241">		}</span>
+
+		@Override
+		public void extractTermContexts(Map&lt;Term, TermContext&gt; contexts) {
+<span class="nc bnc" id="L245" title="All 2 branches missed.">			for (BLSpanWeight weight: weights) {</span>
+<span class="nc" id="L246">				weight.extractTermContexts(contexts);</span>
+<span class="nc" id="L247">			}</span>
+<span class="nc" id="L248">		}</span>
+
+		@Override
+		public BLSpans getSpans(final LeafReaderContext context, Postings requiredPostings) throws IOException {
+<span class="nc" id="L252">			BLSpans combi = weights.get(0).getSpans(context, requiredPostings);</span>
+<span class="nc bnc" id="L253" title="All 2 branches missed.">			if (combi == null)</span>
+<span class="nc" id="L254">				return null; // if no hits in one of the clauses, no hits in AND query</span>
+<span class="nc bnc" id="L255" title="All 2 branches missed.">			if (!((BLSpanQuery)weights.get(0).getQuery()).hitsStartPointSorted())</span>
+<span class="nc" id="L256">				combi = BLSpans.optSortUniq(combi, true, false);</span>
+<span class="nc bnc" id="L257" title="All 2 branches missed.">			for (int i = 1; i &lt; weights.size(); i++) {</span>
+<span class="nc" id="L258">				BLSpans si = weights.get(i).getSpans(context, requiredPostings);</span>
+<span class="nc bnc" id="L259" title="All 2 branches missed.">				if (si == null)</span>
+<span class="nc" id="L260">					return null; // if no hits in one of the clauses, no hits in AND query</span>
+<span class="nc bnc" id="L261" title="All 2 branches missed.">				if (!((BLSpanQuery)weights.get(i).getQuery()).hitsStartPointSorted())</span>
+<span class="nc" id="L262">					si = BLSpans.optSortUniq(si, true, false);</span>
+<span class="nc" id="L263">				combi = new SpansAnd(combi, si);</span>
+			}
+<span class="nc" id="L265">			return combi;</span>
+		}
+	}
+
+	@Override
+	public String toString(String field) {
+<span class="pc bpc" id="L271" title="1 of 2 branches missed.">		if (exclude.isEmpty())</span>
+<span class="fc" id="L272">			return &quot;AND(&quot; + clausesToString(field, include) + &quot;)&quot;;</span>
+<span class="nc" id="L273">		return &quot;ANDNOT([&quot; + clausesToString(field, include) + &quot;], [&quot; + clausesToString(field, exclude) + &quot;])&quot;;</span>
+	}
+
+	@Override
+	public String getField() {
+<span class="pc bpc" id="L278" title="1 of 2 branches missed.">		if (include.size() &gt; 0)</span>
+<span class="fc" id="L279">			return include.get(0).getField();</span>
+<span class="nc bnc" id="L280" title="All 2 branches missed.">		if (exclude.size() &gt; 0)</span>
+<span class="nc" id="L281">			return exclude.get(0).getField();</span>
+<span class="nc" id="L282">		throw new RuntimeException(&quot;Query has no clauses&quot;);</span>
+	}
+
+	@Override
+	public String getRealField() {
+<span class="pc bpc" id="L287" title="1 of 2 branches missed.">		if (include.size() &gt; 0)</span>
+<span class="fc" id="L288">			return include.get(0).getRealField();</span>
+<span class="nc bnc" id="L289" title="All 2 branches missed.">		if (exclude.size() &gt; 0)</span>
+<span class="nc" id="L290">			return exclude.get(0).getRealField();</span>
+<span class="nc" id="L291">		throw new RuntimeException(&quot;Query has no clauses&quot;);</span>
+	}
+
+	public List&lt;BLSpanQuery&gt; getIncludeClauses() {
+<span class="nc" id="L295">		return include;</span>
+	}
+
+	public List&lt;BLSpanQuery&gt; getExcludeClauses() {
+<span class="nc" id="L299">		return include;</span>
+	}
+
+	@Override
+	public boolean hitsAllSameLength() {
+<span class="pc bpc" id="L304" title="1 of 2 branches missed.">		if (include.isEmpty())</span>
+<span class="nc" id="L305">			return true;</span>
+<span class="pc bpc" id="L306" title="1 of 2 branches missed.">		for (BLSpanQuery clause: include) {</span>
+<span class="pc bpc" id="L307" title="1 of 2 branches missed.">			if (clause.hitsAllSameLength())</span>
+<span class="fc" id="L308">				return true;</span>
+<span class="nc" id="L309">		}</span>
+<span class="nc" id="L310">		return true;</span>
+	}
+
+	@Override
+	public int hitsLengthMin() {
+<span class="pc bpc" id="L315" title="1 of 2 branches missed.">		if (include.isEmpty())</span>
+<span class="nc" id="L316">			return 1;</span>
+<span class="fc" id="L317">		int l = 0;</span>
+<span class="fc bfc" id="L318" title="All 2 branches covered.">		for (BLSpanQuery clause: include) {</span>
+<span class="fc bfc" id="L319" title="All 2 branches covered.">			if (clause.hitsLengthMin() &gt; l)</span>
+<span class="fc" id="L320">				l = clause.hitsLengthMin();</span>
+<span class="fc" id="L321">		}</span>
+<span class="fc" id="L322">		return l;</span>
+	}
+
+	@Override
+	public int hitsLengthMax() {
+<span class="nc bnc" id="L327" title="All 2 branches missed.">		if (include.isEmpty())</span>
+<span class="nc" id="L328">			return 1;</span>
+<span class="nc" id="L329">		int l = Integer.MAX_VALUE;</span>
+<span class="nc bnc" id="L330" title="All 2 branches missed.">		for (BLSpanQuery clause: include) {</span>
+<span class="nc bnc" id="L331" title="All 2 branches missed.">			if (clause.hitsLengthMax() &lt; l)</span>
+<span class="nc" id="L332">				l = clause.hitsLengthMax();</span>
+<span class="nc" id="L333">		}</span>
+<span class="nc" id="L334">		return l;</span>
+	}
+
+	@Override
+	public boolean hitsEndPointSorted() {
+<span class="nc bnc" id="L339" title="All 4 branches missed.">		return hitsStartPointSorted() &amp;&amp; hitsAllSameLength();</span>
+	}
+
+	@Override
+	public boolean hitsStartPointSorted() {
+<span class="nc" id="L344">		return true;</span>
+	}
+
+	@Override
+	public boolean hitsHaveUniqueStart() {
+<span class="nc bnc" id="L349" title="All 2 branches missed.">		if (include.isEmpty())</span>
+<span class="nc" id="L350">			return true;</span>
+<span class="nc bnc" id="L351" title="All 2 branches missed.">		for (BLSpanQuery clause: include) {</span>
+<span class="nc bnc" id="L352" title="All 2 branches missed.">			if (clause.hitsHaveUniqueStart())</span>
+<span class="nc" id="L353">				return true;</span>
+<span class="nc" id="L354">		}</span>
+<span class="nc" id="L355">		return true;</span>
+	}
+
+	@Override
+	public boolean hitsHaveUniqueEnd() {
+<span class="nc bnc" id="L360" title="All 2 branches missed.">		if (include.isEmpty())</span>
+<span class="nc" id="L361">			return true;</span>
+<span class="nc bnc" id="L362" title="All 2 branches missed.">		for (BLSpanQuery clause: include) {</span>
+<span class="nc bnc" id="L363" title="All 2 branches missed.">			if (clause.hitsHaveUniqueEnd())</span>
+<span class="nc" id="L364">				return true;</span>
+<span class="nc" id="L365">		}</span>
+<span class="nc" id="L366">		return true;</span>
+	}
+
+	@Override
+	public boolean hitsAreUnique() {
+<span class="nc bnc" id="L371" title="All 2 branches missed.">		if (include.isEmpty())</span>
+<span class="nc" id="L372">			return true;</span>
+<span class="nc bnc" id="L373" title="All 2 branches missed.">		for (BLSpanQuery clause: include) {</span>
+<span class="nc bnc" id="L374" title="All 2 branches missed.">			if (clause.hitsAreUnique())</span>
+<span class="nc" id="L375">				return true;</span>
+<span class="nc" id="L376">		}</span>
+<span class="nc" id="L377">		return true;</span>
+	}
+
+	@Override
+	public Nfa getNfa(ForwardIndexAccessor fiAccessor, int direction) {
+<span class="pc bpc" id="L382" title="1 of 2 branches missed.">		if (exclude.size() &gt; 0)</span>
+<span class="nc" id="L383">			throw new RuntimeException(&quot;Query should've been rewritten! (exclude clauses left)&quot;);</span>
+<span class="fc" id="L384">		List&lt;NfaState&gt; nfaClauses = new ArrayList&lt;&gt;();</span>
+//		List&lt;NfaState&gt; dangling = new ArrayList&lt;&gt;();
+<span class="fc bfc" id="L386" title="All 2 branches covered.">		for (BLSpanQuery clause: include) {</span>
+<span class="fc" id="L387">			Nfa nfa = clause.getNfa(fiAccessor, direction);</span>
+<span class="fc" id="L388">			nfaClauses.add(nfa.getStartingState());</span>
+//			dangling.addAll(nfa.getDanglingArrows());
+<span class="fc" id="L390">		}</span>
+<span class="fc" id="L391">		NfaState andAcyclic = NfaState.and(false, nfaClauses);</span>
+<span class="fc" id="L392">		return new Nfa(andAcyclic, Arrays.asList(andAcyclic));</span>
+	}
+
+	@Override
+	public boolean canMakeNfa() {
+<span class="pc bpc" id="L397" title="1 of 2 branches missed.">		if (exclude.size() &gt; 0)</span>
+<span class="nc" id="L398">			return false;</span>
+<span class="fc bfc" id="L399" title="All 2 branches covered.">		for (BLSpanQuery clause: include) {</span>
+<span class="pc bpc" id="L400" title="1 of 2 branches missed.">			if (!clause.canMakeNfa())</span>
+<span class="nc" id="L401">				return false;</span>
+<span class="fc" id="L402">		}</span>
+<span class="fc" id="L403">		return true;</span>
+	}
+
+	@Override
+	public long reverseMatchingCost(IndexReader reader) {
+		// Excludes should have been rewritten, so we only look at includes.
+		// We return the least frequent clause since we can skip over the more
+		// frequent ones, or match them using the forward index.
+<span class="fc" id="L411">		long cost = Integer.MAX_VALUE;</span>
+<span class="fc bfc" id="L412" title="All 2 branches covered.">		for (BLSpanQuery clause: include) {</span>
+<span class="fc" id="L413">			cost = Math.min(cost, clause.reverseMatchingCost(reader));</span>
+<span class="fc" id="L414">		}</span>
+<span class="fc" id="L415">		return cost;</span>
+	}
+
+	@Override
+	public int forwardMatchingCost() {
+		// Add the costs of our clauses.
+<span class="fc" id="L421">		int cost = 1;</span>
+<span class="fc bfc" id="L422" title="All 2 branches covered.">		for (SpanQuery cl: include) {</span>
+<span class="fc" id="L423">			BLSpanQuery clause = (BLSpanQuery)cl;</span>
+<span class="fc" id="L424">			cost += clause.forwardMatchingCost();</span>
+<span class="fc" id="L425">		}</span>
+<span class="fc" id="L426">		return cost * 2 / 3; // we expect to be able to short-circuit AND in a significant number of cases</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

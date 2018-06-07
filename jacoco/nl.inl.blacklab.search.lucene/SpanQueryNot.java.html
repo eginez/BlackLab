@@ -1,0 +1,243 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SpanQueryNot.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">SpanQueryNot.java</span></div><h1>SpanQueryNot.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.lucene;
+
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.index.TermContext;
+import org.apache.lucene.search.IndexSearcher;
+
+import nl.inl.blacklab.search.fimatch.Nfa;
+import nl.inl.blacklab.search.fimatch.NfaState;
+import nl.inl.blacklab.search.fimatch.ForwardIndexAccessor;
+import nl.inl.util.LuceneUtil;
+
+/**
+ * Returns all tokens that do not occur in the matches
+ * of the specified query.
+ *
+ * Each token is returned as a single hit.
+ */
+public class SpanQueryNot extends BLSpanQueryAbstract {
+
+	/** if true, we assume the last token is always a special closing token and ignore it */
+<span class="pc" id="L44">	boolean ignoreLastToken = false;</span>
+
+	public SpanQueryNot(BLSpanQuery query) {
+<span class="fc" id="L47">		super(query);</span>
+<span class="fc" id="L48">	}</span>
+
+	public SpanQueryNot(Collection&lt;BLSpanQuery&gt; clauscol) {
+<span class="nc" id="L51">		super(clauscol);</span>
+<span class="nc" id="L52">	}</span>
+
+	public SpanQueryNot(BLSpanQuery[] _clauses) {
+<span class="nc" id="L55">		super(_clauses);</span>
+<span class="nc" id="L56">	}</span>
+
+	/**
+	 * A BLSpanQuery that simply matches all tokens in a field
+	 * @param matchAllTokensFieldName what field to match all tokens in
+	 */
+<span class="nc" id="L62">	private SpanQueryNot(String matchAllTokensFieldName) {</span>
+<span class="nc" id="L63">		clauses = Arrays.asList((BLSpanQuery)null);</span>
+<span class="nc" id="L64">		baseFieldName = matchAllTokensFieldName;</span>
+<span class="nc" id="L65">	}</span>
+
+	/**
+	 * Return a query that matches all tokens in a field.
+	 *
+	 * @param ignoreLastToken if true, we assume the last token is always a special closing
+	 *     token and ignore it (special closing token is required for punctuation after the last word)
+	 * @param fieldName the field from which to match
+	 * @return the resulting query
+	 * @deprecated use SpanQueryNGrams
+	 */
+	@Deprecated
+	public static BLSpanQuery matchAllTokens(boolean ignoreLastToken, String fieldName) {
+<span class="nc" id="L78">		SpanQueryNot spanQueryNot = new SpanQueryNot(fieldName);</span>
+<span class="nc" id="L79">		spanQueryNot.setIgnoreLastToken(ignoreLastToken);</span>
+<span class="nc" id="L80">		return spanQueryNot;</span>
+	}
+
+	@Override
+	public BLSpanQuery rewrite(IndexReader reader) throws IOException {
+<span class="fc" id="L85">		BLSpanQuery rewritten = clauses.get(0).rewrite(reader);</span>
+
+		// Can we cancel out a double not?
+<span class="fc bfc" id="L88" title="All 2 branches covered.">		if (rewritten.okayToInvertForOptimization())</span>
+<span class="fc" id="L89">			return rewritten.inverted(); // yes</span>
+
+		// No, must remain a NOT
+<span class="fc bfc" id="L92" title="All 2 branches covered.">		if (rewritten == clauses.get(0)) {</span>
+<span class="fc" id="L93">			return this;</span>
+		}
+<span class="fc" id="L95">		SpanQueryNot result = new SpanQueryNot(rewritten);</span>
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">		if (ignoreLastToken)</span>
+<span class="fc" id="L97">			result.setIgnoreLastToken(true);</span>
+<span class="fc" id="L98">		return result;</span>
+	}
+
+	@Override
+	public BLSpanQuery inverted() {
+<span class="fc" id="L103">		return clauses.get(0); // Just return our clause, dropping the NOT operation</span>
+	}
+
+	@Override
+	protected boolean okayToInvertForOptimization() {
+		// Yes, inverting is actually an improvement
+<span class="fc" id="L109">		return true;</span>
+	}
+
+	@Override
+	public boolean isSingleTokenNot() {
+<span class="fc" id="L114">		return true;</span>
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+<span class="fc bfc" id="L119" title="All 2 branches covered.">		if (obj instanceof SpanQueryNot) {</span>
+<span class="fc" id="L120">			return super.equals(obj);</span>
+		}
+<span class="fc" id="L122">		return false;</span>
+	}
+
+	@Override
+	public BLSpanWeight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
+<span class="nc" id="L127">		BLSpanQuery query = clauses.get(0);</span>
+<span class="nc bnc" id="L128" title="All 2 branches missed.">		BLSpanWeight weight = query == null ? null : query.createWeight(searcher, needsScores);</span>
+<span class="nc bnc" id="L129" title="All 2 branches missed.">		return new SpanWeightNot(weight, searcher, needsScores ? getTermContexts(weight) : null);</span>
+	}
+
+	class SpanWeightNot extends BLSpanWeight {
+
+		final BLSpanWeight weight;
+
+<span class="nc" id="L136">		public SpanWeightNot(BLSpanWeight weight, IndexSearcher searcher, Map&lt;Term, TermContext&gt; terms) throws IOException {</span>
+<span class="nc" id="L137">			super(SpanQueryNot.this, searcher, terms);</span>
+<span class="nc" id="L138">			this.weight = weight;</span>
+<span class="nc" id="L139">		}</span>
+
+		@Override
+		public void extractTerms(Set&lt;Term&gt; terms) {
+<span class="nc bnc" id="L143" title="All 2 branches missed.">			if (weight != null)</span>
+<span class="nc" id="L144">				weight.extractTerms(terms);</span>
+<span class="nc" id="L145">		}</span>
+
+		@Override
+		public void extractTermContexts(Map&lt;Term, TermContext&gt; contexts) {
+<span class="nc bnc" id="L149" title="All 2 branches missed.">			if (weight != null)</span>
+<span class="nc" id="L150">				weight.extractTermContexts(contexts);</span>
+<span class="nc" id="L151">		}</span>
+
+		@Override
+		public BLSpans getSpans(final LeafReaderContext context, Postings requiredPostings) throws IOException {
+<span class="nc bnc" id="L155" title="All 2 branches missed.">			BLSpans spans = weight == null ? null : weight.getSpans(context, requiredPostings);</span>
+<span class="nc bnc" id="L156" title="All 2 branches missed.">			if (!clauses.get(0).hitsStartPointSorted())</span>
+<span class="nc" id="L157">				spans = BLSpans.optSortUniq(spans, true, false);</span>
+<span class="nc" id="L158">			return new SpansNot(ignoreLastToken, context.reader(), baseFieldName, spans);</span>
+		}
+
+	}
+
+	@Override
+	public String toString(String field) {
+<span class="pc bpc" id="L165" title="1 of 2 branches missed.">		return &quot;NOT(&quot; + (clauses.get(0) == null ? &quot;&quot; : clausesToString(field)) + &quot;)&quot;;</span>
+	}
+
+	/** Set whether to ignore the last token.
+	 *
+	 * @param ignoreLastToken if true, we assume the last token is always a special closing token and ignore it
+	 */
+	public void setIgnoreLastToken(boolean ignoreLastToken) {
+<span class="fc" id="L173">		this.ignoreLastToken = ignoreLastToken;</span>
+<span class="fc" id="L174">	}</span>
+
+	@Override
+	public boolean hitsAllSameLength() {
+<span class="fc" id="L178">		return true;</span>
+	}
+
+	@Override
+	public int hitsLengthMin() {
+<span class="fc" id="L183">		return 1;</span>
+	}
+
+	@Override
+	public int hitsLengthMax() {
+<span class="fc" id="L188">		return 1;</span>
+	}
+
+	@Override
+	public boolean hitsEndPointSorted() {
+<span class="nc" id="L193">		return true;</span>
+	}
+
+	@Override
+	public boolean hitsStartPointSorted() {
+<span class="nc" id="L198">		return true;</span>
+	}
+
+	@Override
+	public boolean hitsHaveUniqueStart() {
+<span class="nc" id="L203">		return true;</span>
+	}
+
+	@Override
+	public boolean hitsHaveUniqueEnd() {
+<span class="nc" id="L208">		return true;</span>
+	}
+
+	@Override
+	public boolean hitsAreUnique() {
+<span class="nc" id="L213">		return true;</span>
+	}
+
+	@Override
+	public Nfa getNfa(ForwardIndexAccessor fiAccessor, int direction) {
+<span class="fc" id="L218">		Nfa nfa = clauses.get(0).getNfa(fiAccessor, direction);</span>
+		//nfa.finish();
+<span class="fc" id="L220">		nfa.invert();</span>
+<span class="fc" id="L221">		NfaState not = nfa.getStartingState();</span>
+<span class="fc" id="L222">		return new Nfa(not, Arrays.asList(not)); // ignore the dangling arrows in the clause we've inverted</span>
+	}
+
+	@Override
+	public boolean canMakeNfa() {
+<span class="fc" id="L227">		return clauses.get(0).canMakeNfa();</span>
+	}
+
+	@Override
+	public long reverseMatchingCost(IndexReader reader) {
+		// Should be rewritten, but if it can't, calculate a rough indication of the number of token hits
+<span class="fc" id="L233">		long freq = clauses.get(0).reverseMatchingCost(reader);</span>
+<span class="fc" id="L234">		return LuceneUtil.getSumTotalTermFreq(reader, getRealField()) - freq;</span>
+	}
+
+	@Override
+	public int forwardMatchingCost() {
+<span class="fc" id="L239">		return clauses.get(0).forwardMatchingCost() + 1;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

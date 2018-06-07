@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UnicodeReader.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.util</a> &gt; <span class="el_source">UnicodeReader.java</span></div><h1>UnicodeReader.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.util;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.PushbackInputStream;
+import java.io.Reader;
+import java.nio.charset.Charset;
+
+/**
+ * Reader that skips BOM in UTF-8 (and other Unicode encodings) files.
+ *
+ * Taken from
+ * http://stackoverflow.com/questions/1835430/byte-order-mark-screws-up-file-reading-in-java which
+ * was adapted from Google Data API Client library (Apache License).
+ */
+public class UnicodeReader extends Reader {
+
+	private static final int BOM_SIZE = 4;
+
+	private final InputStreamReader reader;
+
+	/**
+	 * Construct UnicodeReader, a Reader that skips
+	 * the BOM in Unicode files (if present).
+	 *
+	 * @param in
+	 *            Input stream.
+	 * @param defaultEncoding
+	 *            Default encoding to be used if BOM is not found, or &lt;code&gt;null&lt;/code&gt; to use
+	 *            system default encoding.
+	 * @throws IOException
+	 *             If an I/O error occurs.
+	 */
+	public UnicodeReader(InputStream in, String defaultEncoding) throws IOException {
+<span class="nc" id="L51">		this(in, Charset.forName(defaultEncoding));</span>
+<span class="nc" id="L52">	}</span>
+
+	/**
+	 * Construct UnicodeReader, a Reader that skips
+	 * the BOM in Unicode files (if present).
+	 *
+	 * @param in
+	 *            Input stream.
+	 * @param defaultEncoding
+	 *            Default encoding to be used if BOM is not found, or &lt;code&gt;null&lt;/code&gt; to use
+	 *            system default encoding.
+	 * @throws IOException
+	 *             If an I/O error occurs.
+	 */
+<span class="nc" id="L66">	public UnicodeReader(InputStream in, Charset defaultEncoding) throws IOException {</span>
+<span class="nc" id="L67">		byte bom[] = new byte[BOM_SIZE];</span>
+<span class="nc" id="L68">		Charset encoding = null;</span>
+		int unread;
+<span class="nc" id="L70">		PushbackInputStream pushbackStream = new PushbackInputStream(in, BOM_SIZE);</span>
+<span class="nc" id="L71">		int n = pushbackStream.read(bom, 0, bom.length);</span>
+
+		// Read ahead four bytes and check for BOM marks.
+<span class="nc bnc" id="L74" title="All 6 branches missed.">		if ((bom[0] == (byte) 0xEF) &amp;&amp; (bom[1] == (byte) 0xBB) &amp;&amp; (bom[2] == (byte) 0xBF)) {</span>
+<span class="nc" id="L75">			encoding = Charset.forName(&quot;UTF-8&quot;);</span>
+<span class="nc" id="L76">			unread = n - 3;</span>
+<span class="nc bnc" id="L77" title="All 4 branches missed.">		} else if ((bom[0] == (byte) 0xFE) &amp;&amp; (bom[1] == (byte) 0xFF)) {</span>
+<span class="nc" id="L78">			encoding = Charset.forName(&quot;UTF-16BE&quot;);</span>
+<span class="nc" id="L79">			unread = n - 2;</span>
+<span class="nc bnc" id="L80" title="All 4 branches missed.">		} else if ((bom[0] == (byte) 0xFF) &amp;&amp; (bom[1] == (byte) 0xFE)) {</span>
+<span class="nc" id="L81">			encoding = Charset.forName(&quot;UTF-16LE&quot;);</span>
+<span class="nc" id="L82">			unread = n - 2;</span>
+<span class="nc bnc" id="L83" title="All 8 branches missed.">		} else if ((bom[0] == (byte) 0x00) &amp;&amp; (bom[1] == (byte) 0x00) &amp;&amp; (bom[2] == (byte) 0xFE)</span>
+				&amp;&amp; (bom[3] == (byte) 0xFF)) {
+<span class="nc" id="L85">			encoding = Charset.forName(&quot;UTF-32BE&quot;);</span>
+<span class="nc" id="L86">			unread = n - 4;</span>
+<span class="nc bnc" id="L87" title="All 8 branches missed.">		} else if ((bom[0] == (byte) 0xFF) &amp;&amp; (bom[1] == (byte) 0xFE) &amp;&amp; (bom[2] == (byte) 0x00)</span>
+				&amp;&amp; (bom[3] == (byte) 0x00)) {
+<span class="nc" id="L89">			encoding = Charset.forName(&quot;UTF-32LE&quot;);</span>
+<span class="nc" id="L90">			unread = n - 4;</span>
+		} else {
+<span class="nc" id="L92">			encoding = defaultEncoding;</span>
+<span class="nc" id="L93">			unread = n;</span>
+		}
+
+		// Unread bytes if necessary and skip BOM marks.
+<span class="nc bnc" id="L97" title="All 2 branches missed.">		if (unread &gt; 0) {</span>
+<span class="nc" id="L98">			pushbackStream.unread(bom, (n - unread), unread);</span>
+<span class="nc bnc" id="L99" title="All 2 branches missed.">		} else if (unread &lt; -1) {</span>
+<span class="nc" id="L100">			pushbackStream.unread(bom, 0, 0);</span>
+		}
+
+		// Use given encoding.
+<span class="nc bnc" id="L104" title="All 2 branches missed.">		if (encoding == null) {</span>
+<span class="nc" id="L105">			reader = new InputStreamReader(pushbackStream, Charset.defaultCharset());</span>
+		} else {
+<span class="nc" id="L107">			reader = new InputStreamReader(pushbackStream, encoding);</span>
+		}
+<span class="nc" id="L109">	}</span>
+
+	public String getEncoding() {
+<span class="nc" id="L112">		return reader.getEncoding();</span>
+	}
+
+	@Override
+	public int read(char[] cbuf, int off, int len) throws IOException {
+<span class="nc" id="L117">		return reader.read(cbuf, off, len);</span>
+	}
+
+	@Override
+	public void close() throws IOException {
+<span class="nc" id="L122">		reader.close();</span>
+<span class="nc" id="L123">	}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

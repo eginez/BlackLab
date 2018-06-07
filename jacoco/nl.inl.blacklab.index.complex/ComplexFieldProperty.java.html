@@ -1,0 +1,360 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ComplexFieldProperty.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.index.complex</a> &gt; <span class="el_source">ComplexFieldProperty.java</span></div><h1>ComplexFieldProperty.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.index.complex;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.document.Document;
+import org.apache.lucene.document.Field;
+import org.apache.lucene.document.FieldType;
+import org.apache.lucene.index.IndexOptions;
+import org.apache.lucene.util.BytesRef;
+import org.eclipse.collections.impl.list.mutable.primitive.IntArrayList;
+
+import nl.inl.util.CollUtil;
+
+/**
+ * A property in a complex field. See ComplexField for details.
+ */
+public class ComplexFieldProperty {
+
+	/** Maximum length a value is allowed to be. */
+	private static final int MAXIMUM_VALUE_LENGTH = 1000;
+
+	/** The field type for properties without character offsets */
+	private static FieldType tokenStreamFieldNoOffsets;
+
+	/** The field type for properties with character offsets (the main alternative) */
+	private static FieldType tokenStreamFieldWithOffsets;
+
+	static {
+<span class="fc" id="L49">		FieldType type = tokenStreamFieldNoOffsets = new FieldType();</span>
+<span class="fc" id="L50">		type.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS);</span>
+<span class="fc" id="L51">		type.setTokenized(true);</span>
+<span class="fc" id="L52">		type.setOmitNorms(true);</span>
+<span class="fc" id="L53">		type.setStored(false);</span>
+<span class="fc" id="L54">		type.setStoreTermVectors(true);</span>
+<span class="fc" id="L55">		type.setStoreTermVectorPositions(true);</span>
+<span class="fc" id="L56">		type.setStoreTermVectorOffsets(false);</span>
+<span class="fc" id="L57">		type.freeze();</span>
+
+<span class="fc" id="L59">		type = tokenStreamFieldWithOffsets = new FieldType(tokenStreamFieldNoOffsets);</span>
+<span class="fc" id="L60">		type.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS);</span>
+<span class="fc" id="L61">		type.setStoreTermVectorOffsets(true);</span>
+<span class="fc" id="L62">		type.freeze();</span>
+<span class="fc" id="L63">	}</span>
+
+	/** How a property is to be indexed with respect to case and diacritics sensitivity. */
+<span class="pc" id="L66">	public enum SensitivitySetting {</span>
+<span class="fc" id="L67">		DEFAULT,                        // &quot;choose default based on field name&quot;</span>
+<span class="fc" id="L68">		ONLY_SENSITIVE,                 // only index case- and diacritics-sensitively</span>
+<span class="fc" id="L69">		ONLY_INSENSITIVE,               // only index case- and diacritics-insensitively</span>
+<span class="fc" id="L70">		SENSITIVE_AND_INSENSITIVE,      // case+diac sensitive as well as case+diac insensitive</span>
+<span class="fc" id="L71">		CASE_AND_DIACRITICS_SEPARATE;	// all four combinations (sens, insens, case-insens, diac-insens)</span>
+
+	    public static SensitivitySetting fromStringValue(String v) {
+<span class="nc bnc" id="L74" title="All 37 branches missed.">	        switch (v.toLowerCase()) {</span>
+	        case &quot;default&quot;:
+	        case &quot;&quot;:
+<span class="nc" id="L77">	            return DEFAULT;</span>
+	        case &quot;sensitive&quot;:
+	        case &quot;s&quot;:
+<span class="nc" id="L80">	            return ONLY_SENSITIVE;</span>
+	        case &quot;insensitive&quot;:
+	        case &quot;i&quot;:
+<span class="nc" id="L83">	            return ONLY_INSENSITIVE;</span>
+	        case &quot;sensitive_insensitive&quot;:
+	        case &quot;si&quot;:
+<span class="nc" id="L86">	            return SENSITIVE_AND_INSENSITIVE;</span>
+	        case &quot;case_diacritics_separate&quot;:
+	        case &quot;all&quot;:
+<span class="nc" id="L89">                return CASE_AND_DIACRITICS_SEPARATE;</span>
+            default:
+<span class="nc" id="L91">                throw new IllegalArgumentException(&quot;Unknown string value for SensitivitySetting: &quot; + v + &quot; (should be default|sensitive|insensitive|sensitive_insensitive|case_diacritics_separate or s|i|si|all)&quot;);</span>
+	        }
+	    }
+	}
+
+	protected boolean includeOffsets;
+
+	/**
+	 *  Term values for this property.
+	 */
+<span class="fc" id="L101">	protected List&lt;String&gt; values = new ArrayList&lt;&gt;();</span>
+
+	/** Token position increments. This allows us to index multiple terms at a single token position (just
+	 *  set the token increments of the additional tokens to 0). */
+<span class="fc" id="L105">	protected IntArrayList increments = new IntArrayList();</span>
+
+	/**
+	 * Payloads for this property, if any.
+	 */
+<span class="fc" id="L110">	protected List&lt;BytesRef&gt; payloads = null;</span>
+
+	/** Position of the last value added
+	 */
+<span class="fc" id="L114">	protected int lastValuePosition = -1;</span>
+
+	/**
+	 * A property may be indexed in different ways (alternatives). This specifies names and filters
+	 * for each way.
+	 */
+<span class="fc" id="L120">	private Map&lt;String, TokenFilterAdder&gt; alternatives = new HashMap&lt;&gt;();</span>
+
+	/** The main alternative (the one that gets character offsets if desired) */
+	private String mainAlternative;
+
+	/** The property name */
+	private String propName;
+
+	/** Does this property get its own forward index? */
+<span class="fc" id="L129">	private boolean hasForwardIndex = true;</span>
+
+	/** To keep memory usage down, we make sure we only store 1 copy of each string value */
+<span class="fc" id="L132">	private Map&lt;String, String&gt; storedValues = new HashMap&lt;&gt;();</span>
+
+	/**
+	 * Construct a ComplexFieldProperty object with the default alternative
+	 * @param name property name
+	 * @param sensitivity ways to index this property, with respect to case- and
+	 *   diacritics-sensitivity.
+	 * @param includeOffsets whether to include character offsets in the main alternative
+	 * @param includePayloads will this property include payloads?
+	 */
+	public ComplexFieldProperty(String name, SensitivitySetting sensitivity,
+			boolean includeOffsets, boolean includePayloads) {
+<span class="fc" id="L144">		super();</span>
+<span class="fc" id="L145">		propName = name;</span>
+
+<span class="fc" id="L147">		mainAlternative = null;</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">		if (sensitivity != SensitivitySetting.ONLY_INSENSITIVE) {</span>
+			// Add sensitive alternative
+<span class="fc" id="L150">			alternatives.put(ComplexFieldUtil.SENSITIVE_ALT_NAME, null);</span>
+<span class="fc" id="L151">			mainAlternative = ComplexFieldUtil.SENSITIVE_ALT_NAME;</span>
+		}
+<span class="fc bfc" id="L153" title="All 2 branches covered.">		if (sensitivity != SensitivitySetting.ONLY_SENSITIVE) {</span>
+			// Add insensitive alternative
+<span class="fc" id="L155">			alternatives.put(ComplexFieldUtil.INSENSITIVE_ALT_NAME, new DesensitizerAdder(true, true));</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">			if (mainAlternative == null)</span>
+<span class="fc" id="L157">				mainAlternative = ComplexFieldUtil.INSENSITIVE_ALT_NAME;</span>
+		}
+<span class="pc bpc" id="L159" title="1 of 2 branches missed.">		if (sensitivity == SensitivitySetting.CASE_AND_DIACRITICS_SEPARATE) {</span>
+			// Add case-insensitive and diacritics-insensitive alternatives
+<span class="nc" id="L161">			alternatives.put(ComplexFieldUtil.CASE_INSENSITIVE_ALT_NAME, new DesensitizerAdder(true, false));</span>
+<span class="nc" id="L162">			alternatives.put(ComplexFieldUtil.DIACRITICS_INSENSITIVE_ALT_NAME, new DesensitizerAdder(false, true));</span>
+		}
+
+<span class="fc" id="L165">		this.includeOffsets = includeOffsets;</span>
+<span class="fc bfc" id="L166" title="All 2 branches covered.">		if (includePayloads)</span>
+<span class="fc" id="L167">			payloads = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L168">	}</span>
+
+	TokenStream getTokenStream(String altName, IntArrayList startChars, IntArrayList endChars) {
+		TokenStream ts;
+<span class="fc bfc" id="L172" title="All 2 branches covered.">		if (includeOffsets) {</span>
+<span class="fc" id="L173">			ts = new TokenStreamWithOffsets(values, increments, startChars, endChars);</span>
+		} else {
+<span class="fc" id="L175">			ts = new TokenStreamFromList(values, increments, payloads);</span>
+		}
+<span class="fc" id="L177">		TokenFilterAdder filterAdder = alternatives.get(altName);</span>
+<span class="fc bfc" id="L178" title="All 2 branches covered.">		if (filterAdder != null)</span>
+<span class="fc" id="L179">			return filterAdder.addFilters(ts);</span>
+<span class="fc" id="L180">		return ts;</span>
+	}
+
+	FieldType getTermVectorOptionFieldType(String altName) {
+		// Main alternative of a property may get character offsets
+		// (if it's the main property of a complex field)
+<span class="fc bfc" id="L186" title="All 4 branches covered.">		if (includeOffsets &amp;&amp; altName.equals(mainAlternative))</span>
+<span class="fc" id="L187">			return tokenStreamFieldWithOffsets;</span>
+
+		// Named alternatives and additional properties don't get character offsets
+<span class="fc" id="L190">		return tokenStreamFieldNoOffsets;</span>
+	}
+
+	public void addToLuceneDoc(Document doc, String fieldName, IntArrayList startChars,
+			IntArrayList endChars) {
+<span class="fc bfc" id="L195" title="All 2 branches covered.">		for (String altName : alternatives.keySet()) {</span>
+			//doc.add(new Field(ComplexFieldUtil.propertyField(fieldName, propName, altName),
+			//		getTokenStream(altName, startChars, endChars), getTermVectorOption(altName)));
+<span class="fc" id="L198">			doc.add(new Field(ComplexFieldUtil.propertyField(fieldName, propName, altName),</span>
+<span class="fc" id="L199">					getTokenStream(altName, startChars, endChars), getTermVectorOptionFieldType(altName)));</span>
+<span class="fc" id="L200">		}</span>
+<span class="fc" id="L201">	}</span>
+
+	public List&lt;String&gt; getValues() {
+<span class="fc" id="L204">		return Collections.unmodifiableList(values);</span>
+	}
+
+	public List&lt;Integer&gt; getPositionIncrements() {
+<span class="fc" id="L208">		return CollUtil.toList(increments);</span>
+	}
+
+	public int lastValuePosition() {
+<span class="fc" id="L212">		return lastValuePosition;</span>
+	}
+
+	public String getName() {
+<span class="fc" id="L216">		return propName;</span>
+	}
+
+	public boolean hasForwardIndex() {
+<span class="fc" id="L220">		return hasForwardIndex;</span>
+	}
+
+	public void setForwardIndex(boolean b) {
+<span class="fc" id="L224">		hasForwardIndex = b;</span>
+<span class="fc" id="L225">	}</span>
+
+	/**
+	 * Add a value to the property.
+	 * @param value value to add
+	 */
+	final public void addValue(String value) {
+<span class="fc" id="L232">		addValue(value, 1);</span>
+<span class="fc" id="L233">	}</span>
+
+	/**
+	 * Add a value to the property.
+	 *
+	 * @param value the value to add
+	 * @param increment number of tokens distance from the last token added
+	 */
+	public void addValue(String value, int increment) {
+<span class="pc bpc" id="L242" title="1 of 2 branches missed.">		if (value.length() &gt; MAXIMUM_VALUE_LENGTH) {</span>
+			// Let's keep a sane maximum value length.
+			// (Lucene's is 32766, but we don't want to go that far)
+<span class="nc" id="L245">			value = value.substring(0, MAXIMUM_VALUE_LENGTH);</span>
+		}
+
+		// Make sure we don't keep duplicates of strings in memory, but re-use earlier instances.
+<span class="fc" id="L249">		String storedValue = storedValues.get(value);</span>
+<span class="fc bfc" id="L250" title="All 2 branches covered.">		if (storedValue == null) {</span>
+<span class="fc" id="L251">			storedValues.put(value, value);</span>
+<span class="fc" id="L252">			storedValue = value;</span>
+		}
+
+		// Special case: if previous value was the empty string and position increment is 0,
+		// replace the previous value. This is convenient to keep all the properties synched
+		// up while indexing (by adding a dummy empty string if we don't have a value for a
+		// property), while still being able to add a value to this position later (for example,
+		// when we encounter an XML close tag.
+<span class="fc" id="L260">		int lastIndex = values.size() - 1;</span>
+<span class="pc bpc" id="L261" title="1 of 6 branches missed.">		if (lastIndex &gt;= 0 &amp;&amp; values.get(lastIndex).length() == 0 &amp;&amp; increment == 0) {</span>
+			// Change the last value but don't change the increment.
+<span class="nc" id="L263">			values.set(lastIndex, storedValue);</span>
+<span class="nc" id="L264">			return;</span>
+		}
+
+<span class="fc" id="L267">		values.add(storedValue);</span>
+<span class="fc" id="L268">		increments.add(increment);</span>
+<span class="fc" id="L269">		lastValuePosition += increment; // keep track of position of last token</span>
+
+<span class="fc" id="L271">	}</span>
+
+	/**
+	 * Add a value to the property at a specific position.
+	 *
+	 * Please note that if you add a value beyond the current position,
+	 * the next call to addValue() will add from this new position! This
+	 * is not an issue if you add a value at a lower position (that
+	 * operation doesn't change the current last token position used
+	 * for addValue()).
+	 *
+	 * @param value the value to add
+	 * @param position the position to put it at
+	 * @return new position of the last token, in case it changed.
+	 */
+	public int addValueAtPosition(String value, int position) {
+<span class="nc bnc" id="L287" title="All 2 branches missed.">		if (value.length() &gt; MAXIMUM_VALUE_LENGTH) {</span>
+			// Let's keep a sane maximum value length.
+			// (Lucene's is 32766, but we don't want to go that far)
+<span class="nc" id="L290">			value = value.substring(0, MAXIMUM_VALUE_LENGTH);</span>
+		}
+
+<span class="nc bnc" id="L293" title="All 2 branches missed.">		if (position &gt;= lastValuePosition) {</span>
+			// Beyond the last position; regular addValue()
+<span class="nc" id="L295">			addValue(value, position - lastValuePosition);</span>
+		} else {
+			// Make sure we don't keep duplicates of strings in memory, but re-use earlier instances.
+<span class="nc" id="L298">			String storedValue = storedValues.get(value);</span>
+<span class="nc bnc" id="L299" title="All 2 branches missed.">			if (storedValue == null) {</span>
+<span class="nc" id="L300">				storedValues.put(value, value);</span>
+<span class="nc" id="L301">				storedValue = value;</span>
+			}
+
+			// Before the last position.
+			// Find the index where the value should be inserted.
+<span class="nc" id="L306">			int curPos = this.lastValuePosition;</span>
+<span class="nc bnc" id="L307" title="All 2 branches missed.">			for (int i = values.size() - 1; i &gt;= 0; i--) {</span>
+<span class="nc bnc" id="L308" title="All 2 branches missed.">				if (curPos &lt;= position)  {</span>
+					// Value should be inserted after this index.
+<span class="nc" id="L310">					int n = i + 1;</span>
+<span class="nc" id="L311">					values.add(n, storedValue);</span>
+<span class="nc" id="L312">					int incr = position - curPos;</span>
+<span class="nc" id="L313">					increments.addAtIndex(n, incr);</span>
+<span class="nc bnc" id="L314" title="All 4 branches missed.">					if (increments.size() &gt; n + 1 &amp;&amp; incr &gt; 0) {</span>
+						// Inserted value wasn't the last value, so the
+						// increment for the value after this is now wrong;
+						// correct it.
+<span class="nc" id="L318">						increments.set(n + 1, increments.get(n + 1) - incr);</span>
+					}
+				}
+<span class="nc" id="L321">				curPos -= increments.get(i); // go to previous value position</span>
+			}
+		}
+
+<span class="nc" id="L325">		return lastValuePosition;</span>
+	}
+
+	public void addPayload(BytesRef payload) {
+<span class="fc" id="L329">		payloads.add(payload);</span>
+<span class="fc" id="L330">	}</span>
+
+	public int getLastValueIndex() {
+<span class="fc" id="L333">		return values.size() - 1;</span>
+	}
+
+	public void setPayloadAtIndex(int i, BytesRef payload) {
+<span class="fc" id="L337">		payloads.set(i, payload);</span>
+<span class="fc" id="L338">	}</span>
+
+	public void clear(boolean reuseBuffers) {
+<span class="fc" id="L341">	    lastValuePosition = -1;</span>
+	    // In theory, we don't need to clear the cached values between documents, but
+	    // for large data sets, this would keep getting larger and larger, so we do
+	    // it anyway.
+<span class="fc" id="L345">	    storedValues.clear(); // We can always reuse storedValues; it's exclusively owned by this</span>
+
+<span class="pc bpc" id="L347" title="1 of 2 branches missed.">	if (reuseBuffers) {</span>
+<span class="fc" id="L348">		values.clear();</span>
+<span class="fc" id="L349">		increments.clear();</span>
+		} else {
+<span class="nc" id="L351">			values = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L352">			increments = new IntArrayList();</span>
+		}
+<span class="fc" id="L354">	}</span>
+
+	public boolean hasPayload() {
+<span class="fc bfc" id="L357" title="All 2 branches covered.">		return payloads != null;</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

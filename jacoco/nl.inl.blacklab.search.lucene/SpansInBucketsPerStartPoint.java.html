@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SpansInBucketsPerStartPoint.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.lucene</a> &gt; <span class="el_source">SpansInBucketsPerStartPoint.java</span></div><h1>SpansInBucketsPerStartPoint.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search.lucene;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.search.spans.Spans;
+import org.eclipse.collections.impl.list.mutable.primitive.IntArrayList;
+
+import nl.inl.blacklab.search.Hit;
+import nl.inl.blacklab.search.Span;
+
+/**
+ * Gather hits from a Spans object in &quot;buckets&quot; by the start point of the hits. Allow us to retrieve
+ * all hits that start at a certain point.
+ *
+ * The reason we don't use SpansInBucketsAbstract here is that it's more efficient to just save the
+ * endpoints for the current start point (the source spans is normally startpoint-sorted already).
+ */
+class SpansInBucketsPerStartPoint extends DocIdSetIterator implements SpansInBuckets {
+	protected BLSpans source;
+
+<span class="fc" id="L39">	protected int currentDoc = -1;</span>
+
+<span class="fc" id="L41">	protected int currentBucketStart = -1;</span>
+
+<span class="fc" id="L43">	protected int currentSpansStart = -1;</span>
+
+<span class="fc" id="L45">	private IntArrayList endPoints = new IntArrayList();</span>
+
+<span class="fc" id="L47">	private List&lt;Span[]&gt; capturedGroupsPerEndpoint = new ArrayList&lt;&gt;();</span>
+
+<span class="fc" id="L49">	private int bucketSize = 0;</span>
+
+	private HitQueryContext hitQueryContext;
+
+	/** Do we have a hitQueryContext and does it contain captured groups? */
+<span class="fc" id="L54">	private boolean doCapturedGroups = true;</span>
+
+	/** Does our clause capture any groups? If not, we don't need to mess with those */
+<span class="fc" id="L57">	protected boolean clauseCapturesGroups = true;</span>
+
+	/**
+	 * Construct SpansInBucketsPerStartPoint.
+	 *
+	 * @param source (startpoint-sorted) source spans
+	 */
+<span class="fc" id="L64">	public SpansInBucketsPerStartPoint(BLSpans source) {</span>
+<span class="fc" id="L65">		this.source = source; //Sort</span>
+<span class="fc" id="L66">	}</span>
+
+	@Override
+	public int docID() {
+<span class="fc" id="L70">		return currentDoc;</span>
+	}
+
+	@Override
+	public int nextDoc() throws IOException {
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">		if (currentDoc != NO_MORE_DOCS) {</span>
+<span class="fc" id="L76">			currentDoc = source.nextDoc();</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">			if (currentDoc != NO_MORE_DOCS)</span>
+<span class="fc" id="L78">				currentSpansStart = source.nextStartPosition();</span>
+<span class="fc" id="L79">			currentBucketStart = -1; // no bucket yet</span>
+		}
+<span class="fc" id="L81">		return currentDoc;</span>
+	}
+
+	@Override
+	public int nextBucket() throws IOException {
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">		if (currentDoc &lt; 0) {</span>
+			// Not nexted yet, no bucket
+<span class="nc" id="L88">			return -1;</span>
+		}
+<span class="fc bfc" id="L90" title="All 2 branches covered.">		if (currentSpansStart == Spans.NO_MORE_POSITIONS)</span>
+<span class="fc" id="L91">			return NO_MORE_BUCKETS;</span>
+
+<span class="fc" id="L93">		return gatherEndPointsAtStartPoint();</span>
+	}
+
+	/**
+	 * Go to the next bucket at or beyond the specified start point.
+	 *
+	 * Always at least advances to the next bucket, even if we were
+	 * already at or beyond the specified target.
+	 *
+	 * @param targetPos the target start point
+	 * @return docID if we're at a valid bucket, or NO_MORE_BUCKETS if we're done.
+	 * @throws IOException
+	 */
+	public int advanceBucket(int targetPos) throws IOException {
+<span class="fc bfc" id="L107" title="All 2 branches covered.">		if (currentSpansStart &gt;= targetPos)</span>
+<span class="fc" id="L108">			return nextBucket();</span>
+<span class="fc" id="L109">		currentSpansStart = source.advanceStartPosition(targetPos);</span>
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">		if (currentSpansStart == Spans.NO_MORE_POSITIONS)</span>
+<span class="nc" id="L111">			return NO_MORE_BUCKETS;</span>
+<span class="fc" id="L112">		return gatherEndPointsAtStartPoint();</span>
+	}
+
+	protected int gatherEndPointsAtStartPoint() throws IOException {
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">		if (endPoints.size() &lt; ARRAYLIST_REALLOC_THRESHOLD) {</span>
+			// Not a huge amount of memory, so don't reallocate
+<span class="fc" id="L118">			endPoints.clear();</span>
+<span class="fc" id="L119">			capturedGroupsPerEndpoint.clear();</span>
+		} else {
+			// Reallocate in this case to avoid holding on to a lot of memory
+<span class="nc" id="L122">			endPoints = new IntArrayList();</span>
+<span class="nc" id="L123">			capturedGroupsPerEndpoint = new ArrayList&lt;&gt;();</span>
+		}
+
+<span class="pc bpc" id="L126" title="2 of 8 branches missed.">		doCapturedGroups = clauseCapturesGroups &amp;&amp; source != null &amp;&amp; hitQueryContext != null &amp;&amp; hitQueryContext.numberOfCapturedGroups() &gt; 0;</span>
+
+<span class="fc" id="L128">		bucketSize = 0;</span>
+<span class="fc" id="L129">		currentBucketStart = currentSpansStart;</span>
+<span class="fc bfc" id="L130" title="All 4 branches covered.">		while (currentSpansStart != Spans.NO_MORE_POSITIONS &amp;&amp; currentSpansStart == currentBucketStart) {</span>
+<span class="fc" id="L131">			endPoints.add(source.endPosition());</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">			if (doCapturedGroups) {</span>
+<span class="fc" id="L133">				Span[] capturedGroups = new Span[hitQueryContext.numberOfCapturedGroups()];</span>
+<span class="fc" id="L134">				source.getCapturedGroups(capturedGroups);</span>
+<span class="fc" id="L135">				capturedGroupsPerEndpoint.add(capturedGroups);</span>
+			}
+<span class="fc" id="L137">			bucketSize++;</span>
+<span class="fc" id="L138">			currentSpansStart = source.nextStartPosition();</span>
+		}
+<span class="fc" id="L140">		return currentDoc;</span>
+	}
+
+	@Override
+	public int advance(int target) throws IOException {
+<span class="pc bpc" id="L145" title="1 of 2 branches missed.">		if (currentDoc &gt;= target) {</span>
+<span class="nc" id="L146">			return nextDoc();</span>
+		}
+
+<span class="pc bpc" id="L149" title="1 of 2 branches missed.">		if (currentDoc == NO_MORE_DOCS)</span>
+<span class="nc" id="L150">			return DocIdSetIterator.NO_MORE_DOCS;</span>
+
+<span class="pc bpc" id="L152" title="1 of 2 branches missed.">		if (currentDoc &lt; target) {</span>
+<span class="fc" id="L153">			currentDoc = source.advance(target);</span>
+<span class="fc" id="L154">			currentSpansStart = source.nextStartPosition();</span>
+<span class="fc" id="L155">			currentBucketStart = -1; // no bucket yet</span>
+		}
+
+<span class="fc" id="L158">		return currentDoc;</span>
+	}
+
+	@Override
+	public String toString() {
+<span class="nc" id="L163">		return source.toString();</span>
+	}
+
+	@Override
+	public int bucketSize() {
+<span class="fc" id="L168">		return bucketSize;</span>
+	}
+
+	@Override
+	public int startPosition(int indexInBucket) {
+<span class="fc" id="L173">		return currentBucketStart;</span>
+	}
+
+	@Override
+	public int endPosition(int indexInBucket) {
+<span class="fc" id="L178">		return endPoints.get(indexInBucket);</span>
+	}
+
+	@Override
+	public Hit getHit(int indexInBucket) {
+<span class="nc" id="L183">		return new Hit(docID(), startPosition(indexInBucket), endPosition(indexInBucket));</span>
+	}
+
+	@Override
+	public void setHitQueryContext(HitQueryContext context) {
+<span class="fc" id="L188">		this.hitQueryContext = context;</span>
+<span class="fc" id="L189">		int before = context.getCaptureRegisterNumber();</span>
+<span class="fc" id="L190">		source.setHitQueryContext(context);</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">		if (context.getCaptureRegisterNumber() == before) {</span>
+			// Our clause doesn't capture any groups; optimize
+<span class="fc" id="L193">			clauseCapturesGroups = false;</span>
+		}
+<span class="fc" id="L195">	}</span>
+
+	@Override
+	public void getCapturedGroups(int indexInBucket, Span[] capturedGroups) {
+<span class="pc bpc" id="L199" title="2 of 4 branches missed.">		if (!doCapturedGroups || capturedGroupsPerEndpoint.isEmpty())</span>
+<span class="nc" id="L200">			return;</span>
+<span class="fc" id="L201">		Span[] previouslyCapturedGroups = capturedGroupsPerEndpoint.get(indexInBucket);</span>
+<span class="pc bpc" id="L202" title="1 of 2 branches missed.">		if (previouslyCapturedGroups != null) {</span>
+<span class="fc bfc" id="L203" title="All 2 branches covered.">			for (int i = 0; i &lt; capturedGroups.length; i++) {</span>
+<span class="fc bfc" id="L204" title="All 2 branches covered.">				if (previouslyCapturedGroups[i] != null)</span>
+<span class="fc" id="L205">					capturedGroups[i] = previouslyCapturedGroups[i];</span>
+			}
+		}
+<span class="fc" id="L208">	}</span>
+
+	@Override
+	public long cost() {
+<span class="nc" id="L212">		return 300; // (arbitrary value. This is used for scoring, which we don't use yet)</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

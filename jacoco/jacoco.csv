@@ -1,0 +1,555 @@
+GROUP,PACKAGE,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED,BRANCH_MISSED,BRANCH_COVERED,LINE_MISSED,LINE_COVERED,COMPLEXITY_MISSED,COMPLEXITY_COVERED,METHOD_MISSED,METHOD_COVERED
+BlackLab,nl.inl.blacklab.forwardindex,ForwardIndexImplV3.new Comparator() {...},0,12,0,0,0,2,0,2,0,2
+BlackLab,nl.inl.blacklab.forwardindex,ForwardIndexImplV3.new AbstractSet() {...},48,0,4,0,5,0,7,0,5,0
+BlackLab,nl.inl.blacklab.forwardindex,Collators,20,68,2,4,6,16,2,6,0,5
+BlackLab,nl.inl.blacklab.forwardindex,TermsImplV3,540,1074,78,96,80,240,59,44,2,14
+BlackLab,nl.inl.blacklab.forwardindex,Collators.new Object() {...},2,17,0,0,0,1,0,1,0,1
+BlackLab,nl.inl.blacklab.forwardindex,ForwardIndex,226,68,31,10,35,15,25,5,4,3
+BlackLab,nl.inl.blacklab.forwardindex,TocEntry,37,19,4,0,8,6,4,2,2,2
+BlackLab,nl.inl.blacklab.forwardindex,ForwardIndex.CollatorVersion,5,33,0,0,0,3,1,3,1,3
+BlackLab,nl.inl.blacklab.forwardindex,ForwardIndexImplV3.2.new Iterator() {...},93,0,12,0,18,0,11,0,5,0
+BlackLab,nl.inl.blacklab.forwardindex,TermsImplV3.FirstAndNumber,0,9,0,0,0,4,0,1,0,1
+BlackLab,nl.inl.blacklab.forwardindex,FiidLookup,37,137,2,14,8,32,2,9,0,3
+BlackLab,nl.inl.blacklab.forwardindex,Terms,29,65,2,10,5,15,4,10,3,5
+BlackLab,nl.inl.blacklab.forwardindex,TermsImplV3.new Comparator() {...},0,23,0,0,0,2,0,2,0,2
+BlackLab,nl.inl.blacklab.forwardindex,ForwardIndexImplV3,448,1390,77,139,46,305,67,66,5,20
+BlackLab,nl.inl.blacklab.indexers.preprocess,TagPluginDutchTagger,483,0,42,0,70,0,34,0,13,0
+BlackLab,nl.inl.blacklab.indexers.preprocess,TagPluginNoop,28,0,0,0,13,0,9,0,9,0
+BlackLab,nl.inl.blacklab.indexers.preprocess,Plugin.PluginException,16,0,0,0,8,0,4,0,4,0
+BlackLab,nl.inl.blacklab.indexers.preprocess,ConvertPluginOpenConvert,503,0,34,0,69,0,33,0,16,0
+BlackLab,nl.inl.blacklab.indexers.preprocess,DocIndexerConvertAndTag,318,0,24,0,54,0,30,0,18,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerTeiPosInFunctionAttr,8,4,0,0,2,2,1,2,1,2
+BlackLab,nl.inl.blacklab.indexers,DocIndexerWhiteLab2,218,4,0,0,37,2,2,2,2,2
+BlackLab,nl.inl.blacklab.indexers,DocIndexerXmlSketch,75,4,0,0,13,2,1,2,1,2
+BlackLab,nl.inl.blacklab.indexers,DocIndexerOpenSonar.new DocIndexerXmlHandlers.WordHandlerBase() {...},137,0,10,0,21,0,8,0,3,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerOpenSonar.new HookableSaxHandler.ElementHandler() {...},64,0,18,0,10,0,11,0,2,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerOpenSonar.new HookableSaxHandler.ElementHandler() {...},20,0,0,0,4,0,2,0,2,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerOpenSonar.new HookableSaxHandler.ElementHandler() {...},20,0,0,0,4,0,2,0,2,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerOpenSonar.new HookableSaxHandler.ContentCapturingHandler() {...},36,0,4,0,8,0,5,0,3,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerOpenSonar.new HookableSaxHandler.ContentCapturingHandler() {...},34,0,2,0,8,0,4,0,3,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerOpenSonar.new HookableSaxHandler.ElementHandler() {...},111,0,20,0,17,0,13,0,3,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerOpenSonar.new HookableSaxHandler.ElementHandler() {...},32,0,2,0,7,0,3,0,2,0
+BlackLab,nl.inl.blacklab.indexers,MetadataFetcherCsv,198,0,24,0,27,0,14,0,2,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerWhiteLab2.new HookableSaxHandler.ContentCapturingHandler() {...},34,0,2,0,8,0,4,0,3,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerWhiteLab2.new DocIndexerXmlHandlers.InlineTagHandler() {...},68,0,6,0,14,0,6,0,3,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerWhiteLab2.new HookableSaxHandler.ContentCapturingHandler() {...},36,0,4,0,8,0,5,0,3,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerWhiteLab2.new HookableSaxHandler.ContentCapturingHandler() {...},66,0,2,0,11,0,3,0,2,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerFolia,88,4,0,0,14,2,1,2,1,2
+BlackLab,nl.inl.blacklab.indexers,MetadataFetcherKbDpo.GetKbMetadata.new NamespaceContext() {...},50,0,12,0,16,0,10,0,4,0
+BlackLab,nl.inl.blacklab.indexers,MetadataFetcherSonarCmdi.MetadataParser,164,0,18,0,37,0,16,0,7,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerTeiBase,282,0,28,0,59,0,17,0,3,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerWhiteLab2.new HookableSaxHandler.ContentCapturingHandler() {...},24,0,0,0,6,0,3,0,3,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerWhiteLab2.new HookableSaxHandler.ContentCapturingHandler() {...},39,0,0,0,9,0,3,0,3,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerWhiteLab2.new HookableSaxHandler.ElementHandler() {...},20,0,0,0,4,0,2,0,2,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerWhiteLab2.new HookableSaxHandler.ElementHandler() {...},20,0,0,0,4,0,2,0,2,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerWhiteLab2.new HookableSaxHandler.ElementHandler() {...},20,0,0,0,4,0,2,0,2,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerWhiteLab2.new DocIndexerXmlHandlers.WordHandlerBase() {...},212,0,14,0,33,0,10,0,3,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerWhiteLab2.new HookableSaxHandler.ElementHandler() {...},64,0,18,0,10,0,11,0,2,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerWhiteLab2.new HookableSaxHandler.ElementHandler() {...},111,0,20,0,17,0,13,0,3,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerWhiteLab2.new HookableSaxHandler.ElementHandler() {...},32,0,2,0,7,0,3,0,2,0
+BlackLab,nl.inl.blacklab.indexers,MetadataFetcherSonarCmdi,329,0,32,0,66,0,20,0,4,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerFolia.new HookableSaxHandler.ElementHandler() {...},27,0,2,0,6,0,3,0,2,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerFolia.new DocIndexerXmlHandlers.WordHandlerBase() {...},71,0,2,0,13,0,4,0,3,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerFolia.new HookableSaxHandler.ContentCapturingHandler() {...},34,0,2,0,8,0,4,0,3,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerFolia.new HookableSaxHandler.ContentCapturingHandler() {...},36,0,4,0,8,0,5,0,3,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerFolia.new HookableSaxHandler.ElementHandler() {...},27,0,2,0,6,0,3,0,2,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerXmlSketch.new HookableSaxHandler.ContentCapturingHandler() {...},21,0,0,0,4,0,2,0,2,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerXmlSketch.new HookableSaxHandler.ContentCapturingHandler() {...},39,0,4,0,5,0,4,0,2,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerXmlSketch.new DocIndexerXmlHandlers.DocumentElementHandler() {...},35,0,0,0,7,0,3,0,3,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerXmlSketch.new DocIndexerXmlHandlers.WordHandlerBase() {...},106,0,6,0,19,0,6,0,3,0
+BlackLab,nl.inl.blacklab.indexers,MetadataFetcherCgnImdi.MetadataParser,133,0,14,0,33,0,13,0,6,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerPageXml,67,4,0,0,9,2,1,2,1,2
+BlackLab,nl.inl.blacklab.indexers,DocIndexerOpenSonar,156,0,0,0,27,0,2,0,2,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerTeiP4,6,0,0,0,2,0,1,0,1,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerAlto,217,10,18,0,42,4,12,3,3,3
+BlackLab,nl.inl.blacklab.indexers,MetadataFetcherKbDpo.GetKbMetadata.Metadata,15,0,0,0,6,0,1,0,1,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerTeiBase.new HookableSaxHandler.ElementHandler() {...},38,0,4,0,8,0,5,0,3,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerTeiBase.new HookableSaxHandler.ElementHandler() {...},30,0,2,0,8,0,4,0,3,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerTeiBase.new DocIndexerXmlHandlers.DocumentElementHandler() {...},16,0,0,0,4,0,2,0,2,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerTeiBase.new HookableSaxHandler.ElementHandler() {...},27,0,0,0,6,0,3,0,3,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerTeiBase.new DocIndexerXmlHandlers.InlineTagHandler() {...},31,0,4,0,7,0,5,0,3,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerTeiBase.new HookableSaxHandler.ElementHandler() {...},31,0,6,0,8,0,5,0,2,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerTeiBase.new DocIndexerXmlHandlers.WordHandlerBase() {...},109,0,16,0,26,0,11,0,3,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerAlto.new HookableSaxHandler.ElementHandler() {...},26,0,0,0,4,0,2,0,2,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerAlto.new DocIndexerXmlHandlers.WordInAttributeHandler() {...},12,0,0,0,2,0,2,0,2,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerAlto.new HookableSaxHandler.ElementHandler() {...},95,0,8,0,21,0,7,0,3,0
+BlackLab,nl.inl.blacklab.indexers,MetadataFetcherKbDpo.GetKbMetadata,467,0,28,0,100,0,22,0,8,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerPageXml.new DocIndexerXmlHandlers.DefaultWordHandler() {...},11,0,0,0,2,0,2,0,2,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerPageXml.new HookableSaxHandler.ElementHandler() {...},11,0,0,0,3,0,2,0,2,0
+BlackLab,nl.inl.blacklab.indexers,MetadataFetcherCgnImdi,309,0,26,0,59,0,17,0,4,0
+BlackLab,nl.inl.blacklab.indexers,DocIndexerTei,15,4,0,0,4,2,2,2,2,2
+BlackLab,nl.inl.blacklab.indexers,DocIndexerTeiText,8,4,0,0,2,2,1,2,1,2
+BlackLab,nl.inl.blacklab.indexers,MetadataFetcherKbDpo,71,0,4,0,18,0,5,0,3,0
+BlackLab,nl.inl.blacklab.highlight,XmlHighlighter,91,520,15,58,24,126,16,40,3,14
+BlackLab,nl.inl.blacklab.highlight,XmlHighlighter.TagType,5,73,0,0,0,7,1,3,1,3
+BlackLab,nl.inl.blacklab.highlight,XmlHighlighter.UnbalancedTagsStrategy,9,29,0,0,0,3,2,2,2,2
+BlackLab,nl.inl.blacklab.highlight,XmlHighlighter.new Object() {...},6,41,0,0,0,1,0,1,0,1
+BlackLab,nl.inl.blacklab.highlight,XmlHighlighter.HitCharSpan,0,15,0,0,0,6,0,3,0,3
+BlackLab,nl.inl.blacklab.highlight,XmlHighlighter.TagLocation,22,50,2,4,3,16,3,4,1,3
+BlackLab,nl.inl.blacklab.testutil,GetFieldValues,175,0,18,0,38,0,11,0,2,0
+BlackLab,nl.inl.blacklab.testutil,CountTokens,125,0,8,0,29,0,7,0,3,0
+BlackLab,nl.inl.blacklab.testutil,BatchQuery,228,0,27,0,58,0,17,0,3,0
+BlackLab,nl.inl.blacklab.testutil,ExportCorpus.new Searcher.LuceneDocTask() {...},197,0,14,0,29,0,9,0,2,0
+BlackLab,nl.inl.blacklab.testutil,ExportCorpus,130,0,12,0,29,0,9,0,3,0
+BlackLab,nl.inl.blacklab.testutil,BatchContentStore,396,0,45,0,81,0,27,0,4,0
+BlackLab,nl.inl.blacklab.testutil,GetDocFromContentStore,36,0,2,0,10,0,3,0,2,0
+BlackLab,nl.inl.blacklab.testutil,TokensPerMetaValue,132,0,10,0,24,0,7,0,2,0
+BlackLab,nl.inl.blacklab.testutil,BatchForwardIndex,365,0,39,0,75,0,24,0,4,0
+BlackLab,nl.inl.blacklab.testutil,CountTokens.CountTask,67,0,2,0,12,0,3,0,2,0
+BlackLab,nl.inl.blacklab.externalstorage,ContentStoreDirZip,67,143,4,4,10,40,5,7,1,7
+BlackLab,nl.inl.blacklab.externalstorage,ContentStoreDirFixedBlock.TocEntry,2,144,1,3,0,31,1,6,0,5
+BlackLab,nl.inl.blacklab.externalstorage,ContentStoreDirZip.new SimpleResourcePool() {...},0,14,0,0,0,2,0,2,0,2
+BlackLab,nl.inl.blacklab.externalstorage,ContentStoreDirZip.new SimpleResourcePool() {...},0,14,0,0,0,4,0,3,0,3
+BlackLab,nl.inl.blacklab.externalstorage,ContentStoreDirZip.new SimpleResourcePool() {...},0,14,0,0,0,4,0,3,0,3
+BlackLab,nl.inl.blacklab.externalstorage,ContentStoreDirAbstract,5,23,1,1,1,7,1,3,0,3
+BlackLab,nl.inl.blacklab.externalstorage,ContentStore,62,46,9,3,11,9,6,5,1,4
+BlackLab,nl.inl.blacklab.externalstorage,ContentStoresManager,54,48,6,4,13,12,7,6,4,4
+BlackLab,nl.inl.blacklab.externalstorage,ContentStoreDirFixedBlock.5.new Iterator() {...},21,0,0,0,4,0,4,0,4,0
+BlackLab,nl.inl.blacklab.externalstorage,ContentStoreDirFixedBlock.new SimpleResourcePool() {...},0,14,0,0,0,4,0,3,0,3
+BlackLab,nl.inl.blacklab.externalstorage,ContentStoreDirFixedBlock.new FilenameFilter() {...},10,0,0,0,2,0,2,0,2,0
+BlackLab,nl.inl.blacklab.externalstorage,ContentStoreDirFixedBlock.new SimpleResourcePool() {...},0,10,0,0,0,2,0,2,0,2
+BlackLab,nl.inl.blacklab.externalstorage,ContentStoreDirFixedBlock.new SimpleResourcePool() {...},0,14,0,0,0,4,0,3,0,3
+BlackLab,nl.inl.blacklab.externalstorage,ContentStoreDirFixedBlock.new AbstractSet() {...},21,0,0,0,3,0,3,0,3,0
+BlackLab,nl.inl.blacklab.externalstorage,ContentStoreDirUtf8.TocEntry,2,191,1,5,0,39,1,8,0,6
+BlackLab,nl.inl.blacklab.externalstorage,ContentStoreDirUtf8.new FilenameFilter() {...},10,0,0,0,2,0,2,0,2,0
+BlackLab,nl.inl.blacklab.externalstorage,ContentStoreDir.TocEntry,102,0,4,0,15,0,5,0,3,0
+BlackLab,nl.inl.blacklab.externalstorage,ContentStoreDirFixedBlock,381,1113,44,102,55,263,39,58,2,22
+BlackLab,nl.inl.blacklab.externalstorage,ContentStoreDir,883,0,102,0,131,0,68,0,17,0
+BlackLab,nl.inl.blacklab.externalstorage,ContentStoreDirUtf8,356,837,45,73,55,202,42,45,6,22
+BlackLab,nl.inl.blacklab.externalstorage,ContentStoreMemory,201,0,18,0,37,0,21,0,12,0
+BlackLab,nl.inl.blacklab.tools.indexexample,DocIndexerExample,0,58,0,0,0,10,0,1,0,1
+BlackLab,nl.inl.blacklab.tools.indexexample,Example,211,0,6,0,42,0,9,0,6,0
+BlackLab,nl.inl.blacklab.tools.indexexample,DocIndexerExample.new DocIndexerXmlHandlers.WordHandlerBase() {...},2,66,1,3,1,14,1,4,0,3
+BlackLab,nl.inl.blacklab.tools.indexexample,Example.new FileUtil.FileTask() {...},7,0,0,0,3,0,2,0,2,0
+BlackLab,nl.inl.blacklab.index.config,DocIndexerXPath.FragmentPosition,58,0,0,0,5,0,4,0,4,0
+BlackLab,nl.inl.blacklab.index.config,ConfigLinkedDocument.MissingLinkPathAction,17,39,0,0,2,4,4,2,4,2
+BlackLab,nl.inl.blacklab.index.config,ConfigInlineTag,6,40,0,0,2,14,2,6,2,6
+BlackLab,nl.inl.blacklab.index.config,DocIndexerBase.new Object() {...},33,0,0,0,1,0,1,0,1,0
+BlackLab,nl.inl.blacklab.index.config,DocIndexerTabular.Type,73,0,10,0,8,0,12,0,6,0
+BlackLab,nl.inl.blacklab.index.config,DocIndexerTabular,729,0,127,0,144,0,77,0,13,0
+BlackLab,nl.inl.blacklab.index.config,DocIndexerPlainText,233,0,20,0,63,0,22,0,12,0
+BlackLab,nl.inl.blacklab.index.config,InlineObject.InlineObjectType,48,0,0,0,4,0,4,0,4,0
+BlackLab,nl.inl.blacklab.index.config,DocIndexerBase,1286,0,161,0,287,0,120,0,38,0
+BlackLab,nl.inl.blacklab.index.config,DocIndexerChat,3138,0,238,0,598,0,163,0,44,0
+BlackLab,nl.inl.blacklab.index.config,DocIndexerTabular.new Object() {...},19,0,0,0,1,0,1,0,1,0
+BlackLab,nl.inl.blacklab.index.config,ConfigProcessStep,21,27,0,0,6,10,3,4,3,4
+BlackLab,nl.inl.blacklab.index.config,DocIndexerBase.OpenTagInfo,12,0,0,0,5,0,1,0,1,0
+BlackLab,nl.inl.blacklab.index.config,InputFormatConfigException,9,4,0,0,4,2,2,1,2,1
+BlackLab,nl.inl.blacklab.index.config,InlineObject,128,0,8,0,29,0,14,0,10,0
+BlackLab,nl.inl.blacklab.index.config,YamlJsonReader,175,56,14,4,24,12,18,8,9,8
+BlackLab,nl.inl.blacklab.index.config,DocIndexerXPath,1732,0,165,0,426,0,110,0,26,0
+BlackLab,nl.inl.blacklab.index.config,ConfigStandoffAnnotations,50,52,2,2,12,15,6,6,5,5
+BlackLab,nl.inl.blacklab.index.config,ConfigLinkValue,87,21,10,0,23,8,13,3,8,3
+BlackLab,nl.inl.blacklab.index.config,InputFormatReader,639,1390,193,248,70,238,168,152,4,21
+BlackLab,nl.inl.blacklab.index.config,ConfigMetadataFieldGroup,72,0,0,0,22,0,10,0,10,0
+BlackLab,nl.inl.blacklab.index.config,DocIndexerConfig.new Object() {...},33,0,0,0,1,0,1,0,1,0
+BlackLab,nl.inl.blacklab.index.config,ConfigMetadataBlock,18,100,0,8,4,27,4,11,4,7
+BlackLab,nl.inl.blacklab.index.config,ConfigLinkedDocument,43,64,2,2,15,22,13,7,11,7
+BlackLab,nl.inl.blacklab.index.config,DocIndexerXPath.new Object() {...},26,0,0,0,1,0,1,0,1,0
+BlackLab,nl.inl.blacklab.index.config,ConfigAnnotation,61,304,2,14,17,74,17,26,16,19
+BlackLab,nl.inl.blacklab.index.config,ConfigCorpus.TextDirection,7,114,1,7,1,15,2,9,1,6
+BlackLab,nl.inl.blacklab.index.config,ConfigInputFormat.FileType,4,62,0,0,1,6,1,5,1,5
+BlackLab,nl.inl.blacklab.index.config,DocIndexerConfig,558,0,85,0,113,0,58,0,11,0
+BlackLab,nl.inl.blacklab.index.config,ConfigInputFormat,318,439,25,23,39,120,32,49,15,42
+BlackLab,nl.inl.blacklab.index.config,ConfigMetadataField,58,231,0,6,19,61,15,21,15,18
+BlackLab,nl.inl.blacklab.index.config,ConfigAnnotatedField,48,220,1,11,12,56,11,19,10,14
+BlackLab,nl.inl.blacklab.index.config,ConfigCorpus,40,71,1,1,11,22,8,7,7,7
+BlackLab,nl.inl.blacklab.index,DocIndexer.new Object() {...},26,0,0,0,1,0,1,0,1,0
+BlackLab,nl.inl.blacklab.index,DocIndexerPlainTextBasic,490,0,51,0,119,0,35,0,8,0
+BlackLab,nl.inl.blacklab.index,HookableSaxHandler,63,93,0,6,13,23,2,11,2,8
+BlackLab,nl.inl.blacklab.index,DocIndexerFactoryClass,415,175,14,4,73,30,13,7,5,6
+BlackLab,nl.inl.blacklab.index,DocIndexerXmlHandlers.DocumentElementHandler,81,257,16,21,26,51,12,11,0,3
+BlackLab,nl.inl.blacklab.index,IndexListenerReportConsoleVerbose,160,0,2,0,44,0,16,0,15,0
+BlackLab,nl.inl.blacklab.index,DocIndexer,435,96,62,12,89,27,54,10,18,8
+BlackLab,nl.inl.blacklab.index,DocIndexerXmlHandlers.OpenTagInfo,0,12,0,0,0,4,0,1,0,1
+BlackLab,nl.inl.blacklab.index,PluginManager.PluginData,9,0,0,0,4,0,1,0,1,0
+BlackLab,nl.inl.blacklab.index,DocIndexerFactory.Format,19,39,2,0,5,15,6,6,5,6
+BlackLab,nl.inl.blacklab.index,MalformedInputFileException,16,0,0,0,8,0,4,0,4,0
+BlackLab,nl.inl.blacklab.index,MetadataFetcher,7,0,0,0,4,0,2,0,2,0
+BlackLab,nl.inl.blacklab.index,DocIndexerFactoryConfig,274,416,32,30,40,75,26,20,4,11
+BlackLab,nl.inl.blacklab.index,DocIndexerPlainTextBasic.new Object() {...},33,0,0,0,1,0,1,0,1,0
+BlackLab,nl.inl.blacklab.index,PluginManager,361,0,30,0,82,0,29,0,14,0
+BlackLab,nl.inl.blacklab.index,DocIndexerXmlHandlers.WordInAttributeHandler,32,0,2,0,9,0,4,0,3,0
+BlackLab,nl.inl.blacklab.index,DocIndexerXml,441,0,38,0,91,0,34,0,12,0
+BlackLab,nl.inl.blacklab.index,HookableSaxHandler.new HookableSaxHandler.ElementHandler() {...},25,0,0,0,5,0,3,0,3,0
+BlackLab,nl.inl.blacklab.index,HookableSaxHandler.new HookableSaxHandler.ElementHandler() {...},19,0,0,0,3,0,2,0,2,0
+BlackLab,nl.inl.blacklab.index,DocIndexerXmlHandlers.DefaultWordHandler,38,0,0,0,9,0,4,0,4,0
+BlackLab,nl.inl.blacklab.index,DocIndexerXmlHandlers.SaxParseHandler,45,48,0,0,10,12,4,5,4,5
+BlackLab,nl.inl.blacklab.index,IndexListenerDevNull,0,3,0,0,0,1,0,1,0,1
+BlackLab,nl.inl.blacklab.index,DocIndexerXmlHandlers.MetadataElementHandler,19,0,0,0,4,0,2,0,2,0
+BlackLab,nl.inl.blacklab.index,DocIndexerXmlHandlers.InlineTagHandler,34,93,1,1,4,15,1,3,0,3
+BlackLab,nl.inl.blacklab.index,Indexer,812,322,90,20,150,87,80,18,28,15
+BlackLab,nl.inl.blacklab.index,DownloadCache,265,0,28,0,75,0,25,0,11,0
+BlackLab,nl.inl.blacklab.index,DocIndexerAbstract,104,186,10,4,20,56,12,14,5,14
+BlackLab,nl.inl.blacklab.index,DocIndexerXmlHandlers.new Object() {...},33,0,0,0,1,0,1,0,1,0
+BlackLab,nl.inl.blacklab.index,DocIndexer.MaxDocsReachedException,3,0,0,0,1,0,1,0,1,0
+BlackLab,nl.inl.blacklab.index,IndexListenerReportConsole,260,0,10,0,53,0,13,0,8,0
+BlackLab,nl.inl.blacklab.index,HookableSaxHandler.SaxParserHook,4,69,0,8,1,21,1,9,1,5
+BlackLab,nl.inl.blacklab.index,IndexListener,39,95,0,0,14,33,13,15,13,15
+BlackLab,nl.inl.blacklab.index,Indexer.DocIndexerWrapper,138,88,22,6,7,17,16,3,2,3
+BlackLab,nl.inl.blacklab.index,HookableSaxHandler.ContentCapturingHandler,25,0,0,0,7,0,4,0,4,0
+BlackLab,nl.inl.blacklab.index,DocIndexerXmlHandlers.WordHandlerBase,6,50,2,2,2,9,2,3,0,3
+BlackLab,nl.inl.blacklab.index,DocIndexerFactoryConfig.new FileUtil.FileTask() {...},24,38,4,4,4,7,4,2,0,2
+BlackLab,nl.inl.blacklab.index,ZipHandleManager,154,0,16,0,47,0,16,0,8,0
+BlackLab,nl.inl.blacklab.index,DocIndexerXml.SaxParseHandler,93,0,0,0,22,0,9,0,9,0
+BlackLab,nl.inl.blacklab.index,DownloadCache.Download,155,0,26,0,39,0,21,0,8,0
+BlackLab,nl.inl.blacklab.index,DocIndexerXmlHandlers,239,400,27,19,56,84,31,19,8,16
+BlackLab,nl.inl.blacklab.index,DocumentFormats,99,114,15,11,23,27,18,10,7,8
+BlackLab,nl.inl.blacklab.index,Indexer.new Indexer.PathCapturingFileHandler() {...},20,0,2,0,6,0,5,0,4,0
+BlackLab,nl.inl.blacklab.index,HookableSaxHandler.SaxPathExpressionChecker.ExprMatcher,14,133,5,23,2,22,5,14,0,5
+BlackLab,nl.inl.blacklab.index,DocIndexerXmlHandlers.MetadataAttributesHandler,30,0,2,0,6,0,3,0,2,0
+BlackLab,nl.inl.blacklab.index,HookableSaxHandler.ElementHandler,3,13,0,0,1,7,1,5,1,5
+BlackLab,nl.inl.blacklab.index,HookableSaxHandler.SaxPathExpressionChecker,40,226,11,33,7,44,11,17,1,5
+BlackLab,nl.inl.blacklab.index,DocIndexerXmlHandlers.MetadataNameValueAttributeHandler,44,0,4,0,12,0,5,0,3,0
+BlackLab,nl.inl.blacklab.index,DummyEntityResolver,8,3,0,0,1,1,1,1,1,1
+BlackLab,nl.inl.blacklab.index,IndexListenerDecorator,116,0,0,0,43,0,26,0,26,0
+BlackLab,nl.inl.blacklab.index,ZipHandleManager.ZipHandle,144,0,24,0,40,0,19,0,7,0
+BlackLab,nl.inl.blacklab.index,DocumentFormatException,4,0,0,0,2,0,1,0,1,0
+BlackLab,nl.inl.blacklab.search.lucene.optimize,ClauseCombinerInternalisation.new Object() {...},2,17,0,0,0,1,0,1,0,1
+BlackLab,nl.inl.blacklab.search.lucene.optimize,ClauseCombinerNot,16,89,1,12,1,18,1,10,0,4
+BlackLab,nl.inl.blacklab.search.lucene.optimize,ClauseCombinerInternalisation,16,46,1,8,1,10,1,8,0,4
+BlackLab,nl.inl.blacklab.search.lucene.optimize,ClauseCombinerInternalisation.Type,5,33,0,0,0,3,1,3,1,3
+BlackLab,nl.inl.blacklab.search.lucene.optimize,ClauseCombinerRepetition,16,89,1,13,1,20,1,9,0,3
+BlackLab,nl.inl.blacklab.search.lucene.optimize,ClauseCombinerNfa,99,270,12,48,12,57,10,27,0,7
+BlackLab,nl.inl.blacklab.search.lucene.optimize,ClauseCombinerAnyExpansion.Type,5,43,0,0,0,4,1,3,1,3
+BlackLab,nl.inl.blacklab.search.lucene.optimize,ClauseCombinerAnyExpansion.new Object() {...},3,23,0,0,0,1,0,1,0,1
+BlackLab,nl.inl.blacklab.search.lucene.optimize,ClauseCombiner,1,51,2,2,0,10,2,3,0,3
+BlackLab,nl.inl.blacklab.search.lucene.optimize,ClauseCombinerNot.new Object() {...},2,17,0,0,0,1,0,1,0,1
+BlackLab,nl.inl.blacklab.search.lucene.optimize,ClauseCombinerAnyExpansion,29,82,2,14,4,16,2,11,0,4
+BlackLab,nl.inl.blacklab.search.lucene.optimize,ClauseCombinerNot.Type,5,33,0,0,0,3,1,3,1,3
+BlackLab,nl.inl.blacklab.search.fimatch,NfaStateOrAcyclic,323,156,62,20,75,39,44,10,9,4
+BlackLab,nl.inl.blacklab.search.fimatch,NfaStateRegex,6,21,0,0,1,5,1,3,1,3
+BlackLab,nl.inl.blacklab.search.fimatch,ForwardIndexAccessor,0,9,0,0,0,3,0,2,0,2
+BlackLab,nl.inl.blacklab.search.fimatch,NfaStateOr,187,192,35,23,47,48,24,18,5,8
+BlackLab,nl.inl.blacklab.search.fimatch,NfaTwoWay,0,60,0,0,0,18,0,7,0,7
+BlackLab,nl.inl.blacklab.search.fimatch,Nfa,0,271,1,29,0,68,1,25,0,11
+BlackLab,nl.inl.blacklab.search.fimatch,NfaStateNot,43,124,6,12,7,36,12,10,6,7
+BlackLab,nl.inl.blacklab.search.fimatch,ForwardIndexDocumentImpl,10,124,4,12,1,27,3,11,1,5
+BlackLab,nl.inl.blacklab.search.fimatch,ForwardIndexDocument,0,3,0,0,0,1,0,1,0,1
+BlackLab,nl.inl.blacklab.search.fimatch,NfaStateAnyToken,19,30,3,3,1,7,4,2,1,2
+BlackLab,nl.inl.blacklab.search.fimatch,NfaStateAnd,368,0,58,0,94,0,42,0,13,0
+BlackLab,nl.inl.blacklab.search.fimatch,NfaStateMatch,16,16,0,2,7,7,7,6,7,5
+BlackLab,nl.inl.blacklab.search.fimatch,ForwardIndexAccessor.ForwardIndexAccessorLeafReader,4,23,0,0,1,5,1,3,1,3
+BlackLab,nl.inl.blacklab.search.fimatch,ForwardIndexAccessorImpl,9,117,0,2,1,23,1,8,1,7
+BlackLab,nl.inl.blacklab.search.fimatch,NfaStateAndAcyclic,318,157,58,20,73,39,41,11,9,4
+BlackLab,nl.inl.blacklab.search.fimatch,ForwardIndexAccessorImpl.ForwardIndexAccessorLeafReaderImpl,0,145,0,4,0,23,0,9,0,7
+BlackLab,nl.inl.blacklab.search.fimatch,NfaStateMultiTermPattern,104,82,18,4,29,20,20,4,9,4
+BlackLab,nl.inl.blacklab.search.fimatch,NfaStateToken,38,242,9,23,9,54,12,18,4,10
+BlackLab,nl.inl.blacklab.search.fimatch,NfaState,19,177,2,12,2,35,3,22,1,17
+BlackLab,nl.inl.blacklab.filter,RemoveAllAccentsFilter,0,40,0,2,0,9,0,3,0,2
+BlackLab,nl.inl.blacklab.filter,TranscribeGermanAccentsFilter,74,77,10,2,8,17,6,4,1,3
+BlackLab,nl.inl.blacklab.filter,ToyExampleSynonymFilter,17,0,2,0,5,0,3,0,2,0
+BlackLab,nl.inl.blacklab.filter,RemovePunctuationFilter,57,0,2,0,14,0,6,0,5,0
+BlackLab,nl.inl.blacklab.filter,AbstractSynonymFilter,0,145,1,9,0,39,1,11,0,7
+BlackLab,nl.inl.blacklab.filter,TranscribeGermanAccentsSynonymFilter,52,26,2,4,12,7,2,4,1,2
+BlackLab,nl.inl.blacklab.filter,DesensitizeFilter,0,55,2,4,0,14,2,3,0,2
+BlackLab,nl.inl.blacklab.search,TermFrequencyList,82,0,4,0,22,0,12,0,10,0
+BlackLab,nl.inl.blacklab.search,DocContentsFromForwardIndex.new AbstractList() {...},31,0,0,0,3,0,3,0,3,0
+BlackLab,nl.inl.blacklab.search,TextPatternSensitive,90,22,18,0,9,6,13,2,4,2
+BlackLab,nl.inl.blacklab.search,TextPatternFilterNGrams,168,0,18,0,20,0,17,0,8,0
+BlackLab,nl.inl.blacklab.search,TextPatternWildcard,155,0,16,0,25,0,14,0,6,0
+BlackLab,nl.inl.blacklab.search,ContentAccessor,64,21,2,0,16,8,8,3,7,3
+BlackLab,nl.inl.blacklab.search,TPBooleanClause,97,0,16,0,18,0,18,0,10,0
+BlackLab,nl.inl.blacklab.search,TextPatternTags,102,60,11,3,16,13,13,3,7,2
+BlackLab,nl.inl.blacklab.search,DocContentsFromForwardIndex,40,116,2,6,9,22,5,5,4,2
+BlackLab,nl.inl.blacklab.search,RegexpTooLargeException,4,0,0,0,2,0,1,0,1,0
+BlackLab,nl.inl.blacklab.search,TextPatternExpansion,193,0,24,0,24,0,22,0,10,0
+BlackLab,nl.inl.blacklab.search,SearcherImpl,784,537,152,68,155,135,105,31,11,15
+BlackLab,nl.inl.blacklab.search,TextPatternProperty,60,19,7,1,7,5,8,2,4,2
+BlackLab,nl.inl.blacklab.search,TextPattern,54,37,6,4,11,10,8,5,5,3
+BlackLab,nl.inl.blacklab.search,TextPatternRegex,45,166,5,23,7,36,7,14,3,4
+BlackLab,nl.inl.blacklab.search,SearcherImpl.new AbstractSet() {...},69,0,10,0,7,0,11,0,6,0
+BlackLab,nl.inl.blacklab.search,HitsImpl.new Iterator() {...},18,58,3,5,4,8,4,4,1,3
+BlackLab,nl.inl.blacklab.search,TextPatternNot,42,26,2,0,5,5,4,2,3,2
+BlackLab,nl.inl.blacklab.search,TextPatternFuzzy,152,0,8,0,19,0,12,0,8,0
+BlackLab,nl.inl.blacklab.search,HitsSettings,22,106,2,6,8,34,5,15,3,13
+BlackLab,nl.inl.blacklab.search,TextPatternAnyToken,35,69,8,6,7,12,8,6,3,4
+BlackLab,nl.inl.blacklab.search,TermFrequency,82,0,12,0,13,0,11,0,5,0
+BlackLab,nl.inl.blacklab.search,BLRuntimeException,19,4,0,0,8,2,4,1,4,1
+BlackLab,nl.inl.blacklab.search,TextPatternCaptureGroup,52,21,2,0,4,5,5,2,4,2
+BlackLab,nl.inl.blacklab.search,SingleDocIdFilter,12,13,0,0,1,4,1,2,1,2
+BlackLab,nl.inl.blacklab.search,TextPatternPrefix,76,0,2,0,11,0,6,0,5,0
+BlackLab,nl.inl.blacklab.search,TextPatternCombiner,80,33,4,2,16,7,7,3,5,2
+BlackLab,nl.inl.blacklab.search,Searcher,1165,389,112,24,230,95,126,36,63,31
+BlackLab,nl.inl.blacklab.search,HitsSample,93,69,8,2,18,14,14,4,9,4
+BlackLab,nl.inl.blacklab.search,SearcherImpl.1.new Iterator() {...},84,0,12,0,18,0,11,0,5,0
+BlackLab,nl.inl.blacklab.search,ConfigReader,797,92,168,8,119,25,113,7,10,6
+BlackLab,nl.inl.blacklab.search,ConcordanceType,9,29,0,0,0,3,2,2,2,2
+BlackLab,nl.inl.blacklab.search,CompleteQuery,266,0,50,0,55,0,31,0,6,0
+BlackLab,nl.inl.blacklab.search,TextPatternAnd,0,4,0,0,0,2,0,1,0,1
+BlackLab,nl.inl.blacklab.search,SingleDocIdFilter.1.new Scorer() {...},18,31,1,1,6,3,4,2,3,2
+BlackLab,nl.inl.blacklab.search,HitsImpl,1208,1397,146,138,279,320,123,73,29,25
+BlackLab,nl.inl.blacklab.search,TextPatternAndNot,180,79,11,5,23,13,12,4,6,2
+BlackLab,nl.inl.blacklab.search,TextPatternEdge,101,25,14,0,12,4,14,2,7,2
+BlackLab,nl.inl.blacklab.search,InvalidQueryException,4,0,0,0,2,0,1,0,1,0
+BlackLab,nl.inl.blacklab.search,TextPatternRepetition,112,48,12,8,12,11,15,4,7,2
+BlackLab,nl.inl.blacklab.search,DocContentsString,9,0,0,0,4,0,2,0,2,0
+BlackLab,nl.inl.blacklab.search,Concordance,65,69,0,0,6,13,3,5,3,5
+BlackLab,nl.inl.blacklab.search,DocContents,10,3,0,0,1,1,1,1,1,1
+BlackLab,nl.inl.blacklab.search,QueryExecutionContext,180,265,44,28,37,60,37,15,5,11
+BlackLab,nl.inl.blacklab.search,Kwic.new AbstractList() {...},4,36,1,1,1,4,1,3,0,3
+BlackLab,nl.inl.blacklab.search,TextPatternTerm,42,45,2,0,6,6,5,4,4,4
+BlackLab,nl.inl.blacklab.search,QueryExplanation,0,15,0,0,0,6,0,3,0,3
+BlackLab,nl.inl.blacklab.search,Hits,296,111,11,1,78,29,45,14,39,14
+BlackLab,nl.inl.blacklab.search,Span,13,9,0,0,1,4,1,1,1,1
+BlackLab,nl.inl.blacklab.search,HitsWindow,193,0,22,0,34,0,24,0,13,0
+BlackLab,nl.inl.blacklab.search,TextPatternConstrained,112,34,14,0,23,6,11,2,4,2
+BlackLab,nl.inl.blacklab.search,SingleDocIdSet,2,11,0,0,1,4,1,2,1,2
+BlackLab,nl.inl.blacklab.search,TextPatternSequence,34,53,4,4,6,10,5,4,2,3
+BlackLab,nl.inl.blacklab.search,HitsSampleImpl,52,152,6,16,8,32,9,8,3,3
+BlackLab,nl.inl.blacklab.search,TextPatternPositionFilter,191,62,20,0,16,11,16,3,6,3
+BlackLab,nl.inl.blacklab.search,SingleDocIdFilter.new Weight() {...},6,14,0,0,4,2,4,2,4,2
+BlackLab,nl.inl.blacklab.search,Hit,100,25,16,0,16,6,12,2,4,2
+BlackLab,nl.inl.blacklab.search,Kwic,68,304,7,15,17,48,14,17,8,12
+BlackLab,nl.inl.blacklab.search,SingleDocIdSet.new DocIdSetIterator() {...},10,42,5,5,4,10,6,4,1,4
+BlackLab,nl.inl.blacklab.search,TextPatternOr,43,42,3,3,6,8,5,3,3,2
+BlackLab,nl.inl.blacklab.search,Hits.new Iterable() {...},11,0,0,0,2,0,2,0,2,0
+BlackLab,nl.inl.blacklab.search,Hits.new Iterator() {...},4,33,0,2,1,5,1,4,1,3
+BlackLab,nl.inl.blacklab.index.complex,ComplexFieldProperty,147,331,18,30,26,83,12,31,1,18
+BlackLab,nl.inl.blacklab.index.complex,DesensitizerAdder,5,21,3,1,1,6,2,2,0,2
+BlackLab,nl.inl.blacklab.index.complex,TokenStreamFromList,0,84,0,6,0,21,0,5,0,2
+BlackLab,nl.inl.blacklab.index.complex,ComplexFieldProperty.SensitivitySetting,112,59,37,0,7,6,28,2,3,2
+BlackLab,nl.inl.blacklab.index.complex,ComplexField,88,181,8,10,14,43,11,15,4,13
+BlackLab,nl.inl.blacklab.index.complex,TokenStreamWithOffsets,0,79,0,2,0,18,0,3,0,2
+BlackLab,nl.inl.blacklab.index.complex,ComplexFieldUtil.BookkeepFieldType,5,43,0,0,0,4,1,3,1,3
+BlackLab,nl.inl.blacklab.index.complex,ComplexFieldUtil,151,435,29,43,26,76,33,31,7,20
+BlackLab,nl.inl.blacklab.search.matchfilter,ConstraintValueBoolean,52,9,12,0,15,4,9,2,3,2
+BlackLab,nl.inl.blacklab.search.matchfilter,MatchFilterImplication,100,67,24,4,25,18,16,6,3,5
+BlackLab,nl.inl.blacklab.search.matchfilter,ConstraintValue,0,36,0,2,0,8,0,7,0,6
+BlackLab,nl.inl.blacklab.search.matchfilter,MatchFilter,0,3,0,0,0,1,0,1,0,1
+BlackLab,nl.inl.blacklab.search.matchfilter,ConstraintValueInt,54,8,8,0,16,4,8,2,4,2
+BlackLab,nl.inl.blacklab.search.matchfilter,MatchFilterSameTokens,135,144,33,9,30,26,22,7,3,5
+BlackLab,nl.inl.blacklab.search.matchfilter,ConstraintValueUndefined,11,5,2,0,3,3,4,2,3,2
+BlackLab,nl.inl.blacklab.search.matchfilter,MatchFilterOr,104,62,24,4,25,18,16,6,3,5
+BlackLab,nl.inl.blacklab.search.matchfilter,MatchFilterNot,72,37,16,2,19,11,12,5,3,5
+BlackLab,nl.inl.blacklab.search.matchfilter,MatchFilterTokenProperty,109,98,25,7,24,25,16,13,3,10
+BlackLab,nl.inl.blacklab.search.matchfilter,MatchFilterString,79,21,14,0,23,7,15,3,8,3
+BlackLab,nl.inl.blacklab.search.matchfilter,MatchFilterEquals,149,129,38,12,32,28,26,7,3,5
+BlackLab,nl.inl.blacklab.search.matchfilter,MatchFilterTokenPropertyEqualsString,156,102,38,6,34,26,26,4,4,4
+BlackLab,nl.inl.blacklab.search.matchfilter,MatchFilterAnd,98,68,23,5,24,19,15,7,3,5
+BlackLab,nl.inl.blacklab.search.matchfilter,ConstraintValueString,66,38,17,3,20,14,14,3,4,3
+BlackLab,nl.inl.blacklab.search.lucene,SpanQueryAndNot.SpanWeightAnd,115,0,14,0,25,0,11,0,4,0
+BlackLab,nl.inl.blacklab.search.lucene,SpanQueryFiSeq,113,322,30,30,10,47,23,28,4,17
+BlackLab,nl.inl.blacklab.search.lucene,BLSpanOrQuery.SpanOrWeight.new BLSpans() {...},274,221,49,27,54,51,40,17,8,11
+BlackLab,nl.inl.blacklab.search.lucene,SpansInBucketsAbstract,20,245,8,28,5,61,9,24,1,14
+BlackLab,nl.inl.blacklab.search.lucene,SpanQuerySequenceOfTwo.SpanWeightSequenceOfTwo,194,0,26,0,35,0,17,0,4,0
+BlackLab,nl.inl.blacklab.search.lucene,SpanQueryFilterNGrams,308,58,46,4,42,9,42,2,17,2
+BlackLab,nl.inl.blacklab.search.lucene,SpansRepetition,58,308,10,48,11,72,15,29,5,10
+BlackLab,nl.inl.blacklab.search.lucene,SpanQuerySequenceOfTwo,698,0,102,0,140,0,74,0,23,0
+BlackLab,nl.inl.blacklab.search.lucene,SpanQueryAnyToken,98,205,19,21,15,41,17,29,5,21
+BlackLab,nl.inl.blacklab.search.lucene,PerDocumentSortedSpans,30,256,5,31,11,55,10,23,5,10
+BlackLab,nl.inl.blacklab.search.lucene,BLSpans,22,58,6,8,6,16,7,8,2,6
+BlackLab,nl.inl.blacklab.search.lucene,SpansUnique,93,78,13,7,21,23,14,10,6,8
+BlackLab,nl.inl.blacklab.search.lucene,SpanQueryConstrained,133,102,16,6,27,17,20,8,11,6
+BlackLab,nl.inl.blacklab.search.lucene,SpansExpansionRaw,87,395,23,51,19,104,25,28,4,12
+BlackLab,nl.inl.blacklab.search.lucene,SpanQueryRepetition,118,433,34,60,14,61,33,37,3,20
+BlackLab,nl.inl.blacklab.search.lucene,SpanQueryTagsOld.SpanWeightTagsOld,57,0,4,0,16,0,6,0,4,0
+BlackLab,nl.inl.blacklab.search.lucene,SpanQueryNoHits.new BLSpanWeight() {...},13,0,0,0,4,0,4,0,4,0
+BlackLab,nl.inl.blacklab.search.lucene,SpanQueryRepetition.SpanWeightRepetition,22,52,6,6,3,11,5,5,1,3
+BlackLab,nl.inl.blacklab.search.lucene,SpanQueryTags,57,236,13,25,12,44,14,24,3,16
+BlackLab,nl.inl.blacklab.search.lucene,SpansAnd,140,548,27,61,26,84,30,33,7,12
+BlackLab,nl.inl.blacklab.search.lucene,BLSpanTermQuery,47,154,6,6,11,37,8,21,3,20
+BlackLab,nl.inl.blacklab.search.lucene,SpansInBucketsConsecutive,0,26,0,4,0,9,0,4,0,2
+BlackLab,nl.inl.blacklab.search.lucene,SpanQueryEdge.SpanWeightEdge,7,33,1,1,3,9,2,3,1,3
+BlackLab,nl.inl.blacklab.search.lucene,SpansSequenceSimple,94,231,15,39,23,67,16,26,6,9
+BlackLab,nl.inl.blacklab.search.lucene,SpanQueryCaptureGroup.SpanWeightCaptureGroup,5,41,0,2,2,10,1,4,1,3
+BlackLab,nl.inl.blacklab.search.lucene,SpansInBucketsPerStartPoint,38,270,12,34,10,65,15,23,3,12
+BlackLab,nl.inl.blacklab.search.lucene,SpansTagsOld,86,475,15,51,18,98,21,27,6,9
+BlackLab,nl.inl.blacklab.search.lucene,SpansEdge,63,59,7,7,13,15,11,10,7,7
+BlackLab,nl.inl.blacklab.search.lucene,SpanQueryFilterNGrams.SpanWeightFilterNGrams,60,0,2,0,13,0,5,0,4,0
+BlackLab,nl.inl.blacklab.search.lucene,BLSpanOrQuery.SpanOrWeight.SpanPositionQueue,0,33,0,6,0,6,0,5,0,2
+BlackLab,nl.inl.blacklab.search.lucene,SpansPositionFilter,514,584,87,97,79,136,62,51,6,10
+BlackLab,nl.inl.blacklab.search.lucene,SpanQueryFiltered,153,70,7,5,19,15,18,5,12,5
+BlackLab,nl.inl.blacklab.search.lucene,SpanQueryPositionFilter.Operation,5,83,0,0,0,8,1,3,1,3
+BlackLab,nl.inl.blacklab.search.lucene,SpansInBucketsPerDocumentSorted,0,17,1,1,0,7,1,2,0,2
+BlackLab,nl.inl.blacklab.search.lucene,SpanQueryTagsOld,258,0,18,0,38,0,23,0,14,0
+BlackLab,nl.inl.blacklab.search.lucene,SpanQuerySequence.SpanWeightSequence,24,240,10,34,4,38,9,17,1,3
+BlackLab,nl.inl.blacklab.search.lucene,SpanComparatorEndPoint,0,20,0,2,0,4,0,3,0,2
+BlackLab,nl.inl.blacklab.search.lucene,SpansConstrained,59,165,8,16,18,49,10,18,5,11
+BlackLab,nl.inl.blacklab.search.lucene,SpansPositionFilter.new Object() {...},7,47,0,0,0,1,0,1,0,1
+BlackLab,nl.inl.blacklab.search.lucene,SpanFuzzyQuery,197,0,18,0,48,0,27,0,18,0
+BlackLab,nl.inl.blacklab.search.lucene,SpanQueryAnd,0,26,0,0,0,6,0,3,0,3
+BlackLab,nl.inl.blacklab.search.lucene,SpanQueryPositionFilter.SpanWeightPositionFilter,25,96,5,5,6,18,5,4,1,3
+BlackLab,nl.inl.blacklab.search.lucene,SpanQueryNoHits,70,0,2,0,24,0,20,0,19,0
+BlackLab,nl.inl.blacklab.search.lucene,SpanQueryExpansion,168,493,34,68,22,69,32,48,5,24
+BlackLab,nl.inl.blacklab.search.lucene,SpansFiltered,60,117,16,16,17,23,18,12,6,8
+BlackLab,nl.inl.blacklab.search.lucene,SpanQueryExpansion.SpanWeightExpansion,7,53,1,1,3,10,2,3,1,3
+BlackLab,nl.inl.blacklab.search.lucene,SpanQueryFiSeq.SpanWeightFiSeq,5,62,0,4,2,13,1,5,1,3
+BlackLab,nl.inl.blacklab.search.lucene,SpanQuerySequence,278,1097,54,134,46,246,39,88,2,31
+BlackLab,nl.inl.blacklab.search.lucene,BLSpansWrapper,117,65,20,8,27,20,21,11,8,10
+BlackLab,nl.inl.blacklab.search.lucene,SpansFilterNGramsRaw,147,532,38,74,34,112,39,37,7,8
+BlackLab,nl.inl.blacklab.search.lucene,SpanQueryNot.SpanWeightNot,65,0,8,0,14,0,8,0,4,0
+BlackLab,nl.inl.blacklab.search.lucene,SpanQuerySorted.SpanWeightSorted,7,42,1,3,2,11,2,4,1,3
+BlackLab,nl.inl.blacklab.search.lucene,BLSpanMultiTermQueryWrapper,128,191,17,14,29,51,22,16,9,12
+BlackLab,nl.inl.blacklab.search.lucene,BLSpanWeight,0,6,0,0,0,2,0,1,0,1
+BlackLab,nl.inl.blacklab.search.lucene,BLSpanOrQuery,301,666,66,80,65,144,49,53,2,27
+BlackLab,nl.inl.blacklab.search.lucene,SpanQueryTags.SpanWeightTags,7,30,1,1,3,9,2,3,1,3
+BlackLab,nl.inl.blacklab.search.lucene,DocFieldLengthGetter,43,143,7,15,15,40,7,8,1,3
+BlackLab,nl.inl.blacklab.search.lucene,SpansTags,20,81,0,4,7,23,4,10,4,8
+BlackLab,nl.inl.blacklab.search.lucene,BLSpanOrQuery.SpanOrWeight,25,117,4,12,5,23,4,8,1,3
+BlackLab,nl.inl.blacklab.search.lucene,SpansCaptureGroup,60,80,4,2,7,21,7,11,5,10
+BlackLab,nl.inl.blacklab.search.lucene,BLSpanQuery,58,180,8,28,8,45,10,29,2,19
+BlackLab,nl.inl.blacklab.search.lucene,SpanComparatorStartPoint,0,20,0,2,0,4,0,3,0,2
+BlackLab,nl.inl.blacklab.search.lucene,SpanQueryFiltered.SpanWeightFiltered,7,37,1,1,3,10,2,3,1,3
+BlackLab,nl.inl.blacklab.search.lucene,SpanQueryUnique.SpanWeightUnique,14,35,2,2,4,10,3,3,1,3
+BlackLab,nl.inl.blacklab.search.lucene,SpanQuerySorted,147,80,28,8,20,18,31,7,13,7
+BlackLab,nl.inl.blacklab.search.lucene,SpanQueryUnique,93,52,7,3,20,13,18,7,13,7
+BlackLab,nl.inl.blacklab.search.lucene,BLSpanTermQuery.new BLSpanWeight() {...},5,32,0,2,2,5,1,4,1,3
+BlackLab,nl.inl.blacklab.search.lucene,SpanQueryAnyToken.new BLSpanWeight() {...},1,30,0,0,1,3,1,3,1,3
+BlackLab,nl.inl.blacklab.search.lucene,SpansFiSeq,135,287,25,39,33,70,24,24,7,9
+BlackLab,nl.inl.blacklab.search.lucene,BLSpanQueryAbstract,48,228,5,21,7,51,7,19,2,11
+BlackLab,nl.inl.blacklab.search.lucene,SpanQueryNot,88,146,6,8,19,32,14,18,10,15
+BlackLab,nl.inl.blacklab.search.lucene,SpanQueryPositionFilter,53,356,3,21,3,49,5,30,2,21
+BlackLab,nl.inl.blacklab.search.lucene,SpansNGrams,96,264,21,35,28,60,22,21,6,9
+BlackLab,nl.inl.blacklab.search.lucene,SpansSequenceRaw,121,352,20,46,29,91,21,27,5,10
+BlackLab,nl.inl.blacklab.search.lucene,SpanQueryEdge,87,123,13,9,16,22,14,16,5,14
+BlackLab,nl.inl.blacklab.search.lucene,SpanQuerySequence.SpanWeightSequence.CombiPart,4,62,1,1,1,19,2,2,1,2
+BlackLab,nl.inl.blacklab.search.lucene,DocIntFieldGetter,59,43,5,1,16,11,4,2,1,2
+BlackLab,nl.inl.blacklab.search.lucene,HitQueryContext,0,65,0,2,0,19,0,9,0,8
+BlackLab,nl.inl.blacklab.search.lucene,SpanQueryAndNot,363,590,72,80,71,120,60,42,10,16
+BlackLab,nl.inl.blacklab.search.lucene,BLSpanOrQuery.SpanOrWeight.1.new TwoPhaseIterator() {...},17,0,0,0,3,0,3,0,3,0
+BlackLab,nl.inl.blacklab.search.lucene,SpansFilterNGramsRaw.new Object() {...},7,47,0,0,0,1,0,1,0,1
+BlackLab,nl.inl.blacklab.search.lucene,SpansInBucketsPerDocument,0,12,0,2,0,5,0,3,0,2
+BlackLab,nl.inl.blacklab.search.lucene,SpanQueryConstrained.SpanWeightConstrained,7,41,1,1,3,10,2,3,1,3
+BlackLab,nl.inl.blacklab.search.lucene,SpanQueryCaptureGroup,80,230,16,12,16,35,12,22,1,19
+BlackLab,nl.inl.blacklab.search.lucene,SpansNot,133,328,31,45,31,78,30,23,7,8
+BlackLab,nl.inl.blacklab.perdocument,DocResultsWindow,139,0,18,0,27,0,22,0,13,0
+BlackLab,nl.inl.blacklab.perdocument,DocPropertyMultiple,269,0,30,0,57,0,27,0,12,0
+BlackLab,nl.inl.blacklab.perdocument,DocPropertyStoredField,125,0,16,0,22,0,16,0,8,0
+BlackLab,nl.inl.blacklab.perdocument,DocGroupProperty,69,0,8,0,21,0,14,0,10,0
+BlackLab,nl.inl.blacklab.perdocument,DocPropertyDecade,125,32,16,0,30,5,12,3,4,3
+BlackLab,nl.inl.blacklab.perdocument,DocGroupPropertyIdentity,31,0,2,0,6,0,5,0,4,0
+BlackLab,nl.inl.blacklab.perdocument,DocGroupPropertySize,41,0,4,0,5,0,7,0,5,0
+BlackLab,nl.inl.blacklab.perdocument,DocResults.new Iterator() {...},11,47,1,3,4,8,2,4,1,3
+BlackLab,nl.inl.blacklab.perdocument,DocResults.new SimpleCollector() {...},37,0,0,0,9,0,5,0,5,0
+BlackLab,nl.inl.blacklab.perdocument,DocResult,39,24,2,0,11,9,5,4,4,4
+BlackLab,nl.inl.blacklab.perdocument,DocCounts,151,0,8,0,37,0,15,0,11,0
+BlackLab,nl.inl.blacklab.perdocument,DocCount,43,0,0,0,10,0,5,0,5,0
+BlackLab,nl.inl.blacklab.perdocument,ComparatorDocGroupProperty,37,0,6,0,6,0,5,0,2,0
+BlackLab,nl.inl.blacklab.perdocument,ComparatorDocProperty,26,0,2,0,5,0,3,0,2,0
+BlackLab,nl.inl.blacklab.perdocument,DocResults,355,181,27,17,97,46,40,13,25,6
+BlackLab,nl.inl.blacklab.perdocument,DocProperty,87,91,13,6,22,21,16,5,5,5
+BlackLab,nl.inl.blacklab.perdocument,DocPropertyNumberOfHits,64,0,4,0,10,0,10,0,8,0
+BlackLab,nl.inl.blacklab.perdocument,DocGroups,168,0,8,0,40,0,15,0,11,0
+BlackLab,nl.inl.blacklab.perdocument,DocGroup,50,0,0,0,12,0,6,0,6,0
+BlackLab,nl.inl.blacklab.perdocument,DocPropertyComplexFieldLength,118,0,2,0,20,0,9,0,8,0
+BlackLab,nl.inl.util,FileProcessor,70,329,13,41,18,76,20,34,7,20
+BlackLab,nl.inl.util,FileProcessor.SimpleErrorHandler,21,6,2,0,3,3,2,1,1,1
+BlackLab,nl.inl.util,FileUtil,243,243,34,22,42,50,29,16,7,10
+BlackLab,nl.inl.util,CollUtil.new AbstractSet() {...},4,16,0,0,1,3,1,2,1,2
+BlackLab,nl.inl.util,CollUtil.new AbstractList() {...},0,16,0,0,0,3,0,3,0,3
+BlackLab,nl.inl.util,XmlUtil.SimpleErrorHandler,8,0,0,0,5,0,4,0,4,0
+BlackLab,nl.inl.util,CollUtil,3,10,0,0,1,2,1,2,1,2
+BlackLab,nl.inl.util,XmlUtil.XmlToPlainTextState,9,39,0,0,0,4,2,2,2,2
+BlackLab,nl.inl.util,ThreadPriority,30,21,5,1,11,10,6,4,3,4
+BlackLab,nl.inl.util,LogUtil,98,0,4,0,29,0,7,0,5,0
+BlackLab,nl.inl.util,SimpleResourcePool,23,73,6,8,6,21,6,8,1,6
+BlackLab,nl.inl.util,ThreadPriority.Level,9,39,0,0,0,4,2,2,2,2
+BlackLab,nl.inl.util,TimeUtil,94,0,6,0,18,0,6,0,3,0
+BlackLab,nl.inl.util,ExUtil,14,0,2,0,5,0,3,0,2,0
+BlackLab,nl.inl.util,MainThreadExecutorService,37,25,2,2,7,12,6,5,4,5
+BlackLab,nl.inl.util,ReverseComparator,13,0,0,0,4,0,2,0,2,0
+BlackLab,nl.inl.util,LuceneUtil,738,59,105,5,164,15,66,4,12,3
+BlackLab,nl.inl.util,XmlUtil,128,162,6,30,41,48,11,17,5,3
+BlackLab,nl.inl.util,CollUtil.1.new Iterator() {...},4,18,0,0,1,3,1,3,1,3
+BlackLab,nl.inl.util,CountingReader,7,45,0,2,2,13,1,5,1,4
+BlackLab,nl.inl.util,UnicodeStream,136,82,29,7,23,21,25,5,7,5
+BlackLab,nl.inl.util,FileUtil.FileTask,0,3,0,0,0,1,0,1,0,1
+BlackLab,nl.inl.util,ArrayUtil,22,28,5,5,7,6,5,2,1,1
+BlackLab,nl.inl.util,TarGzipReader,257,52,42,10,27,11,27,4,4,1
+BlackLab,nl.inl.util,VersionFile,158,157,22,10,20,39,20,12,4,12
+BlackLab,nl.inl.util,FileUtil.new Comparator() {...},2,28,1,5,0,4,1,4,0,2
+BlackLab,nl.inl.util,StringUtil,403,325,59,34,91,78,54,26,18,13
+BlackLab,nl.inl.util,Timer,90,0,4,0,20,0,9,0,7,0
+BlackLab,nl.inl.util,UnicodeReader,192,0,36,0,36,0,23,0,5,0
+BlackLab,nl.inl.util,Json,36,113,6,10,8,32,7,13,2,10
+BlackLab,nl.inl.blacklab.analysis,BLNonTokenizer,4,5,0,0,2,3,1,2,1,2
+BlackLab,nl.inl.blacklab.analysis,BLDutchTokenizer,4,41,0,20,2,9,1,12,1,2
+BlackLab,nl.inl.blacklab.analysis,BLDutchAnalyzer,0,38,2,2,0,10,2,2,0,2
+BlackLab,nl.inl.blacklab.analysis,BLNonTokenizingAnalyzer,0,25,0,0,0,6,0,2,0,2
+BlackLab,nl.inl.blacklab.analysis,BLDutchTokenFilter,0,59,0,4,0,14,0,6,0,4
+BlackLab,nl.inl.blacklab.analysis,BLWhitespaceAnalyzer,32,3,4,0,9,1,3,1,1,1
+BlackLab,nl.inl.blacklab.analysis,BLStandardAnalyzer,196,19,26,0,37,6,16,2,3,2
+BlackLab,nl.inl.blacklab.search.grouping,HitGroups.new Iterator() {...},22,0,0,0,4,0,4,0,4,0
+BlackLab,nl.inl.blacklab.search.grouping,HitPropertyHitText,226,152,27,5,43,27,22,7,7,6
+BlackLab,nl.inl.blacklab.search.grouping,HitPropertyContextWords.new Object() {...},4,29,0,0,0,1,0,1,0,1
+BlackLab,nl.inl.blacklab.search.grouping,HitPropValueDecade,37,41,4,2,8,8,4,3,1,3
+BlackLab,nl.inl.blacklab.search.grouping,ComparatorGroupProperty,37,0,6,0,6,0,5,0,2,0
+BlackLab,nl.inl.blacklab.search.grouping,HitPropValueContextWord,48,92,8,2,5,15,9,3,4,3
+BlackLab,nl.inl.blacklab.search.grouping,HitGroups,15,13,0,0,4,4,2,2,2,2
+BlackLab,nl.inl.blacklab.search.grouping,HitPropertyDocumentStoredField,186,0,18,0,36,0,17,0,8,0
+BlackLab,nl.inl.blacklab.search.grouping,HitPropertyMultiple,373,0,48,0,77,0,37,0,13,0
+BlackLab,nl.inl.blacklab.search.grouping,GroupProperty,73,0,8,0,21,0,14,0,10,0
+BlackLab,nl.inl.blacklab.search.grouping,HitGroup,29,26,0,0,5,8,2,4,2,4
+BlackLab,nl.inl.blacklab.search.grouping,ResultsGrouper,36,156,0,10,8,35,5,10,5,5
+BlackLab,nl.inl.blacklab.search.grouping,HitPropertyLeftContext,397,0,36,0,71,0,31,0,13,0
+BlackLab,nl.inl.blacklab.search.grouping,HitPropertyDocumentId,39,30,2,0,5,6,4,4,3,4
+BlackLab,nl.inl.blacklab.search.grouping,PropValSerializeUtil,3,151,0,12,2,26,1,15,1,9
+BlackLab,nl.inl.blacklab.search.grouping,GroupPropertyIdentity,32,0,2,0,6,0,5,0,4,0
+BlackLab,nl.inl.blacklab.search.grouping,HitPropValueContextWords,163,34,14,0,25,8,11,3,4,3
+BlackLab,nl.inl.blacklab.search.grouping,HitPropValueMultiple,121,68,16,4,26,14,13,5,5,3
+BlackLab,nl.inl.blacklab.search.grouping,HitPropValue,23,80,5,7,4,15,5,7,0,4
+BlackLab,nl.inl.blacklab.search.grouping,GroupsAbstract,3,11,0,0,1,4,1,2,1,2
+BlackLab,nl.inl.blacklab.search.grouping,HitPropertyContextWords,147,476,26,48,28,98,23,26,3,7
+BlackLab,nl.inl.blacklab.search.grouping,HitPropertyDocumentDecade,168,33,16,0,41,5,13,2,5,2
+BlackLab,nl.inl.blacklab.search.grouping,GroupPropertySize,46,0,4,0,7,0,7,0,5,0
+BlackLab,nl.inl.blacklab.search.grouping,HitPropertyWordLeft,351,0,30,0,56,0,28,0,13,0
+BlackLab,nl.inl.blacklab.search.grouping,HitProperty,127,132,18,7,36,27,21,7,5,6
+BlackLab,nl.inl.blacklab.search.grouping,HitPropValueContext,0,21,0,0,0,5,0,1,0,1
+BlackLab,nl.inl.blacklab.search.grouping,HitPropertyHitPosition,89,0,6,0,13,0,10,0,7,0
+BlackLab,nl.inl.blacklab.search.grouping,HitPropValueInt,63,20,1,1,10,5,7,3,6,3
+BlackLab,nl.inl.blacklab.search.grouping,HitPropertyRightContext,372,0,34,0,66,0,30,0,13,0
+BlackLab,nl.inl.blacklab.search.grouping,HitPropertyContextWords.ContextPart,27,88,4,10,8,10,4,7,1,3
+BlackLab,nl.inl.blacklab.search.grouping,HitPropertyWordRight,349,0,30,0,55,0,28,0,13,0
+BlackLab,nl.inl.blacklab.search.grouping,HitPropValueString,33,26,1,1,5,5,6,3,5,3
+BlackLab,nl.inl.blacklab.search.grouping,HitPropertyContextWords.ContextStart,5,63,0,0,0,9,1,4,1,4
+BlackLab,nl.inl.blacklab.search.grouping,Group,0,9,0,0,0,4,0,2,0,2
+BlackLab,nl.inl.blacklab.queryParser.contextql,ContextualQueryLanguageParser.LookaheadSuccess,3,0,0,0,1,0,1,0,1,0
+BlackLab,nl.inl.blacklab.queryParser.contextql,ContextualQueryLanguageParser,2332,0,354,0,462,0,266,0,80,0
+BlackLab,nl.inl.blacklab.queryParser.contextql,ContextualQueryLanguageParserConstants,92,0,0,0,1,0,1,0,1,0
+BlackLab,nl.inl.blacklab.queryParser.contextql,ContextualQueryLanguageParser.JJCalls,3,0,0,0,1,0,1,0,1,0
+BlackLab,nl.inl.blacklab.queryParser.contextql,JavaCharStream,1336,0,105,0,260,0,102,0,41,0
+BlackLab,nl.inl.blacklab.queryParser.contextql,ContextQlParseUtils,297,0,58,0,59,0,33,0,4,0
+BlackLab,nl.inl.blacklab.queryParser.contextql,ParseException,360,0,33,0,65,0,26,0,6,0
+BlackLab,nl.inl.blacklab.queryParser.contextql,Token,34,0,0,0,12,0,7,0,7,0
+BlackLab,nl.inl.blacklab.queryParser.contextql,ContextualQueryLanguageParserTokenManager,1614,0,241,0,339,0,168,0,21,0
+BlackLab,nl.inl.blacklab.queryParser.contextql,TokenMgrError,175,0,17,0,37,0,18,0,6,0
+BlackLab,nl.inl.blacklab.queryParser.corpusql,ParseException,360,0,33,0,65,0,26,0,6,0
+BlackLab,nl.inl.blacklab.queryParser.corpusql,MalformedTagException,8,0,0,0,4,0,2,0,2,0
+BlackLab,nl.inl.blacklab.queryParser.corpusql,CorpusQueryLanguageParserTokenManager,902,1268,177,138,198,250,139,87,10,17
+BlackLab,nl.inl.blacklab.queryParser.corpusql,TokenMgrError,175,0,17,0,37,0,18,0,6,0
+BlackLab,nl.inl.blacklab.queryParser.corpusql,SingleQuotesException,4,0,0,0,2,0,1,0,1,0
+BlackLab,nl.inl.blacklab.queryParser.corpusql,CorpusQueryLanguageParser.JJCalls,0,3,0,0,0,1,0,1,0,1
+BlackLab,nl.inl.blacklab.queryParser.corpusql,CorpusQueryLanguageParserConstants,148,0,0,0,1,0,1,0,1,0
+BlackLab,nl.inl.blacklab.queryParser.corpusql,CorpusQueryLanguageParser,1683,2613,317,345,315,510,264,191,27,86
+BlackLab,nl.inl.blacklab.queryParser.corpusql,CorpusQueryLanguageParser.LookaheadSuccess,0,3,0,0,0,1,0,1,0,1
+BlackLab,nl.inl.blacklab.queryParser.corpusql,TestParser,61,0,2,0,18,0,3,0,2,0
+BlackLab,nl.inl.blacklab.queryParser.corpusql,JavaCharStream,994,342,83,22,188,72,82,20,28,13
+BlackLab,nl.inl.blacklab.queryParser.corpusql,Token,11,23,0,0,4,8,3,4,3,4
+BlackLab,nl.inl.blacklab.search.indexstructure,AltDesc,6,18,0,2,2,5,2,3,2,2
+BlackLab,nl.inl.blacklab.search.indexstructure,FieldType,51,58,14,3,4,6,14,3,3,3
+BlackLab,nl.inl.blacklab.search.indexstructure,IndexStructure,1582,1637,218,124,305,312,171,58,26,29
+BlackLab,nl.inl.blacklab.search.indexstructure,BaseFieldDesc,3,39,1,1,1,15,1,7,0,7
+BlackLab,nl.inl.blacklab.search.indexstructure,IndexStructure.MetadataGroup,36,0,0,0,14,0,7,0,7,0
+BlackLab,nl.inl.blacklab.search.indexstructure,ComplexFieldDesc,217,289,28,32,27,72,29,25,7,16
+BlackLab,nl.inl.blacklab.search.indexstructure,PropertyDesc,126,165,29,16,21,49,22,21,3,16
+BlackLab,nl.inl.blacklab.search.indexstructure,MetadataFieldDesc.UnknownCondition,4,62,0,0,1,6,1,5,1,5
+BlackLab,nl.inl.blacklab.search.indexstructure,PropertyDesc.new Object() {...},33,0,0,0,1,0,1,0,1,0
+BlackLab,nl.inl.blacklab.search.indexstructure,MetadataFieldDesc.ValueListComplete,9,39,0,0,0,4,2,2,2,2
+BlackLab,nl.inl.blacklab.search.indexstructure,ComplexFieldDesc.new Comparator() {...},6,43,4,6,2,10,4,3,0,2
+BlackLab,nl.inl.blacklab.search.indexstructure,ComplexFieldDesc.new Object() {...},3,23,0,0,0,1,0,1,0,1
+BlackLab,nl.inl.blacklab.search.indexstructure,MetadataFieldDesc,181,54,16,0,52,18,25,5,17,5
+BlackLab,nl.inl.blacklab.search.indexstructure,AltDesc.AltType,9,29,0,0,0,2,2,2,2,2
+BlackLab,nl.inl.blacklab.tools.debug,ReconstructTermVector,132,0,12,0,38,0,9,0,3,0
+BlackLab,nl.inl.blacklab.tools.debug,RunTermQuery,630,0,50,0,139,0,33,0,8,0
+BlackLab,nl.inl.blacklab.tools.debug,RunTermQuery.new SimpleCollector() {...},46,0,0,0,11,0,5,0,5,0
+BlackLab,nl.inl.blacklab.tools,QueryTool.Parser,8,0,0,0,2,0,2,0,2,0
+BlackLab,nl.inl.blacklab.tools,QueryTool.new Object() {...},26,0,0,0,1,0,1,0,1,0
+BlackLab,nl.inl.blacklab.tools,QueryTool,4000,0,498,0,774,0,296,0,45,0
+BlackLab,nl.inl.blacklab.tools,QueryTool.new Object() {...},21,0,0,0,8,0,1,0,1,0
+BlackLab,nl.inl.blacklab.tools,QueryTool.ParserCorpusQl,81,0,0,0,19,0,5,0,5,0
+BlackLab,nl.inl.blacklab.tools,QueryTool.ParserContextQl,81,0,0,0,21,0,6,0,6,0
+BlackLab,nl.inl.blacklab.tools,IndexTool,1021,0,164,0,220,0,95,0,7,0
+BlackLab,nl.inl.blacklab.tools,SketchToXmlConverter,725,0,78,0,140,0,50,0,11,0
+BlackLab,nl.inl.blacklab.tools,QueryTool.ParseException,28,0,0,0,12,0,4,0,4,0
+BlackLab,nl.inl.blacklab.tools,QueryTool.ShowSetting,58,0,0,0,2,0,4,0,4,0

@@ -1,0 +1,801 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DocIndexerXPath.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.index.config</a> &gt; <span class="el_source">DocIndexerXPath.java</span></div><h1>DocIndexerXPath.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.index.config;
+
+import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
+
+import com.ximpleware.AutoPilot;
+import com.ximpleware.NavException;
+import com.ximpleware.VTDException;
+import com.ximpleware.VTDGen;
+import com.ximpleware.VTDNav;
+import com.ximpleware.XPathEvalException;
+import com.ximpleware.XPathParseException;
+
+import nl.inl.blacklab.index.Indexer;
+import nl.inl.blacklab.index.config.InlineObject.InlineObjectType;
+import nl.inl.util.ExUtil;
+import nl.inl.util.StringUtil;
+import nl.inl.util.XmlUtil;
+
+/**
+ * An indexer configured using full XPath 1.0 expressions.
+ */
+public class DocIndexerXPath extends DocIndexerConfig {
+    
+<span class="nc" id="L43">    private static enum FragmentPosition {</span>
+<span class="nc" id="L44">        BEFORE_OPEN_TAG,</span>
+<span class="nc" id="L45">        AFTER_OPEN_TAG,</span>
+<span class="nc" id="L46">        BEFORE_CLOSE_TAG,</span>
+<span class="nc" id="L47">        AFTER_CLOSE_TAG</span>
+    }
+
+    /** Our input document */
+    private byte[] inputDocument;
+
+    /** What was the byte offset of the last char position we determined? */
+    private int lastCharPositionByteOffset;
+
+    /** What was the last character position we determined? */
+    private int lastCharPosition;
+
+    /** Byte position at which the document started */
+    private int documentByteOffset;
+
+    /** Length of the document in bytes */
+    private int documentLengthBytes;
+
+    /** VTD parser (generator?) */
+    private VTDGen vg;
+
+    /** VTD navigator */
+    private VTDNav nav;
+
+    /** Where the current position is relative to the current fragment */
+<span class="nc" id="L72">    private FragmentPosition fragPos = FragmentPosition.BEFORE_OPEN_TAG;</span>
+
+    /** Fragment positions in ancestors */
+<span class="nc" id="L75">    private List&lt;FragmentPosition&gt; fragPosStack = new ArrayList&lt;&gt;();</span>
+
+    /** The config for the annotated (complex) field we're currently processing. */
+    private ConfigAnnotatedField currentAnnotatedField;
+
+<span class="nc" id="L80">    public DocIndexerXPath() {</span>
+<span class="nc" id="L81">    }</span>
+
+    @Override
+    public void setDocument(File file, Charset defaultCharset) throws FileNotFoundException {
+        try {
+<span class="nc" id="L86">            setDocument(FileUtils.readFileToByteArray(file), defaultCharset);</span>
+<span class="nc" id="L87">        } catch (IOException e) {</span>
+<span class="nc" id="L88">            throw new RuntimeException(e);</span>
+<span class="nc" id="L89">        }</span>
+<span class="nc" id="L90">    }</span>
+
+    @Override
+    public void setDocument(byte[] contents, Charset defaultCharset) {
+<span class="nc bnc" id="L94" title="All 2 branches missed.">        if (config.shouldResolveNamedEntityReferences()) {</span>
+            // Document contains old DTD-style named entity declarations. Resolve them because VTD-XML can't deal with these.
+<span class="nc" id="L96">            String doc = XmlUtil.readXmlAndResolveReferences(new BufferedReader(new InputStreamReader(new ByteArrayInputStream(contents), defaultCharset)));</span>
+<span class="nc" id="L97">            contents = doc.getBytes(defaultCharset);</span>
+        }
+<span class="nc" id="L99">        this.inputDocument = contents;</span>
+<span class="nc" id="L100">    }</span>
+
+    @Override
+    public void setDocument(InputStream is, Charset defaultCharset) {
+        try {
+<span class="nc" id="L105">            setDocument(IOUtils.toByteArray(is), defaultCharset);</span>
+<span class="nc" id="L106">            is.close();</span>
+<span class="nc" id="L107">        } catch (IOException e) {</span>
+<span class="nc" id="L108">            throw new RuntimeException(e);</span>
+<span class="nc" id="L109">        }</span>
+<span class="nc" id="L110">    }</span>
+
+    @Override
+    public void close() throws Exception {
+        // NOP, we already closed our input after we read it
+<span class="nc" id="L115">    }</span>
+
+    @Override
+    public void setDocument(Reader reader) {
+        try {
+<span class="nc" id="L120">            setDocument(IOUtils.toString(reader).getBytes(Indexer.DEFAULT_INPUT_ENCODING), Indexer.DEFAULT_INPUT_ENCODING);</span>
+<span class="nc" id="L121">            reader.close();</span>
+<span class="nc" id="L122">        } catch (IOException e) {</span>
+<span class="nc" id="L123">            throw new RuntimeException(e);</span>
+<span class="nc" id="L124">        }</span>
+<span class="nc" id="L125">    }</span>
+
+    /** Map from XPath expression to compiled XPath. */
+<span class="nc" id="L128">    private Map&lt;String, AutoPilot&gt; compiledXPaths = new HashMap&lt;&gt;();</span>
+
+    /** AutoPilots that are currently being used. We need to keep track of this
+        to be able to re-add them to compiledXpath with the correct XPath expression later. */
+<span class="nc" id="L132">    private Map&lt;AutoPilot, String&gt; autoPilotsInUse = new HashMap&lt;&gt;();</span>
+
+    /**
+     * Create AutoPilot and declare namespaces on it.
+     * @param xpathExpr xpath expression for the AutoPilot
+     * @return the AutoPilot
+     * @throws XPathParseException
+     */
+    private AutoPilot acquireAutoPilot(String xpathExpr) throws XPathParseException {
+<span class="nc" id="L141">        AutoPilot ap = compiledXPaths.remove(xpathExpr);</span>
+<span class="nc bnc" id="L142" title="All 2 branches missed.">        if (ap == null) {</span>
+<span class="nc" id="L143">            ap = new AutoPilot(nav);</span>
+<span class="nc bnc" id="L144" title="All 2 branches missed.">            if (config.isNamespaceAware()) {</span>
+<span class="nc" id="L145">                ap.declareXPathNameSpace(&quot;xml&quot;, &quot;http://www.w3.org/XML/1998/namespace&quot;); // builtin</span>
+<span class="nc bnc" id="L146" title="All 2 branches missed.">                for (Entry&lt;String, String&gt; e: config.getNamespaces().entrySet()) {</span>
+<span class="nc" id="L147">                    ap.declareXPathNameSpace(e.getKey(), e.getValue());</span>
+<span class="nc" id="L148">                }</span>
+            }
+            try {
+<span class="nc" id="L151">                ap.selectXPath(xpathExpr);</span>
+<span class="nc" id="L152">            } catch (XPathParseException e) {</span>
+<span class="nc" id="L153">                throw new RuntimeException(&quot;Error in XPath expression &quot; + xpathExpr + &quot; : &quot; + e.getMessage(), e);</span>
+<span class="nc" id="L154">            }</span>
+        } else {
+<span class="nc" id="L156">            ap.resetXPath();</span>
+        }
+<span class="nc" id="L158">        autoPilotsInUse.put(ap, xpathExpr);</span>
+<span class="nc" id="L159">        return ap;</span>
+    }
+
+    private void releaseAutoPilot(AutoPilot ap) {
+<span class="nc" id="L163">        String xpathExpr = autoPilotsInUse.remove(ap);</span>
+<span class="nc" id="L164">        compiledXPaths.put(xpathExpr, ap);</span>
+<span class="nc" id="L165">    }</span>
+
+    @Override
+    public void index() throws Exception {
+<span class="nc" id="L169">        super.index();</span>
+
+        // Parse use VTD-XML
+<span class="nc" id="L172">        vg = new VTDGen();</span>
+<span class="nc" id="L173">        vg.setDoc(inputDocument);</span>
+        // Whitespace in between elements is normally ignored,
+        // but we explicitly allow whitespace in between elements to be collected here.
+        // This allows punctuation xpath to match this whitespace, in case punctuation/whitespace in the document isn't contained in a dedicated element or attribute.
+        // This doesn't mean that this whitespace is always used, it just enables the punctuation xpath to find this whitespace if it explicitly matches it.
+<span class="nc" id="L178">        vg.enableIgnoredWhiteSpace(true);</span>
+<span class="nc" id="L179">        vg.parse(config.isNamespaceAware());</span>
+
+<span class="nc" id="L181">        nav = vg.getNav();</span>
+
+        // Find all documents
+<span class="nc" id="L184">        AutoPilot documents = acquireAutoPilot(config.getDocumentPath());</span>
+<span class="nc bnc" id="L185" title="All 2 branches missed.">        while(documents.evalXPath() != -1) {</span>
+<span class="nc" id="L186">            indexDocument();</span>
+        }
+<span class="nc" id="L188">        releaseAutoPilot(documents);</span>
+
+<span class="nc" id="L190">    }</span>
+
+    /**
+     * Index document from the current node.
+     *
+     * @throws VTDException on XPath parse (or other) error
+     */
+    protected void indexDocument() throws VTDException {
+
+<span class="nc" id="L199">        startDocument();</span>
+
+        // For each configured annotated field...
+<span class="nc bnc" id="L202" title="All 2 branches missed.">        for (ConfigAnnotatedField annotatedField: config.getAnnotatedFields().values()) {</span>
+<span class="nc" id="L203">        	processAnnotatedField(annotatedField);</span>
+<span class="nc" id="L204">        }</span>
+
+        // For each configured metadata block..
+<span class="nc bnc" id="L207" title="All 2 branches missed.">        for (ConfigMetadataBlock b: config.getMetadataBlocks()) {</span>
+<span class="nc" id="L208">            processMetadataBlock(b);</span>
+<span class="nc" id="L209">        }</span>
+
+        // For each linked document...
+<span class="nc bnc" id="L212" title="All 2 branches missed.">        for (ConfigLinkedDocument ld: config.getLinkedDocuments().values()) {</span>
+<span class="nc" id="L213">            processLinkedDocument(ld);</span>
+<span class="nc" id="L214">        }</span>
+
+<span class="nc" id="L216">        endDocument();</span>
+<span class="nc" id="L217">    }</span>
+
+    protected void processAnnotatedField(ConfigAnnotatedField annotatedField)
+            throws XPathParseException, XPathEvalException, NavException, VTDException {
+<span class="nc" id="L221">        Map&lt;String, Integer&gt; tokenPositionsMap = new HashMap&lt;&gt;();</span>
+
+        // Determine some useful stuff about the field we're processing
+        // and store in instance variables so our methods can access them
+<span class="nc" id="L225">        setCurrentAnnotatedField(annotatedField);</span>
+
+        // Precompile XPaths for words, evalToString, inline tags, punct and (sub)annotations
+<span class="nc" id="L228">        AutoPilot words = acquireAutoPilot(annotatedField.getWordsPath());</span>
+<span class="nc" id="L229">        AutoPilot apEvalToString = acquireAutoPilot(&quot;.&quot;);</span>
+<span class="nc" id="L230">        List&lt;AutoPilot&gt; apsInlineTag = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L231" title="All 2 branches missed.">        for (ConfigInlineTag inlineTag: annotatedField.getInlineTags()) {</span>
+<span class="nc" id="L232">            AutoPilot apInlineTag = acquireAutoPilot(inlineTag.getPath());</span>
+<span class="nc" id="L233">            apsInlineTag.add(apInlineTag);</span>
+<span class="nc" id="L234">        }</span>
+<span class="nc" id="L235">        AutoPilot apPunct = null;</span>
+<span class="nc bnc" id="L236" title="All 2 branches missed.">        if (annotatedField.getPunctPath() != null)</span>
+<span class="nc" id="L237">            apPunct = acquireAutoPilot(annotatedField.getPunctPath());</span>
+<span class="nc" id="L238">        String tokenPositionIdPath = annotatedField.getTokenPositionIdPath();</span>
+<span class="nc" id="L239">        AutoPilot apTokenPositionId = null;</span>
+<span class="nc bnc" id="L240" title="All 2 branches missed.">        if (tokenPositionIdPath != null) {</span>
+<span class="nc" id="L241">            apTokenPositionId = acquireAutoPilot(tokenPositionIdPath);</span>
+        }
+
+        // For each body element...
+        // (there's usually only one, but there's no reason to limit it)
+<span class="nc" id="L246">        navpush();</span>
+<span class="nc" id="L247">        AutoPilot bodies = acquireAutoPilot(annotatedField.getContainerPath());</span>
+<span class="nc bnc" id="L248" title="All 2 branches missed.">        while (bodies.evalXPath() != -1) {</span>
+
+            // First we find all inline elements (stuff like s, p, b, etc.) and store
+            // the locations of their start and end tags in a sorted list.
+            // This way, we can keep track of between which words these tags occur.
+            // For end tags, we will update the payload of the start tag when we encounter it,
+            // just like we do in our SAX parsers.
+<span class="nc" id="L255">            List&lt;InlineObject&gt; tagsAndPunct = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L256" title="All 2 branches missed.">            for (AutoPilot apInlineTag: apsInlineTag) {</span>
+<span class="nc" id="L257">                navpush();</span>
+<span class="nc" id="L258">                apInlineTag.resetXPath();</span>
+<span class="nc bnc" id="L259" title="All 2 branches missed.">                while (apInlineTag.evalXPath() != -1) {</span>
+<span class="nc" id="L260">                    collectInlineTag(tagsAndPunct);</span>
+                }
+<span class="nc" id="L262">                navpop();</span>
+<span class="nc" id="L263">            }</span>
+<span class="nc" id="L264">            setAddDefaultPunctuation(true);</span>
+<span class="nc bnc" id="L265" title="All 2 branches missed.">            if (apPunct != null) {</span>
+                // We have punctuation occurring between word tags (as opposed to
+                // punctuation that is tagged as a word itself). Collect this punctuation.
+<span class="nc" id="L268">                setAddDefaultPunctuation(false);</span>
+<span class="nc" id="L269">            	navpush();</span>
+<span class="nc" id="L270">            	apPunct.resetXPath();</span>
+<span class="nc bnc" id="L271" title="All 2 branches missed.">                while (apPunct.evalXPath() != -1) {</span>
+<span class="nc" id="L272">                    apEvalToString.resetXPath();</span>
+<span class="nc" id="L273">                    String punct = apEvalToString.evalXPathToString();</span>
+<span class="nc" id="L274">                    collectPunct(tagsAndPunct, punct);</span>
+<span class="nc" id="L275">                }</span>
+<span class="nc" id="L276">                navpop();</span>
+            }
+<span class="nc" id="L278">            Collections.sort(tagsAndPunct);</span>
+<span class="nc" id="L279">            Iterator&lt;InlineObject&gt; inlineObjectsIt = tagsAndPunct.iterator();</span>
+<span class="nc bnc" id="L280" title="All 2 branches missed.">            InlineObject nextInlineObject = inlineObjectsIt.hasNext() ? inlineObjectsIt.next() : null;</span>
+
+            // Now, find all words, keeping track of what inline objects occur in between.
+<span class="nc" id="L283">            navpush();</span>
+<span class="nc" id="L284">            words.resetXPath();</span>
+<span class="nc bnc" id="L285" title="All 2 branches missed.">            while (words.evalXPath() != -1) {</span>
+
+                // Capture tokenPositionId for this token position?
+<span class="nc bnc" id="L288" title="All 2 branches missed.">                if (apTokenPositionId != null) {</span>
+<span class="nc" id="L289">                    apTokenPositionId.resetXPath();</span>
+<span class="nc" id="L290">                    String tokenPositionId = apTokenPositionId.evalXPathToString();</span>
+<span class="nc" id="L291">                    tokenPositionsMap.put(tokenPositionId, getCurrentTokenPosition());</span>
+                }
+
+                // Does an inline object occur before this word?
+<span class="nc" id="L295">                long wordFragment = nav.getContentFragment();</span>
+<span class="nc" id="L296">                int wordOffset = (int)wordFragment;</span>
+<span class="nc bnc" id="L297" title="All 4 branches missed.">                while (nextInlineObject != null &amp;&amp; wordOffset &gt;= nextInlineObject.getOffset()) {</span>
+                    // Yes. Handle it.
+<span class="nc bnc" id="L299" title="All 2 branches missed.">                	if (nextInlineObject.type() == InlineObjectType.PUNCTUATION)</span>
+<span class="nc" id="L300">                		punctuation(nextInlineObject.getText());</span>
+                	else
+<span class="nc bnc" id="L302" title="All 2 branches missed.">                		inlineTag(nextInlineObject.getText(), nextInlineObject.type() == InlineObjectType.OPEN_TAG, nextInlineObject.getAttributes());</span>
+<span class="nc bnc" id="L303" title="All 2 branches missed.">                    nextInlineObject = inlineObjectsIt.hasNext() ? inlineObjectsIt.next() : null;</span>
+                }
+
+<span class="nc" id="L306">                fragPos = FragmentPosition.BEFORE_OPEN_TAG;</span>
+<span class="nc" id="L307">                beginWord();</span>
+
+                // For each configured annotation...
+<span class="nc bnc" id="L310" title="All 2 branches missed.">                for (ConfigAnnotation annotation: annotatedField.getAnnotations().values()) {</span>
+<span class="nc" id="L311">                    processAnnotation(annotation, null);</span>
+<span class="nc" id="L312">                }</span>
+
+<span class="nc" id="L314">                fragPos = FragmentPosition.AFTER_CLOSE_TAG;</span>
+<span class="nc" id="L315">                endWord();</span>
+<span class="nc" id="L316">            }</span>
+<span class="nc" id="L317">            navpop();</span>
+
+            // Handle any inline objects after the last word
+<span class="nc bnc" id="L320" title="All 2 branches missed.">            while (nextInlineObject != null) {</span>
+<span class="nc bnc" id="L321" title="All 2 branches missed.">            	if (nextInlineObject.type() == InlineObjectType.PUNCTUATION)</span>
+<span class="nc" id="L322">            		punctuation(nextInlineObject.getText());</span>
+            	else
+<span class="nc bnc" id="L324" title="All 2 branches missed.">            		inlineTag(nextInlineObject.getText(), nextInlineObject.type() == InlineObjectType.OPEN_TAG, nextInlineObject.getAttributes());</span>
+<span class="nc bnc" id="L325" title="All 2 branches missed.">                nextInlineObject = inlineObjectsIt.hasNext() ? inlineObjectsIt.next() : null;</span>
+            }
+
+<span class="nc" id="L328">        }</span>
+<span class="nc" id="L329">        navpop();</span>
+
+        // For each configured standoff annotation...
+<span class="nc bnc" id="L332" title="All 2 branches missed.">        for (ConfigStandoffAnnotations standoff: annotatedField.getStandoffAnnotations()) {</span>
+            // For each instance of this standoff annotation..
+<span class="nc" id="L334">            navpush();</span>
+<span class="nc" id="L335">            AutoPilot apStandoff = acquireAutoPilot(standoff.getPath());</span>
+<span class="nc" id="L336">            AutoPilot apTokenPos = acquireAutoPilot(standoff.getRefTokenPositionIdPath());</span>
+<span class="nc bnc" id="L337" title="All 2 branches missed.">            while (apStandoff.evalXPath() != -1) {</span>
+
+                // Determine what token positions to index these values at
+<span class="nc" id="L340">                navpush();</span>
+<span class="nc" id="L341">                List&lt;Integer&gt; tokenPositions = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L342">                apTokenPos.resetXPath();</span>
+<span class="nc bnc" id="L343" title="All 2 branches missed.">                while (apTokenPos.evalXPath() != -1) {</span>
+<span class="nc" id="L344">                    apEvalToString.resetXPath();</span>
+<span class="nc" id="L345">                    String tokenPositionId = apEvalToString.evalXPathToString();</span>
+<span class="nc" id="L346">                    Integer integer = tokenPositionsMap.get(tokenPositionId);</span>
+<span class="nc bnc" id="L347" title="All 2 branches missed.">                    if (integer == null)</span>
+<span class="nc" id="L348">                        warn(&quot;Unresolved reference to token position: '&quot; + tokenPositionId + &quot;'&quot;);</span>
+                    else
+<span class="nc" id="L350">                        tokenPositions.add(integer);</span>
+<span class="nc" id="L351">                }</span>
+<span class="nc" id="L352">                navpop();</span>
+
+<span class="nc bnc" id="L354" title="All 2 branches missed.">                for (ConfigAnnotation annotation: standoff.getAnnotations().values()) {</span>
+<span class="nc" id="L355">                    processAnnotation(annotation, tokenPositions);</span>
+<span class="nc" id="L356">                }</span>
+<span class="nc" id="L357">            }</span>
+<span class="nc" id="L358">            releaseAutoPilot(apStandoff);</span>
+<span class="nc" id="L359">            releaseAutoPilot(apTokenPos);</span>
+<span class="nc" id="L360">            navpop();</span>
+<span class="nc" id="L361">        }</span>
+
+<span class="nc" id="L363">        releaseAutoPilot(words);</span>
+<span class="nc" id="L364">        releaseAutoPilot(apEvalToString);</span>
+<span class="nc bnc" id="L365" title="All 2 branches missed.">        for (AutoPilot ap: apsInlineTag) {</span>
+<span class="nc" id="L366">            releaseAutoPilot(ap);</span>
+<span class="nc" id="L367">    }</span>
+<span class="nc bnc" id="L368" title="All 2 branches missed.">        if (apPunct != null)</span>
+<span class="nc" id="L369">            releaseAutoPilot(apPunct);</span>
+<span class="nc bnc" id="L370" title="All 2 branches missed.">        if (apTokenPositionId != null)</span>
+<span class="nc" id="L371">            releaseAutoPilot(apTokenPositionId);</span>
+<span class="nc" id="L372">        releaseAutoPilot(bodies);</span>
+<span class="nc" id="L373">    }</span>
+
+    protected void navpush() {
+<span class="nc" id="L376">        nav.push();</span>
+<span class="nc" id="L377">        fragPosStack.add(fragPos);</span>
+<span class="nc" id="L378">        fragPos = FragmentPosition.BEFORE_OPEN_TAG;</span>
+<span class="nc" id="L379">    }</span>
+
+    protected void navpop() {
+<span class="nc" id="L382">        nav.pop();</span>
+<span class="nc" id="L383">        fragPos = fragPosStack.remove(fragPosStack.size() - 1);</span>
+<span class="nc" id="L384">    }</span>
+
+    protected void processMetadataBlock(ConfigMetadataBlock b) throws XPathParseException, XPathEvalException, NavException {
+        // For each instance of this metadata block...
+<span class="nc" id="L388">        navpush();</span>
+<span class="nc" id="L389">        AutoPilot apMetadataBlock = acquireAutoPilot(b.getContainerPath());</span>
+<span class="nc bnc" id="L390" title="All 2 branches missed.">        while (apMetadataBlock.evalXPath() != -1) {</span>
+
+            // For each configured metadata field...
+<span class="nc bnc" id="L393" title="All 2 branches missed.">            for (ConfigMetadataField f: b.getFields()) {</span>
+
+                // Metadata field configs without a valuePath are just for
+                // adding information about fields captured in forEach's,
+                // such as extra processing steps
+<span class="nc bnc" id="L398" title="All 4 branches missed.">                if (f.getValuePath() == null || f.getValuePath().isEmpty())</span>
+<span class="nc" id="L399">                    continue;</span>
+
+                // Capture whatever this configured metadata field points to
+<span class="nc" id="L402">                AutoPilot apMetadata = acquireAutoPilot(f.getValuePath());</span>
+<span class="nc bnc" id="L403" title="All 2 branches missed.">                if (f.isForEach()) {</span>
+                    // &quot;forEach&quot; metadata specification
+                    // (allows us to capture many metadata fields with 3 XPath expressions)
+<span class="nc" id="L406">                    navpush();</span>
+<span class="nc" id="L407">                    AutoPilot apMetaForEach = acquireAutoPilot(f.getForEachPath());</span>
+<span class="nc" id="L408">                    AutoPilot apFieldName = acquireAutoPilot(f.getName());</span>
+<span class="nc bnc" id="L409" title="All 2 branches missed.">                    while (apMetaForEach.evalXPath() != -1) {</span>
+                        // Find the fieldName and value for this forEach match
+<span class="nc" id="L411">                        apFieldName.resetXPath();</span>
+<span class="nc" id="L412">                        String fieldName = apFieldName.evalXPathToString();</span>
+<span class="nc" id="L413">                        apMetadata.resetXPath();</span>
+<span class="nc" id="L414">                        String metadataValue = apMetadata.evalXPathToString();</span>
+<span class="nc" id="L415">                        metadataValue = processString(metadataValue, f.getProcess());</span>
+<span class="nc" id="L416">                        ConfigMetadataField metadataField = b.getField(fieldName);</span>
+<span class="nc bnc" id="L417" title="All 2 branches missed.">                        if (metadataField != null) {</span>
+                            // Also execute process defined for named metadata field, if any
+<span class="nc" id="L419">                            metadataValue = processString(metadataValue, metadataField.getProcess());</span>
+                        }
+<span class="nc" id="L421">                        addMetadataField(fieldName, metadataValue);</span>
+<span class="nc" id="L422">                    }</span>
+<span class="nc" id="L423">                    releaseAutoPilot(apMetaForEach);</span>
+<span class="nc" id="L424">                    releaseAutoPilot(apFieldName);</span>
+<span class="nc" id="L425">                    navpop();</span>
+<span class="nc" id="L426">                } else {</span>
+                    // Regular metadata field; just the fieldName and an XPath expression for the value
+<span class="nc" id="L428">                    String metadataValue = apMetadata.evalXPathToString();</span>
+<span class="nc" id="L429">                    metadataValue = processString(metadataValue, f.getProcess());</span>
+<span class="nc" id="L430">                    addMetadataField(f.getName(), metadataValue);</span>
+                }
+<span class="nc" id="L432">                releaseAutoPilot(apMetadata);</span>
+<span class="nc" id="L433">            }</span>
+
+        }
+<span class="nc" id="L436">        releaseAutoPilot(apMetadataBlock);</span>
+<span class="nc" id="L437">        navpop();</span>
+<span class="nc" id="L438">    }</span>
+
+    protected void processLinkedDocument(ConfigLinkedDocument ld) throws XPathParseException {
+        // Resolve linkPaths to get the information needed to fetch the document
+<span class="nc" id="L442">        List&lt;String&gt; results = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L443" title="All 2 branches missed.">        for (ConfigLinkValue linkValue: ld.getLinkValues()) {</span>
+<span class="nc" id="L444">            String result = &quot;&quot;;</span>
+<span class="nc" id="L445">            String valuePath = linkValue.getValuePath();</span>
+<span class="nc" id="L446">            String valueField = linkValue.getValueField();</span>
+<span class="nc bnc" id="L447" title="All 2 branches missed.">            if (valuePath != null) {</span>
+                // Resolve value using XPath
+<span class="nc" id="L449">                AutoPilot apLinkPath = acquireAutoPilot(valuePath);</span>
+<span class="nc" id="L450">                result = apLinkPath.evalXPathToString();</span>
+<span class="nc bnc" id="L451" title="All 4 branches missed.">                if (result == null || result.isEmpty()) {</span>
+<span class="nc bnc" id="L452" title="All 4 branches missed.">                    switch(ld.getIfLinkPathMissing()) {</span>
+                    case IGNORE:
+<span class="nc" id="L454">                        break;</span>
+                    case WARN:
+<span class="nc" id="L456">                        indexer.getListener().warning(&quot;Link path &quot; + valuePath + &quot; not found in document &quot; + documentName);</span>
+<span class="nc" id="L457">                        break;</span>
+                    case FAIL:
+<span class="nc" id="L459">                        throw new RuntimeException(&quot;Link path &quot; + valuePath + &quot; not found in document &quot; + documentName);</span>
+                    }
+                }
+<span class="nc" id="L462">                releaseAutoPilot(apLinkPath);</span>
+<span class="nc bnc" id="L463" title="All 2 branches missed.">            } else if (valueField != null) {</span>
+                // Fetch value from Lucene doc
+<span class="nc" id="L465">                result = currentLuceneDoc.get(valueField);</span>
+            }
+<span class="nc" id="L467">            result = processString(result, linkValue.getProcess());</span>
+<span class="nc" id="L468">            results.add(result);</span>
+<span class="nc" id="L469">        }</span>
+
+        // Substitute link path results in inputFile, pathInsideArchive and documentPath
+<span class="nc" id="L472">        String inputFile = replaceDollarRefs(ld.getInputFile(), results);</span>
+<span class="nc" id="L473">        String pathInsideArchive = replaceDollarRefs(ld.getPathInsideArchive(), results);</span>
+<span class="nc" id="L474">        String documentPath = replaceDollarRefs(ld.getDocumentPath(), results);</span>
+
+        try {
+            // Fetch and index the linked document
+<span class="nc bnc" id="L478" title="All 2 branches missed.">            indexLinkedDocument(inputFile, pathInsideArchive, documentPath, ld.getInputFormatIdentifier(), ld.shouldStore() ? ld.getName() : null);</span>
+<span class="nc" id="L479">        } catch (Exception e) {</span>
+<span class="nc" id="L480">            String moreInfo = &quot;(inputFile = &quot; + inputFile;</span>
+<span class="nc bnc" id="L481" title="All 2 branches missed.">            if (pathInsideArchive != null)</span>
+<span class="nc" id="L482">                moreInfo += &quot;, pathInsideArchive = &quot; + pathInsideArchive;</span>
+<span class="nc bnc" id="L483" title="All 2 branches missed.">            if (documentPath != null)</span>
+<span class="nc" id="L484">                moreInfo += &quot;, documentPath = &quot; + documentPath;</span>
+<span class="nc" id="L485">            moreInfo += &quot;)&quot;;</span>
+<span class="nc bnc" id="L486" title="All 3 branches missed.">            switch(ld.getIfLinkPathMissing()) {</span>
+            case IGNORE:
+            case WARN:
+<span class="nc" id="L489">                indexer.getListener().warning(&quot;Could not find or parse linked document for &quot; + documentName + moreInfo + &quot;: &quot; + e.getMessage());</span>
+<span class="nc" id="L490">                break;</span>
+            case FAIL:
+<span class="nc" id="L492">                throw new RuntimeException(&quot;Could not find or parse linked document for &quot; + documentName + moreInfo, e);</span>
+            }
+<span class="nc" id="L494">        }</span>
+<span class="nc" id="L495">    }</span>
+
+    /**
+     * Process an annotation at the current position.
+     *
+     * @param annotation annotation to process
+     * @param apAnnot autopilot object to use (so we don't keep creating new ones)
+     * @param indexAtPositions if null: index at the current position; otherwise, index at all these positions
+     * @throws VTDException on XPath error
+     */
+    protected void processAnnotation(ConfigAnnotation annotation, List&lt;Integer&gt; indexAtPositions) throws VTDException {
+<span class="nc" id="L506">        String basePath = annotation.getBasePath();</span>
+<span class="nc bnc" id="L507" title="All 2 branches missed.">        if (basePath != null) {</span>
+            // Basepath given. Navigate to the (first) matching element and evaluate the other XPaths from there.
+<span class="nc" id="L509">            navpush();</span>
+<span class="nc" id="L510">            AutoPilot apBase = acquireAutoPilot(basePath);</span>
+<span class="nc" id="L511">            apBase.evalXPath();</span>
+<span class="nc" id="L512">            releaseAutoPilot(apBase);</span>
+        }
+
+<span class="nc" id="L515">        String valuePath = annotation.getValuePath();</span>
+
+        // See if we want to capture any values and substitute them into the XPath
+<span class="nc" id="L518">        int i = 1;</span>
+<span class="nc bnc" id="L519" title="All 2 branches missed.">        for (String captureValuePath: annotation.getCaptureValuePaths()) {</span>
+<span class="nc" id="L520">            AutoPilot apCaptureValuePath = acquireAutoPilot(captureValuePath);</span>
+<span class="nc" id="L521">            String value = apCaptureValuePath.evalXPathToString();</span>
+<span class="nc" id="L522">            releaseAutoPilot(apCaptureValuePath);</span>
+<span class="nc" id="L523">            valuePath = valuePath.replace(&quot;$&quot; + i, value);</span>
+<span class="nc" id="L524">            i++;</span>
+<span class="nc" id="L525">        }</span>
+
+        // Find matches for this annotation.
+<span class="nc" id="L528">        findAnnotationMatches(annotation, null, valuePath, indexAtPositions);</span>
+
+        // For each configured subannotation...
+<span class="nc bnc" id="L531" title="All 2 branches missed.">        for (ConfigAnnotation subAnnot: annotation.getSubAnnotations()) {</span>
+            // Subannotation configs without a valuePath are just for
+            // adding information about subannotations captured in forEach's,
+            // such as extra processing steps
+<span class="nc bnc" id="L535" title="All 4 branches missed.">            if (subAnnot.getValuePath() == null || subAnnot.getValuePath().isEmpty())</span>
+<span class="nc" id="L536">                continue;</span>
+
+            // Capture this subannotation value
+<span class="nc" id="L539">            AutoPilot apValue = acquireAutoPilot(subAnnot.getValuePath());</span>
+<span class="nc bnc" id="L540" title="All 2 branches missed.">            if (subAnnot.isForEach()) {</span>
+                // &quot;forEach&quot; subannotation specification
+                // (allows us to capture multiple subannotations with 3 XPath expressions)
+<span class="nc" id="L543">                navpush();</span>
+<span class="nc" id="L544">                AutoPilot apForEach = acquireAutoPilot(subAnnot.getForEachPath());</span>
+<span class="nc" id="L545">                AutoPilot apName = acquireAutoPilot(subAnnot.getName());</span>
+<span class="nc bnc" id="L546" title="All 2 branches missed.">                while (apForEach.evalXPath() != -1) {</span>
+                    // Find the name and value for this forEach match
+<span class="nc" id="L548">                    apName.resetXPath();</span>
+<span class="nc" id="L549">                    String name = apName.evalXPathToString();</span>
+<span class="nc" id="L550">                    apValue.resetXPath();</span>
+<span class="nc" id="L551">                    String value = apValue.evalXPathToString();</span>
+<span class="nc" id="L552">                    value = processString(value, subAnnot.getProcess());</span>
+<span class="nc" id="L553">                    ConfigAnnotation actualSubAnnot = annotation.getSubAnnotation(name);</span>
+<span class="nc bnc" id="L554" title="All 2 branches missed.">                    if (actualSubAnnot != null) {</span>
+                        // Also apply process defined in named subannotation, if any
+<span class="nc" id="L556">                        value = processString(value, actualSubAnnot.getProcess());</span>
+                    }
+<span class="nc" id="L558">                    subAnnotation(annotation.getName(), name, value, indexAtPositions);</span>
+<span class="nc" id="L559">                }</span>
+<span class="nc" id="L560">                releaseAutoPilot(apForEach);</span>
+<span class="nc" id="L561">                releaseAutoPilot(apName);</span>
+<span class="nc" id="L562">                navpop();</span>
+<span class="nc" id="L563">            } else {</span>
+                // Regular metadata field; just the fieldName and an XPath expression for the value
+<span class="nc" id="L565">                findAnnotationMatches(annotation, subAnnot, valuePath, indexAtPositions);</span>
+            }
+<span class="nc" id="L567">            releaseAutoPilot(apValue);</span>
+<span class="nc" id="L568">        }</span>
+
+<span class="nc bnc" id="L570" title="All 2 branches missed.">        if (basePath != null) {</span>
+            // We pushed when we navigated to the base element; pop now.
+<span class="nc" id="L572">            navpop();</span>
+        }
+<span class="nc" id="L574">    }</span>
+
+    protected void findAnnotationMatches(ConfigAnnotation annotation, ConfigAnnotation subAnnot, String valuePath, List&lt;Integer&gt; indexAtPositions)
+            throws XPathParseException, XPathEvalException, NavException {
+<span class="nc" id="L578">        AutoPilot apValuePath = acquireAutoPilot(valuePath);</span>
+<span class="nc bnc" id="L579" title="All 2 branches missed.">        if (annotation.isMultipleValues()) {</span>
+            // Multiple matches will be indexed at the same position.
+<span class="nc" id="L581">            AutoPilot apEvalToString = acquireAutoPilot(&quot;.&quot;);</span>
+<span class="nc" id="L582">            boolean firstValue = true;</span>
+<span class="nc bnc" id="L583" title="All 2 branches missed.">            while (apValuePath.evalXPath() != -1) {</span>
+<span class="nc" id="L584">                apEvalToString.resetXPath();</span>
+<span class="nc" id="L585">                String annotValue = apEvalToString.evalXPathToString();</span>
+<span class="nc" id="L586">                annotValue = processString(annotValue, annotation.getProcess());</span>
+<span class="nc bnc" id="L587" title="All 2 branches missed.">                if (subAnnot == null)</span>
+<span class="nc bnc" id="L588" title="All 2 branches missed.">                    annotation(annotation.getName(), annotValue, firstValue ? 1 : 0, indexAtPositions);</span>
+                else
+<span class="nc" id="L590">                    subAnnotation(annotation.getName(), subAnnot.getName(), annotValue, indexAtPositions);</span>
+<span class="nc" id="L591">                firstValue = false;</span>
+<span class="nc" id="L592">            }</span>
+<span class="nc" id="L593">            releaseAutoPilot(apEvalToString);</span>
+
+            // No annotations have been added, the result of the xPath query must have been empty.
+<span class="nc bnc" id="L596" title="All 2 branches missed.">            if (firstValue == true) {</span>
+                // Add default value
+<span class="nc" id="L598">                String annotValue = processString(&quot;&quot;, annotation.getProcess());</span>
+<span class="nc" id="L599">                annotation(annotation.getName(), annotValue, 1, indexAtPositions);</span>
+            }
+<span class="nc" id="L601">        } else {</span>
+            // Single value expected
+<span class="nc" id="L603">            String annotValue = apValuePath.evalXPathToString();</span>
+<span class="nc" id="L604">            annotValue = processString(annotValue, annotation.getProcess());</span>
+<span class="nc bnc" id="L605" title="All 2 branches missed.">            if (subAnnot == null)</span>
+<span class="nc" id="L606">                annotation(annotation.getName(), annotValue, 1, indexAtPositions);</span>
+            else
+<span class="nc" id="L608">                subAnnotation(annotation.getName(), subAnnot.getName(), annotValue, indexAtPositions);</span>
+        }
+<span class="nc" id="L610">        releaseAutoPilot(apValuePath);</span>
+<span class="nc" id="L611">    }</span>
+
+    @Override
+    public void indexSpecificDocument(String documentXPath) {
+<span class="nc" id="L615">        super.indexSpecificDocument(documentXPath);</span>
+
+        try {
+            // Parse use VTD-XML
+<span class="nc" id="L619">            vg = new VTDGen();</span>
+<span class="nc" id="L620">            vg.setDoc(inputDocument);</span>
+<span class="nc" id="L621">            vg.parse(config.isNamespaceAware());</span>
+
+<span class="nc" id="L623">            nav = vg.getNav();</span>
+
+<span class="nc" id="L625">            boolean docDone = false;</span>
+<span class="nc bnc" id="L626" title="All 2 branches missed.">            if (documentXPath != null) {</span>
+                // Find our specific document
+<span class="nc" id="L628">                AutoPilot documents = acquireAutoPilot(documentXPath);</span>
+<span class="nc bnc" id="L629" title="All 2 branches missed.">                while(documents.evalXPath() != -1) {</span>
+<span class="nc bnc" id="L630" title="All 2 branches missed.">                    if (docDone)</span>
+<span class="nc" id="L631">                        throw new RuntimeException(&quot;Document link &quot; + documentXPath + &quot; matched multiple documents in &quot; + documentName);</span>
+<span class="nc" id="L632">                    indexDocument();</span>
+<span class="nc" id="L633">                    docDone = true;</span>
+                }
+<span class="nc" id="L635">                releaseAutoPilot(documents);</span>
+<span class="nc" id="L636">            } else {</span>
+                // Process whole file; must be 1 document
+<span class="nc" id="L638">                AutoPilot documents = acquireAutoPilot(config.getDocumentPath());</span>
+<span class="nc bnc" id="L639" title="All 2 branches missed.">                while(documents.evalXPath() != -1) {</span>
+<span class="nc bnc" id="L640" title="All 2 branches missed.">                    if (docDone)</span>
+<span class="nc" id="L641">                        throw new RuntimeException(&quot;Linked file contains multiple documents (and no document path given) in &quot; + documentName);</span>
+<span class="nc" id="L642">                    indexDocument();</span>
+<span class="nc" id="L643">                    docDone = true;</span>
+                }
+<span class="nc" id="L645">                releaseAutoPilot(documents);</span>
+            }
+<span class="nc" id="L647">        } catch (Exception e1) {</span>
+<span class="nc" id="L648">            throw ExUtil.wrapRuntimeException(e1);</span>
+<span class="nc" id="L649">        }</span>
+<span class="nc" id="L650">    }</span>
+
+    /**
+     * Add open and close InlineObject objects for the current element to the list.
+     *
+     * @param inlineObject list to add the new open/close tag objects to
+     * @throws NavException
+     */
+	private void collectInlineTag(List&lt;InlineObject&gt; inlineObject) throws NavException {
+		// Get the element and content fragments
+		// (element fragment = from start of start tag to end of end tag;
+		//  content fragment = from end of start tag to start of end tag)
+<span class="nc" id="L662">        long elementFragment = nav.getElementFragment();</span>
+<span class="nc" id="L663">        int startTagOffset = (int)elementFragment;</span>
+        int endTagOffset;
+<span class="nc" id="L665">		long contentFragment = nav.getContentFragment();</span>
+<span class="nc bnc" id="L666" title="All 2 branches missed.">		if (contentFragment == -1) {</span>
+		    // Empty (self-closing) element.
+<span class="nc" id="L668">		    endTagOffset = startTagOffset;</span>
+		} else {
+		    // Regular element with separate open and close tags.
+<span class="nc" id="L671">    		int contentOffset = (int)contentFragment;</span>
+<span class="nc" id="L672">    		int contentLength = (int)(contentFragment &gt;&gt; 32);</span>
+<span class="nc" id="L673">    		int contentEnd = contentOffset + contentLength;</span>
+<span class="nc" id="L674">    		endTagOffset = contentEnd;</span>
+		}
+
+		// Find element name
+<span class="nc" id="L678">		int currentIndex = nav.getCurrentIndex();</span>
+<span class="nc" id="L679">		String elementName = dedupe(nav.toString(currentIndex));</span>
+
+		// Add the inline tags to the list
+<span class="nc" id="L682">		InlineObject openTag = new InlineObject(elementName, startTagOffset, InlineObjectType.OPEN_TAG, getAttributes());</span>
+<span class="nc" id="L683">		InlineObject closeTag = new InlineObject(elementName, endTagOffset, InlineObjectType.CLOSE_TAG, null);</span>
+<span class="nc" id="L684">		openTag.setMatchingTag(closeTag);</span>
+<span class="nc" id="L685">		closeTag.setMatchingTag(openTag);</span>
+<span class="nc" id="L686">		inlineObject.add(openTag);</span>
+<span class="nc" id="L687">		inlineObject.add(closeTag);</span>
+<span class="nc" id="L688">	}</span>
+
+    /**
+     * Add InlineObject for a punctuation text node.
+     *
+     * @param inlineObjects list to add the punct object to
+     * @param text
+     * @throws NavException
+     */
+	private void collectPunct(List&lt;InlineObject&gt; inlineObjects, String text) throws NavException {
+<span class="nc" id="L698">		int i = nav.getCurrentIndex();</span>
+<span class="nc" id="L699">		int offset = nav.getTokenOffset(i);</span>
+//		int length = nav.getTokenLength(i);
+
+		// Make sure we only keep 1 copy of identical punct texts in memory
+<span class="nc" id="L703">		text = dedupe(StringUtil.normalizeWhitespace(text));</span>
+
+		// Add the punct to the list
+<span class="nc" id="L706">		inlineObjects.add(new InlineObject(text, offset, InlineObjectType.PUNCTUATION, null));</span>
+<span class="nc" id="L707">	}</span>
+
+	/**
+     * Gets attribute map for current element
+     * @return
+     */
+    private Map&lt;String, String&gt; getAttributes() {
+<span class="nc" id="L714">		navpush();</span>
+<span class="nc" id="L715">		AutoPilot apAttr = new AutoPilot(nav);</span>
+<span class="nc" id="L716">		apAttr.selectAttr(&quot;*&quot;);</span>
+<span class="nc" id="L717">		int i = -1;</span>
+<span class="nc" id="L718">		Map&lt;String, String&gt; attr = new HashMap&lt;&gt;();</span>
+		try {
+<span class="nc bnc" id="L720" title="All 2 branches missed.">			while ((i = apAttr.iterateAttr()) != -1) {</span>
+<span class="nc" id="L721">				String name = nav.toString(i);</span>
+<span class="nc" id="L722">				String value = nav.toString(i + 1);</span>
+<span class="nc" id="L723">				attr.put(name, value);</span>
+<span class="nc" id="L724">			}</span>
+<span class="nc" id="L725">		} catch (NavException e) {</span>
+<span class="nc" id="L726">			throw new RuntimeException(e);</span>
+<span class="nc" id="L727">		}</span>
+<span class="nc" id="L728">		navpop();</span>
+<span class="nc" id="L729">		return attr;</span>
+	}
+
+    @Override
+    protected void startDocument() {
+<span class="nc" id="L734">        super.startDocument();</span>
+
+        try {
+<span class="nc" id="L737">            long fragment = nav.getElementFragment();</span>
+<span class="nc" id="L738">            documentByteOffset = (int)fragment;</span>
+<span class="nc" id="L739">            documentLengthBytes = (int)(fragment &gt;&gt; 32);</span>
+<span class="nc" id="L740">        } catch (NavException e) {</span>
+<span class="nc" id="L741">            throw new RuntimeException(e);</span>
+<span class="nc" id="L742">        }</span>
+
+<span class="nc" id="L744">        lastCharPosition = 0;</span>
+<span class="nc" id="L745">        lastCharPositionByteOffset = documentByteOffset;</span>
+<span class="nc" id="L746">    }</span>
+
+    @Override
+    protected void storeDocument() {
+<span class="nc" id="L750">        storeWholeDocument(new String(inputDocument, documentByteOffset, documentLengthBytes, StandardCharsets.UTF_8));</span>
+<span class="nc" id="L751">    }</span>
+
+    @Override
+	protected int getCharacterPosition() {
+	    // VTD-XML provides no way of getting the current character position,
+	    // only the byte position.
+	    // In order to keep track of character position (which we need for Lucene's term vector),
+	    // we fetch the bytes processed since this method was last called, convert them to a String,
+	    // and use the string length to adjust the character position.
+	    // Note that this only works if this method is called for increasing byte positions,
+	    // which is true because we only use it for word tags.
+		try {
+<span class="nc" id="L763">            int currentByteOffset = getCurrentByteOffset();</span>
+<span class="nc bnc" id="L764" title="All 2 branches missed.">            if (currentByteOffset &gt; lastCharPositionByteOffset) {</span>
+<span class="nc" id="L765">                int length = currentByteOffset - lastCharPositionByteOffset;</span>
+<span class="nc" id="L766">                String str = new String(inputDocument, lastCharPositionByteOffset, length, StandardCharsets.UTF_8);</span>
+<span class="nc" id="L767">                lastCharPosition += str.length();</span>
+<span class="nc" id="L768">                lastCharPositionByteOffset = currentByteOffset;</span>
+            }
+<span class="nc" id="L770">            return lastCharPosition;</span>
+<span class="nc" id="L771">        } catch (NavException e) {</span>
+<span class="nc" id="L772">            throw new RuntimeException(e);</span>
+        }
+	}
+
+    protected int getCurrentByteOffset() throws NavException {
+<span class="nc bnc" id="L777" title="All 4 branches missed.">        if (fragPos == FragmentPosition.BEFORE_OPEN_TAG || fragPos == FragmentPosition.AFTER_CLOSE_TAG) {</span>
+<span class="nc" id="L778">            long elFrag = nav.getElementFragment();</span>
+<span class="nc" id="L779">            int  elOffset = (int)elFrag;</span>
+<span class="nc bnc" id="L780" title="All 2 branches missed.">            if (fragPos == FragmentPosition.AFTER_CLOSE_TAG) {</span>
+<span class="nc" id="L781">                int  elLength = (int)(elFrag &gt;&gt; 32);</span>
+<span class="nc" id="L782">                return elOffset + elLength;</span>
+            }
+<span class="nc" id="L784">            return elOffset;</span>
+        }
+<span class="nc" id="L786">        long contFrag = nav.getContentFragment();</span>
+<span class="nc" id="L787">        int  contOffset = (int)contFrag;</span>
+<span class="nc bnc" id="L788" title="All 2 branches missed.">        if (fragPos == FragmentPosition.BEFORE_CLOSE_TAG) {</span>
+<span class="nc" id="L789">            int  contLength = (int)(contFrag &gt;&gt; 32);</span>
+<span class="nc" id="L790">            return contOffset + contLength;</span>
+        }
+<span class="nc" id="L792">        return contOffset;</span>
+    }
+
+    protected void setCurrentAnnotatedField(ConfigAnnotatedField annotatedField) {
+<span class="nc" id="L796">        currentAnnotatedField = annotatedField;</span>
+<span class="nc" id="L797">        setCurrentComplexField(currentAnnotatedField.getName());</span>
+<span class="nc" id="L798">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

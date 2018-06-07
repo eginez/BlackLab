@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TextPatternWildcard.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search</a> &gt; <span class="el_source">TextPatternWildcard.java</span></div><h1>TextPatternWildcard.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.search;
+
+import org.apache.lucene.index.Term;
+import org.apache.lucene.search.WildcardQuery;
+
+import nl.inl.blacklab.search.lucene.BLSpanMultiTermQueryWrapper;
+import nl.inl.blacklab.search.lucene.BLSpanQuery;
+
+/**
+ * A textpattern matching a simple wildcard expression.
+ *
+ * Internally, the wildcard expression is translated into a regular expression.
+ */
+public class TextPatternWildcard extends TextPatternTerm {
+
+	public TextPatternWildcard(String value) {
+<span class="nc" id="L32">		super(value);</span>
+<span class="nc" id="L33">	}</span>
+
+	@Override
+	public BLSpanQuery translate(QueryExecutionContext context) {
+<span class="nc" id="L37">		TextPattern result = rewrite();</span>
+<span class="nc bnc" id="L38" title="All 2 branches missed.">		if (result != this)</span>
+<span class="nc" id="L39">			return result.translate(context);</span>
+		try {
+<span class="nc" id="L41">			return new BLSpanMultiTermQueryWrapper&lt;&gt;(new WildcardQuery(new Term(context.luceneField(),</span>
+<span class="nc" id="L42">					context.subpropPrefix() + context.optDesensitize(optInsensitive(context, value)))));</span>
+<span class="nc" id="L43">		} catch (StackOverflowError e) {</span>
+			// If we pass in a really large wildcard expression,
+			// stack overflow might occurs inside Lucene's automaton building
+			// code and we may end up here.
+<span class="nc" id="L47">			throw new RegexpTooLargeException();</span>
+		}
+	}
+
+	/**
+	 * Rewrite to the &quot;best&quot; TextPattern class for the given wildcard query. Tries to make a TextPatternTerm
+	 * or TextPatternPrefix because those tend to be faster than TextPatternWildcard in Lucene.
+	 *
+	 * @return the TextPattern
+	 */
+	public TextPattern rewrite() {
+		// Hey, maybe it doesn't even contain wildcards?
+<span class="nc bnc" id="L59" title="All 4 branches missed.">		if (value.indexOf(&quot;*&quot;) &lt; 0 &amp;&amp; value.indexOf(&quot;?&quot;) &lt; 0) {</span>
+			// Woot!
+<span class="nc" id="L61">			return new TextPatternTerm(value);</span>
+		}
+
+		// Replace multiple consecutive asterisks with a single one
+<span class="nc" id="L65">		String newValue = value.replaceAll(&quot;\\*+&quot;, &quot;*&quot;);</span>
+
+		// Is is &quot;any word&quot;?
+<span class="nc bnc" id="L68" title="All 2 branches missed.">		if (newValue.equals(&quot;*&quot;))</span>
+<span class="nc" id="L69">			return new TextPatternAnyToken(1, 1);</span>
+
+		// Is it a prefix query? (&quot;bla*&quot;)
+<span class="nc bnc" id="L72" title="All 4 branches missed.">		if (newValue.indexOf('*') == newValue.length() - 1 &amp;&amp; newValue.indexOf('?') &lt; 0) {</span>
+			// Yes!
+<span class="nc" id="L74">			String prefix = newValue.substring(0, newValue.length() - 1);</span>
+<span class="nc" id="L75">			return new TextPatternPrefix(prefix);</span>
+		}
+
+<span class="nc bnc" id="L78" title="All 2 branches missed.">		if (!newValue.equals(value))</span>
+<span class="nc" id="L79">			return new TextPatternWildcard(newValue);</span>
+
+		// Can't simplify, just return ourselves
+<span class="nc" id="L82">		return this;</span>
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+<span class="nc bnc" id="L87" title="All 2 branches missed.">		if (obj instanceof TextPatternWildcard) {</span>
+<span class="nc" id="L88">			return super.equals(obj);</span>
+		}
+<span class="nc" id="L90">		return false;</span>
+	}
+
+	@Deprecated
+	@Override
+	public String toString(QueryExecutionContext context) {
+<span class="nc" id="L96">		return &quot;WILDCARD(&quot; + context.luceneField() + &quot;, &quot; + context.optDesensitize(value) + &quot;)&quot;;</span>
+	}
+
+	@Override
+	public String toString() {
+<span class="nc" id="L101">		return &quot;WILDCARD(&quot; + value + &quot;)&quot;;</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

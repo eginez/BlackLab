@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ContentStoreMemory.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.externalstorage</a> &gt; <span class="el_source">ContentStoreMemory.java</span></div><h1>ContentStoreMemory.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.externalstorage;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
+
+/**
+ * Store string content by id in memory.
+ */
+public class ContentStoreMemory extends ContentStore {
+	/**
+	 * The TOC entries
+	 */
+	private Map&lt;Integer, String&gt; toc;
+
+<span class="nc" id="L31">	private int nextId = 1;</span>
+
+	/**
+	 * Create a new in-memory content store.
+	 */
+<span class="nc" id="L36">	public ContentStoreMemory() {</span>
+<span class="nc" id="L37">		toc = new HashMap&lt;&gt;();</span>
+<span class="nc" id="L38">	}</span>
+
+	/**
+	 * Delete all content in the document store
+	 */
+	@Override
+	public void clear() {
+<span class="nc" id="L45">		toc.clear();</span>
+<span class="nc" id="L46">	}</span>
+
+	/**
+	 * Close this content store (in our case, do nothing)
+	 */
+	@Override
+	public void close() {
+		//
+<span class="nc" id="L54">	}</span>
+
+	/*
+	 * Store the given content and assign an id to it
+	 *
+	 * @param content the content to store
+	 *
+	 * @return the id assigned to the content
+	 */
+	@Override
+	public synchronized int store(String content) {
+<span class="nc" id="L65">		int id = nextId;</span>
+<span class="nc" id="L66">		nextId++;</span>
+<span class="nc" id="L67">		toc.put(id, content);</span>
+<span class="nc" id="L68">		return id;</span>
+	}
+
+	/**
+	 * Retrieve content with given id
+	 *
+	 * @param id
+	 *            the id
+	 * @return the string
+	 */
+	@Override
+	public String retrieve(int id) {
+<span class="nc" id="L80">		return toc.get(id);</span>
+	}
+
+	/**
+	 * Retrieve one or more substrings from the specified content.
+	 *
+	 * This is more efficient than retrieving the whole content, or retrieving parts in separate
+	 * calls, because the file is only opened once and random access is used to read only the
+	 * required parts.
+	 *
+	 * NOTE: if offset and length are both -1, retrieves the whole content. This is used by the
+	 * retrieve(id) method.
+	 *
+	 * @param id
+	 *            id of the string to get substrings from
+	 * @param start
+	 *            the starting points of the substrings (in characters)
+	 * @param end
+	 *            the end points of the substrings (in characters)
+	 */
+	@Override
+	public synchronized String[] retrieveParts(int id, int[] start, int[] end) {
+<span class="nc" id="L102">		String content = toc.get(id);</span>
+<span class="nc bnc" id="L103" title="All 2 branches missed.">		if (content == null)</span>
+<span class="nc" id="L104">			return null;</span>
+
+<span class="nc" id="L106">		int n = start.length;</span>
+<span class="nc bnc" id="L107" title="All 2 branches missed.">		if (n != end.length)</span>
+<span class="nc" id="L108">			throw new IllegalArgumentException(&quot;start and end must be of equal length&quot;);</span>
+<span class="nc" id="L109">		String[] result = new String[n];</span>
+<span class="nc bnc" id="L110" title="All 2 branches missed.">		for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc bnc" id="L111" title="All 4 branches missed.">			if (start[i] == -1 &amp;&amp; end[i] == -1) {</span>
+				// whole content
+<span class="nc" id="L113">				start[i] = 0;</span>
+<span class="nc" id="L114">				end[i] = content.length();</span>
+			}
+<span class="nc bnc" id="L116" title="All 4 branches missed.">			if (start[i] &lt; 0 || end[i] &lt; 0) {</span>
+<span class="nc" id="L117">				throw new IllegalArgumentException(&quot;Illegal values, start = &quot; + start[i] + &quot;, end = &quot;</span>
+						+ end[i]);
+			}
+<span class="nc bnc" id="L120" title="All 4 branches missed.">			if (start[i] &gt; content.length() || end[i] &gt; content.length()) {</span>
+<span class="nc" id="L121">				throw new IllegalArgumentException(&quot;Value(s) out of range, start = &quot; + start[i]</span>
+<span class="nc" id="L122">						+ &quot;, end = &quot; + end[i] + &quot;, content length = &quot; + content.length());</span>
+			}
+
+<span class="nc" id="L125">			result[i] = content.substring(start[i], end[i]);</span>
+		}
+<span class="nc" id="L127">		return result;</span>
+	}
+
+	@Override
+	public synchronized void delete(int id) {
+<span class="nc" id="L132">		toc.remove(id);</span>
+<span class="nc" id="L133">	}</span>
+
+	@Override
+	public void storePart(String content) {
+<span class="nc" id="L137">		throw new UnsupportedOperationException(&quot;Not implemented&quot;);</span>
+	}
+
+	@Override
+	public Set&lt;Integer&gt; getDocIds() {
+<span class="nc" id="L142">		return toc.keySet();</span>
+	}
+
+	@Override
+	public boolean isDeleted(int id) {
+<span class="nc" id="L147">		return false;</span>
+	}
+
+	@Override
+	public int getDocLength(int id) {
+<span class="nc" id="L152">		return toc.get(id).length();</span>
+	}
+
+	@Override
+	public Set&lt;Integer&gt; idSet() {
+<span class="nc" id="L157">		return toc.keySet();</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DocIndexerExample.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.tools.indexexample</a> &gt; <span class="el_source">DocIndexerExample.java</span></div><h1>DocIndexerExample.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2010, 2012 Institute for Dutch Lexicology
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+package nl.inl.blacklab.tools.indexexample;
+
+import java.io.Reader;
+
+import org.xml.sax.Attributes;
+
+import nl.inl.blacklab.index.DocIndexerXmlHandlers;
+import nl.inl.blacklab.index.Indexer;
+import nl.inl.blacklab.index.complex.ComplexFieldProperty;
+import nl.inl.blacklab.index.complex.ComplexFieldProperty.SensitivitySetting;
+
+/**
+ * Example indexer. See Example for the file format.
+ */
+public class DocIndexerExample extends DocIndexerXmlHandlers {
+	public DocIndexerExample(Indexer indexer, String fileName, Reader reader) {
+<span class="fc" id="L32">		super(indexer, fileName, reader);</span>
+
+		// Get handles to the default properties (the main one &amp; punct)
+<span class="fc" id="L35">		final ComplexFieldProperty propMain = getMainProperty();</span>
+<span class="fc" id="L36">		final ComplexFieldProperty propPunct = getPropPunct();</span>
+
+		// Add some extra properties
+<span class="fc" id="L39">		final ComplexFieldProperty propLemma = addProperty(&quot;lemma&quot;, SensitivitySetting.SENSITIVE_AND_INSENSITIVE);</span>
+<span class="fc" id="L40">		final ComplexFieldProperty propPartOfSpeech = addProperty(&quot;pos&quot;, SensitivitySetting.ONLY_INSENSITIVE);</span>
+
+		// Doc element: the individual documents to index
+<span class="fc" id="L43">		addHandler(&quot;/doc&quot;, new DocumentElementHandler());</span>
+
+		// Word elements: index as main contents
+<span class="fc" id="L46">		addHandler(&quot;w&quot;, new WordHandlerBase() {</span>
+
+			@Override
+			public void startElement(String uri, String localName, String qName,
+					Attributes attributes) {
+<span class="fc" id="L51">				super.startElement(uri, localName, qName, attributes);</span>
+<span class="fc" id="L52">				String lemma = attributes.getValue(&quot;l&quot;);</span>
+<span class="pc bpc" id="L53" title="1 of 2 branches missed.">				if (lemma == null)</span>
+<span class="nc" id="L54">					lemma = &quot;&quot;;</span>
+<span class="fc" id="L55">				propLemma.addValue(lemma);</span>
+<span class="fc" id="L56">				String pos = attributes.getValue(&quot;p&quot;);</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">				if (pos == null)</span>
+<span class="fc" id="L58">					pos = &quot;&quot;;</span>
+<span class="fc" id="L59">				propPartOfSpeech.addValue(pos);</span>
+<span class="fc" id="L60">				propPunct.addValue(consumeCharacterContent());</span>
+<span class="fc" id="L61">			}</span>
+
+			@Override
+			public void endElement(String uri, String localName, String qName) {
+<span class="fc" id="L65">				super.endElement(uri, localName, qName);</span>
+<span class="fc" id="L66">				propMain.addValue(consumeCharacterContent());</span>
+<span class="fc" id="L67">			}</span>
+		});
+
+		// Sentence and entity tags: index as inline tags (used in tests)
+<span class="fc" id="L71">		addHandler(&quot;s&quot;, new InlineTagHandler());</span>
+<span class="fc" id="L72">		addHandler(&quot;entity&quot;, new InlineTagHandler());</span>
+
+<span class="fc" id="L74">	}</span>
+
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

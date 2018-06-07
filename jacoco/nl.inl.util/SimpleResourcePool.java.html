@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SimpleResourcePool.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.util</a> &gt; <span class="el_source">SimpleResourcePool.java</span></div><h1>SimpleResourcePool.java</h1><pre class="source lang-java linenums">/**
+ *
+ */
+package nl.inl.util;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Keeps a simple pool of free resource objects.
+ *
+ * This is useful when it's relatively expensive to create an object, and we often
+ * need one for a short time.
+ *
+ * Note that this is a very basic resource pool.
+ * @param &lt;T&gt; resource type to pool
+ */
+public abstract class SimpleResourcePool&lt;T&gt; {
+	/**
+	 * The maximum number of unused resource objects in the free pool at any one time. Once the
+	 * pool is full, additional resource objects are dropped to be garbage-collected instead of
+	 * returned to the pool.
+	 */
+	private int maxFreePoolSize;
+
+	/**
+	 * Switch to disable pooling.
+	 */
+	private boolean neverPool;
+
+	/** List of free resource objects */
+	private List&lt;T&gt; freePool;
+
+	/**
+	 * Initializes the free pool.
+	 *
+	 * @param maxFreePoolSize
+	 *            size of the resource pool. If 0, disables pooling.
+	 */
+<span class="fc" id="L40">	public SimpleResourcePool(int maxFreePoolSize) {</span>
+<span class="fc" id="L41">		this.maxFreePoolSize = maxFreePoolSize;</span>
+<span class="fc" id="L42">		freePool = new ArrayList&lt;&gt;();</span>
+<span class="pc bpc" id="L43" title="1 of 2 branches missed.">		neverPool = (maxFreePoolSize == 0);</span>
+<span class="fc" id="L44">	}</span>
+
+	/**
+	 * Cleanup the resources in the free pool.
+	 */
+	public void close() {
+<span class="fc" id="L50">		clear();</span>
+<span class="fc" id="L51">	}</span>
+
+	/**
+	 * Destroy all objects in the free pool.
+	 */
+	public synchronized void clear() {
+<span class="fc bfc" id="L57" title="All 2 branches covered.">		for (T resource: freePool) {</span>
+<span class="fc" id="L58">			destroyResource(resource);</span>
+<span class="fc" id="L59">		}</span>
+<span class="fc" id="L60">	}</span>
+
+	/**
+	 * Create a new resource object.
+	 * @return the new resource.
+	 */
+	public abstract T createResource();
+
+	/**
+	 * Destroy a resource object.
+	 * @param resource the resource to destroy.
+	 */
+	public void destroyResource(T resource) {
+		// Default: do nothing
+<span class="fc" id="L74">	}</span>
+
+	/**
+	 * Sets whether or not we want to do any pooling at all.
+	 * If not, always creates a new resource object and never returns
+	 * it to the free pool.
+	 *
+	 * @param poolingEnabled if true, pool free resources.
+	 */
+	public synchronized void setPoolingEnabled(boolean poolingEnabled) {
+<span class="nc bnc" id="L84" title="All 2 branches missed.">		this.neverPool = !poolingEnabled;</span>
+<span class="nc" id="L85">	}</span>
+
+	/**
+	 * Retrieves a resource object from the free pool, or creates a new one if none are available
+	 *
+	 * @return the resource object
+	 */
+	public synchronized T acquire() {
+		try {
+<span class="pc bpc" id="L94" title="1 of 4 branches missed.">			if (neverPool || freePool.isEmpty()) {</span>
+<span class="fc" id="L95">				return createResource();</span>
+			}
+<span class="fc" id="L97">			return freePool.remove(0);</span>
+<span class="nc" id="L98">		} catch (Exception e) {</span>
+<span class="nc" id="L99">			throw ExUtil.wrapRuntimeException(e);</span>
+		}
+	}
+
+	/**
+	 * Returns a resource object to the free pool.
+	 *
+	 * @param resource
+	 */
+	public synchronized void release(T resource) {
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">		if (neverPool)</span>
+<span class="nc" id="L110">			return;</span>
+<span class="fc" id="L111">		synchronized (this) {</span>
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">			if (freePool.size() &lt; maxFreePoolSize) {</span>
+<span class="fc" id="L113">				freePool.add(resource);</span>
+			} else {
+<span class="nc" id="L115">				destroyResource(resource);</span>
+			}
+<span class="pc" id="L117">		}</span>
+<span class="fc" id="L118">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BatchContentStore.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.testutil</a> &gt; <span class="el_source">BatchContentStore.java</span></div><h1>BatchContentStore.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.testutil;
+
+import java.io.File;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+import nl.inl.blacklab.externalstorage.ContentStore;
+import nl.inl.blacklab.externalstorage.ContentStoreDirZip;
+import nl.inl.util.FileUtil;
+import nl.inl.util.Timer;
+
+/**
+ * Executes a batch of fetch operations on a content store.
+ */
+<span class="nc" id="L16">public class BatchContentStore {</span>
+
+	private static final int SNIPPET_LENGTH_CHARS = 100;
+
+	public static void main(String[] args) throws Exception {
+
+<span class="nc" id="L22">		int fileArgNumber = 0;</span>
+<span class="nc" id="L23">		File indexDir = null, inputFile = null;</span>
+<span class="nc bnc" id="L24" title="All 2 branches missed.">		for (int i = 0; i &lt; args.length; i++) {</span>
+<span class="nc" id="L25">			String arg = args[i].trim();</span>
+<span class="nc bnc" id="L26" title="All 2 branches missed.">			if (arg.charAt(0) == '-') {</span>
+<span class="nc bnc" id="L27" title="All 2 branches missed.">				if (arg.equals(&quot;-t&quot;)) {</span>
+					// determineTotalHits = false;
+				} else {
+<span class="nc" id="L30">					System.err.println(&quot;Illegal option: &quot; + arg);</span>
+<span class="nc" id="L31">					usage();</span>
+<span class="nc" id="L32">					return;</span>
+				}
+			} else {
+<span class="nc bnc" id="L35" title="All 3 branches missed.">				switch (fileArgNumber) {</span>
+				case 0:
+<span class="nc" id="L37">					indexDir = new File(arg);</span>
+<span class="nc bnc" id="L38" title="All 4 branches missed.">					if (!indexDir.exists() || !indexDir.isDirectory()) {</span>
+<span class="nc" id="L39">						System.err.println(&quot;Index directory not found: &quot; + arg);</span>
+<span class="nc" id="L40">						usage();</span>
+<span class="nc" id="L41">						return;</span>
+					}
+					break;
+				case 1:
+<span class="nc" id="L45">					inputFile = new File(arg);</span>
+<span class="nc bnc" id="L46" title="All 2 branches missed.">					if (!inputFile.exists()) {</span>
+<span class="nc" id="L47">						System.err.println(&quot;Input file not found: &quot; + arg);</span>
+<span class="nc" id="L48">						usage();</span>
+<span class="nc" id="L49">						return;</span>
+					}
+					break;
+				default:
+<span class="nc" id="L53">					System.err.println(&quot;Too many file arguments (supply index dir and input file)&quot;);</span>
+<span class="nc" id="L54">					usage();</span>
+<span class="nc" id="L55">					return;</span>
+				}
+<span class="nc" id="L57">				fileArgNumber++;</span>
+			}
+		}
+<span class="nc bnc" id="L60" title="All 2 branches missed.">		if (fileArgNumber &lt; 2) {</span>
+<span class="nc" id="L61">			System.err.println(&quot;Too few file arguments (supply index dir and input file)&quot;);</span>
+<span class="nc" id="L62">			usage();</span>
+<span class="nc" id="L63">			return;</span>
+		}
+
+<span class="nc" id="L66">		System.err.print(&quot;Opening content store... &quot;);</span>
+<span class="nc" id="L67">		ContentStore cs = new ContentStoreDirZip(indexDir);</span>
+<span class="nc" id="L68">		System.err.println(&quot;done. [#docs: &quot; + cs.getDocIds().size() + &quot;]&quot;);</span>
+
+<span class="nc" id="L70">		System.out.println(&quot;First\tNumber\tSkip\tSnippets\tTime&quot;);</span>
+
+<span class="nc bnc" id="L72" title="All 2 branches missed.">		for (String query : FileUtil.readLines(inputFile)) {</span>
+<span class="nc" id="L73">			query = query.trim();</span>
+<span class="nc bnc" id="L74" title="All 4 branches missed.">			if (query.length() == 0 || query.charAt(0) == '#')</span>
+<span class="nc" id="L75">				continue; // skip empty lines and #-comments</span>
+<span class="nc" id="L76">			String[] numberStr = query.split(&quot;\\s+&quot;);</span>
+<span class="nc" id="L77">			int[] numbers = new int[numberStr.length];</span>
+			try {
+<span class="nc bnc" id="L79" title="All 2 branches missed.">				for (int i = 0; i &lt; numberStr.length; i++) {</span>
+<span class="nc" id="L80">					numbers[i] = Integer.parseInt(numberStr[i]);</span>
+				}
+
+<span class="nc" id="L83">				int first = numbers[0];</span>
+<span class="nc bnc" id="L84" title="All 2 branches missed.">				int number = numbers.length &gt; 1 ? numbers[1] : 100;</span>
+<span class="nc bnc" id="L85" title="All 2 branches missed.">				int skip = numbers.length &gt; 2 ? numbers[2] : 0;</span>
+<span class="nc bnc" id="L86" title="All 2 branches missed.">				int snippets = numbers.length &gt; 3 ? numbers[3] : 5;</span>
+<span class="nc" id="L87">				long time = doPerformanceTest(cs, first, number, skip, snippets);</span>
+<span class="nc" id="L88">				System.out.println(String.format(&quot;%d\t%d\t%d\t%d\t%d&quot;, first, number, skip, snippets,</span>
+<span class="nc" id="L89">						time));</span>
+
+<span class="nc" id="L91">			} catch (Exception e) {</span>
+<span class="nc" id="L92">				e.printStackTrace();</span>
+<span class="nc" id="L93">				System.err.println(&quot;Error with line '&quot; + query + &quot;'; skipping...&quot;);</span>
+<span class="nc" id="L94">			}</span>
+
+<span class="nc" id="L96">		}</span>
+<span class="nc" id="L97">	}</span>
+
+	/**
+	 * Do a performance test, retrieving snippets from a number of documents.
+	 * @param cs the content store
+	 *
+	 * @param first
+	 *            fiid (position in toc) of first document to access
+	 * @param number
+	 *            number of documents to access
+	 * @param skip
+	 *            number of documents to skip between accesses
+	 * @param snippets
+	 *            number of random snippets to retrieve from each document
+	 * @return elapsed time in ms
+	 */
+	public static long doPerformanceTest(ContentStore cs, int first, int number, int skip,
+			int snippets) {
+<span class="nc" id="L115">		int[] start = new int[snippets];</span>
+<span class="nc" id="L116">		int[] end = new int[snippets];</span>
+
+		// Build sorted list of non-deleted ids.
+<span class="nc" id="L119">		List&lt;Integer&gt; docIds = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">		for (Integer i : cs.getDocIds()) {</span>
+<span class="nc bnc" id="L121" title="All 2 branches missed.">			if (!cs.isDeleted(i))</span>
+<span class="nc" id="L122">				docIds.add(i);</span>
+<span class="nc" id="L123">		}</span>
+<span class="nc" id="L124">		Collections.sort(docIds);</span>
+
+<span class="nc" id="L126">		Timer t = new Timer();</span>
+<span class="nc" id="L127">		int docPos = first;</span>
+<span class="nc bnc" id="L128" title="All 2 branches missed.">		for (int i = 0; i &lt; number; i++) {</span>
+			int id, length;
+			do {
+<span class="nc bnc" id="L131" title="All 2 branches missed.">				if (docPos &gt;= docIds.size())</span>
+<span class="nc" id="L132">					throw new RuntimeException(&quot;Performance test went beyond end of content store (&quot;</span>
+<span class="nc" id="L133">							+ docIds.size() + &quot; docs)&quot;);</span>
+<span class="nc" id="L134">				id = docIds.get(docPos);</span>
+
+				// Choose random snippets
+<span class="nc" id="L137">				length = cs.getDocLength(id);</span>
+<span class="nc bnc" id="L138" title="All 2 branches missed.">				if (length == 0) // can't get snippet from empty doc</span>
+<span class="nc" id="L139">					docPos++;</span>
+<span class="nc bnc" id="L140" title="All 2 branches missed.">			} while (length == 0);</span>
+<span class="nc" id="L141">			int snippetLength = Math.min(SNIPPET_LENGTH_CHARS, length);</span>
+<span class="nc bnc" id="L142" title="All 2 branches missed.">			for (int j = 0; j &lt; snippets; j++) {</span>
+<span class="nc" id="L143">				start[j] = (int) (Math.random() * (length - snippetLength));</span>
+<span class="nc" id="L144">				end[j] = start[j] + snippetLength;</span>
+			}
+
+			// Retrieve snippets
+<span class="nc" id="L148">			cs.retrieveParts(id, start, end);</span>
+		}
+<span class="nc" id="L150">		return t.elapsed();</span>
+	}
+
+	private static void usage() {
+<span class="nc" id="L154">		System.err.println(&quot;\nUsage: &quot; + BatchContentStore.class.getSimpleName()</span>
+				+ &quot; &lt;contentStoreDir&gt; &lt;inputfile&gt;\n\n&quot;
+				+ &quot;&lt;inputfile&gt; should contain lines of whitespace-separated integers:\n&quot;
+				+ &quot;   &lt;first&gt; &lt;number&gt; &lt;skip&gt; &lt;snippets&gt;\n&quot; + &quot;\n&quot;
+				+ &quot;   first: position of the first document to access\n&quot;
+				+ &quot;   number: number of documents to access [100]\n&quot;
+				+ &quot;   skip: how many documents to skip between accesses [0]\n&quot;
+				+ &quot;   snippets: how many random snippets to retrieve per document [5]\n&quot; + &quot;\n&quot;
+				// + &quot;Options:\n&quot;
+				// + &quot;-t do not determine total number of hits\n&quot;
+				// + &quot;\n&quot;
+				+ &quot;Output:\n&quot; + &quot;&lt;first&gt; &lt;number&gt; &lt;skip&gt; &lt;snippets&gt;\t&lt;searchTimeMs&gt;\n&quot;);
+<span class="nc" id="L166">	}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

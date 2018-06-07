@@ -1,0 +1,244 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MetadataFieldDesc.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">BlackLab</a> &gt; <a href="index.source.html" class="el_package">nl.inl.blacklab.search.indexstructure</a> &gt; <span class="el_source">MetadataFieldDesc.java</span></div><h1>MetadataFieldDesc.java</h1><pre class="source lang-java linenums">package nl.inl.blacklab.search.indexstructure;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+
+import com.fasterxml.jackson.databind.JsonNode;
+
+public class MetadataFieldDesc extends BaseFieldDesc {
+
+	/** Conditions for using the unknown value */
+<span class="fc" id="L16">	public enum UnknownCondition {</span>
+<span class="fc" id="L17">		NEVER,            // never use unknown value</span>
+<span class="fc" id="L18">		MISSING,          // use unknown value when field is missing (not when empty)</span>
+<span class="fc" id="L19">		EMPTY,            // use unknown value when field is empty (not when missing)</span>
+<span class="fc" id="L20">		MISSING_OR_EMPTY; // use unknown value when field is empty or missing</span>
+
+        public static UnknownCondition fromStringValue(String string) {
+<span class="fc" id="L23">            return valueOf(string.toUpperCase());</span>
+        }
+
+        public String stringValue() {
+<span class="nc" id="L27">            return toString().toLowerCase();</span>
+        }
+	}
+
+	/** Possible value for valueListComplete */
+<span class="pc" id="L32">	public enum ValueListComplete {</span>
+<span class="fc" id="L33">		UNKNOWN, // not known yet; is treated as 'no'</span>
+<span class="fc" id="L34">		YES,</span>
+<span class="fc" id="L35">		NO</span>
+	}
+
+    private static final int MAX_METADATA_VALUES_TO_STORE = 50;
+
+	/**
+	 * The field type: text, untokenized or numeric.
+	 */
+<span class="fc" id="L43">	protected FieldType type = FieldType.TOKENIZED;</span>
+
+	/**
+	 * The analyzer to use for indexing and querying this field.
+	 */
+<span class="fc" id="L48">	private String analyzer = &quot;DEFAULT&quot;;</span>
+
+	/**
+	 * When value is missing or empty this value may be used instead
+	 * (whether it is depends or unknownCondition).
+	 */
+<span class="fc" id="L54">	private String unknownValue = &quot;unknown&quot;;</span>
+
+	/**
+	 * When is the unknown value for this field used?
+	 */
+<span class="fc" id="L59">	private UnknownCondition unknownCondition = UnknownCondition.NEVER;</span>
+
+	/**
+	 * The values this field can have. Note that this may not be the complete list;
+	 * check valueListComplete.
+	 */
+<span class="fc" id="L65">	private Map&lt;String, Integer&gt; values = new HashMap&lt;&gt;();</span>
+
+    /** Gives the display value corresponding to a value, if any. */
+<span class="fc" id="L68">    private Map&lt;String, String&gt; displayValues = new HashMap&lt;&gt;();</span>
+
+    /** Order in which to display values in select dropdown (if defined) */
+<span class="fc" id="L71">    private List&lt;String&gt; displayOrder = new ArrayList&lt;&gt;();</span>
+
+	/**
+	 * Whether or not all values are stored here.
+	 */
+<span class="fc" id="L76">	private ValueListComplete valueListComplete = ValueListComplete.UNKNOWN;</span>
+
+	/**
+	 * The field group this field belongs to. Can be used by a generic
+	 * search application to generate metadata search interface.
+	 */
+	private String group;
+
+	/** Type of UI element to show for this field. Can be used by a generic
+	 *  search application to generate metadata search interface. */
+<span class="fc" id="L86">    private String uiType = &quot;&quot;;</span>
+
+    public MetadataFieldDesc(String fieldName, FieldType type) {
+<span class="fc" id="L89">		super(fieldName);</span>
+<span class="fc" id="L90">		this.type = type;</span>
+<span class="fc" id="L91">	}</span>
+
+//	public MetadataFieldDesc(String fieldName, String typeName) {
+//		super(fieldName);
+//		if (typeName.equals(&quot;untokenized&quot;)) {
+//			this.type = FieldType.UNTOKENIZED;
+//		} else if (typeName.equals(&quot;tokenized&quot;) || typeName.equals(&quot;text&quot;)) {
+//			this.type = FieldType.TOKENIZED;
+//		} else if (typeName.equals(&quot;numeric&quot;)) {
+//			this.type = FieldType.NUMERIC;
+//		} else {
+//			throw new IllegalArgumentException(&quot;Unknown field type name: &quot; + typeName);
+//		}
+//	}
+
+	public FieldType getType() {
+<span class="fc" id="L107">		return type;</span>
+	}
+
+	public void setAnalyzer(String analyzer) {
+<span class="nc" id="L111">		this.analyzer = analyzer;</span>
+<span class="nc" id="L112">	}</span>
+
+	public void setUnknownValue(String unknownValue) {
+<span class="fc" id="L115">		this.unknownValue = unknownValue;</span>
+<span class="fc" id="L116">	}</span>
+
+	public void setUnknownCondition(UnknownCondition unknownCondition) {
+<span class="fc" id="L119">		this.unknownCondition = unknownCondition;</span>
+<span class="fc" id="L120">	}</span>
+
+	public void setValues(JsonNode values) {
+<span class="nc" id="L123">		this.values.clear();</span>
+<span class="nc" id="L124">		Iterator&lt;Entry&lt;String, JsonNode&gt;&gt; it = values.fields();</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">		while (it.hasNext()) {</span>
+<span class="nc" id="L126">		    Entry&lt;String, JsonNode&gt; entry = it.next();</span>
+<span class="nc" id="L127">		    String value = entry.getKey();</span>
+<span class="nc" id="L128">		    int count = entry.getValue().intValue();</span>
+<span class="nc" id="L129">			this.values.put(value, count);</span>
+<span class="nc" id="L130">		}</span>
+<span class="nc" id="L131">	}</span>
+
+    public void setDisplayValues(JsonNode displayValues) {
+<span class="nc" id="L134">        this.displayValues.clear();</span>
+<span class="nc" id="L135">        Iterator&lt;Entry&lt;String, JsonNode&gt;&gt; it = displayValues.fields();</span>
+<span class="nc bnc" id="L136" title="All 2 branches missed.">        while (it.hasNext()) {</span>
+<span class="nc" id="L137">            Entry&lt;String, JsonNode&gt; entry = it.next();</span>
+<span class="nc" id="L138">            String value = entry.getKey();</span>
+<span class="nc" id="L139">            String displayValue = entry.getValue().textValue();</span>
+<span class="nc" id="L140">            this.displayValues.put(value, displayValue);</span>
+<span class="nc" id="L141">        }</span>
+<span class="nc" id="L142">    }</span>
+
+	public void setDisplayOrder(List&lt;String&gt; displayOrder) {
+<span class="nc" id="L145">	    this.displayOrder.clear();</span>
+<span class="nc" id="L146">	    this.displayOrder.addAll(displayOrder);</span>
+<span class="nc" id="L147">    }</span>
+
+	public List&lt;String&gt; getDisplayOrder() {
+<span class="nc" id="L150">	    return Collections.unmodifiableList(displayOrder);</span>
+	}
+
+    public void setValueListComplete(boolean valueListComplete) {
+<span class="nc bnc" id="L154" title="All 2 branches missed.">		this.valueListComplete = valueListComplete ? ValueListComplete.YES : ValueListComplete.NO;</span>
+<span class="nc" id="L155">	}</span>
+
+	public String getAnalyzerName() {
+<span class="fc" id="L158">		return analyzer;</span>
+	}
+
+	public String getUnknownValue() {
+<span class="nc" id="L162">		return unknownValue;</span>
+	}
+
+	public UnknownCondition getUnknownCondition() {
+<span class="nc" id="L166">		return unknownCondition;</span>
+	}
+
+	public Map&lt;String, Integer&gt; getValueDistribution() {
+<span class="nc" id="L170">		return Collections.unmodifiableMap(values);</span>
+	}
+
+	public boolean isValueListComplete() {
+		// NOTE: UNKNOWN means addValue() hasn't been called. This is reported as NO
+		//  because some indices may not have values stored. Fields that actually don't
+		//  have any values should be rare and aren't very useful, so this seems like
+		//  an okay choice.
+<span class="nc bnc" id="L178" title="All 2 branches missed.">		return valueListComplete == ValueListComplete.YES;</span>
+	}
+
+    public Map&lt;String, String&gt; getDisplayValues() {
+<span class="nc" id="L182">        return Collections.unmodifiableMap(displayValues);</span>
+    }
+
+	/**
+	 * Reset the information that is dependent on input data
+	 * (i.e. list of values, etc.) because we're going to
+	 * (re-)index the data.
+	 */
+	public void resetForIndexing() {
+<span class="nc" id="L191">		this.values.clear();</span>
+<span class="nc" id="L192">		valueListComplete = ValueListComplete.UNKNOWN;</span>
+<span class="nc" id="L193">	}</span>
+
+	/**
+	 * Keep track of unique values of this field so we can store them in the metadata file.
+	 *
+	 * @param value field value
+	 */
+	public void addValue(String value) {
+		// If we've seen a value, assume we'll get to see all values;
+		// when it turns out there's too many or they're too long,
+		// we'll change the value to NO.
+<span class="nc bnc" id="L204" title="All 2 branches missed.">		if (valueListComplete == ValueListComplete.UNKNOWN)</span>
+<span class="nc" id="L205">			valueListComplete = ValueListComplete.YES;</span>
+
+<span class="nc bnc" id="L207" title="All 2 branches missed.">		if (value.length() &gt; 100) {</span>
+			// Value too long to store.
+<span class="nc" id="L209">			valueListComplete = ValueListComplete.NO;</span>
+<span class="nc" id="L210">			return;</span>
+		}
+<span class="nc bnc" id="L212" title="All 2 branches missed.">		if (values.containsKey(value))  {</span>
+			// Seen this value before; increment frequency
+<span class="nc" id="L214">			values.put(value, values.get(value) + 1);</span>
+		} else {
+			// New value; add it
+<span class="nc bnc" id="L217" title="All 2 branches missed.">			if (values.size() &gt;= MAX_METADATA_VALUES_TO_STORE) {</span>
+				// We can't store thousands of unique values;
+				// Stop storing now and indicate that there's more.
+<span class="nc" id="L220">				valueListComplete = ValueListComplete.NO;</span>
+<span class="nc" id="L221">				return;</span>
+			}
+<span class="nc" id="L223">			values.put(value, 1);</span>
+		}
+<span class="nc" id="L225">	}</span>
+
+	public void setGroup(String group) {
+<span class="nc" id="L228">		this.group = group;</span>
+<span class="nc" id="L229">	}</span>
+
+	public String getGroup() {
+<span class="nc" id="L232">		return group;</span>
+	}
+
+    public void setUiType(String uiType) {
+<span class="nc" id="L236">        this.uiType = uiType;</span>
+<span class="nc" id="L237">    }</span>
+
+    public String getUiType() {
+<span class="nc" id="L240">        return uiType;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.7.9.201702052155</span></div></body></html>

@@ -355,7 +355,7 @@
 <a class="jxr_linenumber" name="L347" href="#L347">347</a> 		<em class="jxr_comment">// Regex for finding all XML tags.</em>
 <a class="jxr_linenumber" name="L348" href="#L348">348</a> 		<em class="jxr_comment">// Group 1 indicates if this is an open or close tag</em>
 <a class="jxr_linenumber" name="L349" href="#L349">349</a> 		<em class="jxr_comment">// Group 2 is the tag name</em>
-<a class="jxr_linenumber" name="L350" href="#L350">350</a> 		Pattern xmlTags = Pattern.compile(<span class="jxr_string">"&lt;&#92;&#92;s*(/?)&#92;&#92;s*([^&gt;&#92;&#92;s]+)(&#92;&#92;s+[^&gt;]*)?&gt;"</span>);
+<a class="jxr_linenumber" name="L350" href="#L350">350</a> 		Pattern xmlTags = Pattern.compile(<span class="jxr_string">"&lt;(?![!&#92;&#92;?])&#92;&#92;s*(/?)&#92;&#92;s*([^&gt;&#92;&#92;s]+)(&#92;&#92;s+[^&gt;]*)?&gt;"</span>);
 <a class="jxr_linenumber" name="L351" href="#L351">351</a> 
 <a class="jxr_linenumber" name="L352" href="#L352">352</a> 		Matcher m = xmlTags.matcher(elementContent);
 <a class="jxr_linenumber" name="L353" href="#L353">353</a> 		List&lt;TagLocation&gt; openTagStack = <strong class="jxr_keyword">new</strong> ArrayList&lt;&gt;(); <em class="jxr_comment">// keep track of open tags</em>
@@ -581,6 +581,6 @@
 <a class="jxr_linenumber" name="L573" href="#L573">573</a> }
 </pre>
 <hr/>
-<div id="footer">Copyright &#169; 2017 <a href="http://www.inl.nl">Instituut voor Nederlandse Taal (INT)</a>. All rights reserved.</div>
+<div id="footer">Copyright &#169; 2018 <a href="http://www.inl.nl">Instituut voor Nederlandse Taal (INT)</a>. All rights reserved.</div>
 </body>
 </html>
