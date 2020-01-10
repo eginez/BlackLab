@@ -20,211 +20,224 @@
 <a class="jxr_linenumber" name="L12" href="#L12">12</a>  <strong class="jxr_keyword">import</strong> org.apache.logging.log4j.LogManager;
 <a class="jxr_linenumber" name="L13" href="#L13">13</a>  <strong class="jxr_keyword">import</strong> org.apache.logging.log4j.Logger;
 <a class="jxr_linenumber" name="L14" href="#L14">14</a>  
-<a class="jxr_linenumber" name="L15" href="#L15">15</a>  <strong class="jxr_keyword">import</strong> com.fasterxml.jackson.databind.JsonNode;
-<a class="jxr_linenumber" name="L16" href="#L16">16</a>  <strong class="jxr_keyword">import</strong> com.fasterxml.jackson.databind.node.NullNode;
-<a class="jxr_linenumber" name="L17" href="#L17">17</a>  <strong class="jxr_keyword">import</strong> com.fasterxml.jackson.databind.node.ObjectNode;
-<a class="jxr_linenumber" name="L18" href="#L18">18</a>  
-<a class="jxr_linenumber" name="L19" href="#L19">19</a>  <strong class="jxr_keyword">import</strong> nl.inl.blacklab.index.config.YamlJsonReader;
-<a class="jxr_linenumber" name="L20" href="#L20">20</a>  <strong class="jxr_keyword">import</strong> nl.inl.blacklab.indexers.preprocess.ConvertPlugin;
-<a class="jxr_linenumber" name="L21" href="#L21">21</a>  <strong class="jxr_keyword">import</strong> nl.inl.blacklab.indexers.preprocess.Plugin;
-<a class="jxr_linenumber" name="L22" href="#L22">22</a>  <strong class="jxr_keyword">import</strong> nl.inl.blacklab.indexers.preprocess.Plugin.PluginException;
-<a class="jxr_linenumber" name="L23" href="#L23">23</a>  <strong class="jxr_keyword">import</strong> nl.inl.blacklab.indexers.preprocess.TagPlugin;
-<a class="jxr_linenumber" name="L24" href="#L24">24</a>  
-<a class="jxr_linenumber" name="L25" href="#L25">25</a>  <em class="jxr_javadoccomment">/**</em>
-<a class="jxr_linenumber" name="L26" href="#L26">26</a>  <em class="jxr_javadoccomment"> * Responsible for loading file conversion and tagging plugins.</em>
+<a class="jxr_linenumber" name="L15" href="#L15">15</a>  <strong class="jxr_keyword">import</strong> nl.inl.blacklab.config.BLConfigPlugins;
+<a class="jxr_linenumber" name="L16" href="#L16">16</a>  <strong class="jxr_keyword">import</strong> nl.inl.blacklab.exceptions.PluginException;
+<a class="jxr_linenumber" name="L17" href="#L17">17</a>  <strong class="jxr_keyword">import</strong> nl.inl.blacklab.indexers.preprocess.ConvertPlugin;
+<a class="jxr_linenumber" name="L18" href="#L18">18</a>  <strong class="jxr_keyword">import</strong> nl.inl.blacklab.indexers.preprocess.Plugin;
+<a class="jxr_linenumber" name="L19" href="#L19">19</a>  <strong class="jxr_keyword">import</strong> nl.inl.blacklab.indexers.preprocess.TagPlugin;
+<a class="jxr_linenumber" name="L20" href="#L20">20</a>  
+<a class="jxr_linenumber" name="L21" href="#L21">21</a>  <em class="jxr_javadoccomment">/**</em>
+<a class="jxr_linenumber" name="L22" href="#L22">22</a>  <em class="jxr_javadoccomment"> * Responsible for loading file conversion and tagging plugins.</em>
+<a class="jxr_linenumber" name="L23" href="#L23">23</a>  <em class="jxr_javadoccomment"> * &lt;p&gt;</em>
+<a class="jxr_linenumber" name="L24" href="#L24">24</a>  <em class="jxr_javadoccomment"> * It will attempt to load all conversion and tagging plugins (according to the</em>
+<a class="jxr_linenumber" name="L25" href="#L25">25</a>  <em class="jxr_javadoccomment"> * {@link ServiceLoader} system) and initialize them with their respective</em>
+<a class="jxr_linenumber" name="L26" href="#L26">26</a>  <em class="jxr_javadoccomment"> * settings from the main blacklab config.</em>
 <a class="jxr_linenumber" name="L27" href="#L27">27</a>  <em class="jxr_javadoccomment"> * &lt;p&gt;</em>
-<a class="jxr_linenumber" name="L28" href="#L28">28</a>  <em class="jxr_javadoccomment"> * It will attempt to load all conversion and tagging plugins (according to the {@link ServiceLoader} system) and</em>
-<a class="jxr_linenumber" name="L29" href="#L29">29</a>  <em class="jxr_javadoccomment"> * initialize them with their respective settings from the main blacklab config.</em>
-<a class="jxr_linenumber" name="L30" href="#L30">30</a>  <em class="jxr_javadoccomment"> * &lt;p&gt;</em>
-<a class="jxr_linenumber" name="L31" href="#L31">31</a>  <em class="jxr_javadoccomment"> * A jar that wishes to register a plugin must contain a file named "nl.inl.blacklab.indexers.preprocess.(Tag|Covert)Plugin" inside</em>
-<a class="jxr_linenumber" name="L32" href="#L32">32</a>  <em class="jxr_javadoccomment"> * "META-INF/services/", containing the qualified classNames of the implementations they contain.</em>
-<a class="jxr_linenumber" name="L33" href="#L33">33</a>  <em class="jxr_javadoccomment"> */</em>
-<a class="jxr_linenumber" name="L34" href="#L34">34</a>  <strong class="jxr_keyword">public</strong> <strong class="jxr_keyword">class</strong> <a href="../../../../nl/inl/blacklab/index/PluginManager.html">PluginManager</a> {
-<a class="jxr_linenumber" name="L35" href="#L35">35</a>      <strong class="jxr_keyword">private</strong> <strong class="jxr_keyword">static</strong> <strong class="jxr_keyword">class</strong> PluginData&lt;T <strong class="jxr_keyword">extends</strong> Plugin&gt; {
-<a class="jxr_linenumber" name="L36" href="#L36">36</a>          <strong class="jxr_keyword">public</strong> <strong class="jxr_keyword">boolean</strong> initialized;
-<a class="jxr_linenumber" name="L37" href="#L37">37</a>          <strong class="jxr_keyword">public</strong> <a href="../../../../nl/inl/blacklab/indexers/preprocess/Plugin.html">PluginException</a> initializationException;
-<a class="jxr_linenumber" name="L38" href="#L38">38</a>  
-<a class="jxr_linenumber" name="L39" href="#L39">39</a>          <strong class="jxr_keyword">public</strong> <strong class="jxr_keyword">final</strong> T plugin;
-<a class="jxr_linenumber" name="L40" href="#L40">40</a>          <strong class="jxr_keyword">public</strong> <strong class="jxr_keyword">final</strong> Optional&lt;ObjectNode&gt; config;
-<a class="jxr_linenumber" name="L41" href="#L41">41</a>  
-<a class="jxr_linenumber" name="L42" href="#L42">42</a>          <strong class="jxr_keyword">public</strong> <a href="../../../../nl/inl/blacklab/index/PluginManager.html">PluginData</a>(T plugin, Optional&lt;ObjectNode&gt; config) {
-<a class="jxr_linenumber" name="L43" href="#L43">43</a>              <strong class="jxr_keyword">this</strong>.config = config;
-<a class="jxr_linenumber" name="L44" href="#L44">44</a>              <strong class="jxr_keyword">this</strong>.plugin = plugin;
-<a class="jxr_linenumber" name="L45" href="#L45">45</a>          }
-<a class="jxr_linenumber" name="L46" href="#L46">46</a>      }
-<a class="jxr_linenumber" name="L47" href="#L47">47</a>  
-<a class="jxr_linenumber" name="L48" href="#L48">48</a>      <strong class="jxr_keyword">private</strong> <strong class="jxr_keyword">static</strong> <strong class="jxr_keyword">final</strong> Logger logger = LogManager.getLogger(PluginManager.<strong class="jxr_keyword">class</strong>);
-<a class="jxr_linenumber" name="L49" href="#L49">49</a>  
-<a class="jxr_linenumber" name="L50" href="#L50">50</a>      <em class="jxr_javadoccomment">/** a pluginId may only contain a-z, A-Z, 0-9, and _ */</em>
-<a class="jxr_linenumber" name="L51" href="#L51">51</a>      <strong class="jxr_keyword">private</strong> <strong class="jxr_keyword">static</strong> <strong class="jxr_keyword">final</strong> Pattern PLUGINID_PATTERN = Pattern.compile(<span class="jxr_string">"[&#92;&#92;w]+"</span>);
-<a class="jxr_linenumber" name="L52" href="#L52">52</a>  
-<a class="jxr_linenumber" name="L53" href="#L53">53</a>      <em class="jxr_javadoccomment">/** Delay initialization of plugins until they are first used. Useful for development */</em>
-<a class="jxr_linenumber" name="L54" href="#L54">54</a>      <strong class="jxr_keyword">private</strong> <strong class="jxr_keyword">static</strong> <strong class="jxr_keyword">final</strong> String PROP_DELAY_INITIALIZATION = <span class="jxr_string">"delayInitialization"</span>;
-<a class="jxr_linenumber" name="L55" href="#L55">55</a>  
-<a class="jxr_linenumber" name="L56" href="#L56">56</a>      <em class="jxr_javadoccomment">/** Is the plugin system itself initialized */</em>
-<a class="jxr_linenumber" name="L57" href="#L57">57</a>      <strong class="jxr_keyword">private</strong> <strong class="jxr_keyword">static</strong> <strong class="jxr_keyword">boolean</strong> isInitialized = false;
-<a class="jxr_linenumber" name="L58" href="#L58">58</a>  
-<a class="jxr_linenumber" name="L59" href="#L59">59</a>      <strong class="jxr_keyword">private</strong> <strong class="jxr_keyword">static</strong> Map&lt;String, PluginData&lt;ConvertPlugin&gt;&gt; convertPlugins = <strong class="jxr_keyword">new</strong> HashMap&lt;&gt;();
-<a class="jxr_linenumber" name="L60" href="#L60">60</a>      <strong class="jxr_keyword">private</strong> <strong class="jxr_keyword">static</strong> Map&lt;String, PluginData&lt;TagPlugin&gt;&gt; tagPlugins = <strong class="jxr_keyword">new</strong> HashMap&lt;&gt;();
-<a class="jxr_linenumber" name="L61" href="#L61">61</a>  
-<a class="jxr_linenumber" name="L62" href="#L62">62</a>      <em class="jxr_comment">/*</em>
-<a class="jxr_linenumber" name="L63" href="#L63">63</a>  <em class="jxr_comment">     * Nothing to do; initialization happens when the blacklab config is loaded.</em>
-<a class="jxr_linenumber" name="L64" href="#L64">64</a>  <em class="jxr_comment">     * The blacklab Config is automatically loaded when the first Searcher is opened, or earlier by a user library.</em>
-<a class="jxr_linenumber" name="L65" href="#L65">65</a>  <em class="jxr_comment">     * So plugin formats should always be visible by the time they're needed.</em>
-<a class="jxr_linenumber" name="L66" href="#L66">66</a>  <em class="jxr_comment">     * (except when trying to query available formats before opening a searcher or loading a config...this is an edge case)</em>
-<a class="jxr_linenumber" name="L67" href="#L67">67</a>  <em class="jxr_comment">     */</em>
-<a class="jxr_linenumber" name="L68" href="#L68">68</a>      <strong class="jxr_keyword">private</strong> <a href="../../../../nl/inl/blacklab/index/PluginManager.html">PluginManager</a>() {}
-<a class="jxr_linenumber" name="L69" href="#L69">69</a>  
-<a class="jxr_linenumber" name="L70" href="#L70">70</a>      <em class="jxr_javadoccomment">/**</em>
-<a class="jxr_linenumber" name="L71" href="#L71">71</a>  <em class="jxr_javadoccomment">     * Attempts to load and initialize all plugin classes on the classpath, passing the values in the config to the matching plugin.</em>
-<a class="jxr_linenumber" name="L72" href="#L72">72</a>  <em class="jxr_javadoccomment">     *</em>
-<a class="jxr_linenumber" name="L73" href="#L73">73</a>  <em class="jxr_javadoccomment">     * @param pluginConfig the plugin configurations collection object. The format for this object is</em>
-<a class="jxr_linenumber" name="L74" href="#L74">74</a>  <em class="jxr_javadoccomment">     *</em>
-<a class="jxr_linenumber" name="L75" href="#L75">75</a>  <em class="jxr_javadoccomment">     *        &lt;pre&gt;</em>
-<a class="jxr_linenumber" name="L76" href="#L76">76</a>  <em class="jxr_javadoccomment">     * {</em>
-<a class="jxr_linenumber" name="L77" href="#L77">77</a>  <em class="jxr_javadoccomment">     *   "pluginId": {</em>
-<a class="jxr_linenumber" name="L78" href="#L78">78</a>  <em class="jxr_javadoccomment">     *     // arbitrary plugin config here</em>
-<a class="jxr_linenumber" name="L79" href="#L79">79</a>  <em class="jxr_javadoccomment">     *   },</em>
-<a class="jxr_linenumber" name="L80" href="#L80">80</a>  <em class="jxr_javadoccomment">     *</em>
-<a class="jxr_linenumber" name="L81" href="#L81">81</a>  <em class="jxr_javadoccomment">     *   "anotherPluginId": { ... },</em>
-<a class="jxr_linenumber" name="L82" href="#L82">82</a>  <em class="jxr_javadoccomment">     *   ...</em>
-<a class="jxr_linenumber" name="L83" href="#L83">83</a>  <em class="jxr_javadoccomment">     * }</em>
-<a class="jxr_linenumber" name="L84" href="#L84">84</a>  <em class="jxr_javadoccomment">     *        &lt;/pre&gt;</em>
-<a class="jxr_linenumber" name="L85" href="#L85">85</a>  <em class="jxr_javadoccomment">     */</em>
-<a class="jxr_linenumber" name="L86" href="#L86">86</a>      <strong class="jxr_keyword">public</strong> <strong class="jxr_keyword">static</strong> <strong class="jxr_keyword">void</strong> initPlugins(ObjectNode pluginConfig) {
-<a class="jxr_linenumber" name="L87" href="#L87">87</a>          <strong class="jxr_keyword">if</strong> (isInitialized)
-<a class="jxr_linenumber" name="L88" href="#L88">88</a>              <strong class="jxr_keyword">throw</strong> <strong class="jxr_keyword">new</strong> IllegalStateException(<span class="jxr_string">"PluginManager already initialized"</span>);
-<a class="jxr_linenumber" name="L89" href="#L89">89</a>          isInitialized = <strong class="jxr_keyword">true</strong>;
-<a class="jxr_linenumber" name="L90" href="#L90">90</a>  
-<a class="jxr_linenumber" name="L91" href="#L91">91</a>          logger.info(<span class="jxr_string">"Initializing plugin system"</span>);
-<a class="jxr_linenumber" name="L92" href="#L92">92</a>  
-<a class="jxr_linenumber" name="L93" href="#L93">93</a>          JsonNode delayNode = pluginConfig.get(PROP_DELAY_INITIALIZATION);
-<a class="jxr_linenumber" name="L94" href="#L94">94</a>          <strong class="jxr_keyword">boolean</strong> delayInitialization = (delayNode != <strong class="jxr_keyword">null</strong> &amp;&amp; !(delayNode instanceof NullNode) &amp;&amp; delayNode.asBoolean());
+<a class="jxr_linenumber" name="L28" href="#L28">28</a>  <em class="jxr_javadoccomment"> * A jar that wishes to register a plugin must contain a file named</em>
+<a class="jxr_linenumber" name="L29" href="#L29">29</a>  <em class="jxr_javadoccomment"> * "nl.inl.blacklab.indexers.preprocess.(Tag|Covert)Plugin" inside</em>
+<a class="jxr_linenumber" name="L30" href="#L30">30</a>  <em class="jxr_javadoccomment"> * "META-INF/services/", containing the qualified classNames of the</em>
+<a class="jxr_linenumber" name="L31" href="#L31">31</a>  <em class="jxr_javadoccomment"> * implementations they contain.</em>
+<a class="jxr_linenumber" name="L32" href="#L32">32</a>  <em class="jxr_javadoccomment"> */</em>
+<a class="jxr_linenumber" name="L33" href="#L33">33</a>  <strong class="jxr_keyword">public</strong> <strong class="jxr_keyword">class</strong> <a href="../../../../nl/inl/blacklab/index/PluginManager.html">PluginManager</a> {
+<a class="jxr_linenumber" name="L34" href="#L34">34</a>      <strong class="jxr_keyword">private</strong> <strong class="jxr_keyword">static</strong> <strong class="jxr_keyword">class</strong> PluginData&lt;T <strong class="jxr_keyword">extends</strong> Plugin&gt; {
+<a class="jxr_linenumber" name="L35" href="#L35">35</a>          <strong class="jxr_keyword">public</strong> <strong class="jxr_keyword">boolean</strong> initialized;
+<a class="jxr_linenumber" name="L36" href="#L36">36</a>          <strong class="jxr_keyword">public</strong> <a href="../../../../nl/inl/blacklab/exceptions/PluginException.html">PluginException</a> initializationException;
+<a class="jxr_linenumber" name="L37" href="#L37">37</a>  
+<a class="jxr_linenumber" name="L38" href="#L38">38</a>          <strong class="jxr_keyword">public</strong> <strong class="jxr_keyword">final</strong> T plugin;
+<a class="jxr_linenumber" name="L39" href="#L39">39</a>          <strong class="jxr_keyword">private</strong> <strong class="jxr_keyword">final</strong> Map&lt;String, String&gt; configMap;
+<a class="jxr_linenumber" name="L40" href="#L40">40</a>  
+<a class="jxr_linenumber" name="L41" href="#L41">41</a>          <strong class="jxr_keyword">public</strong> <a href="../../../../nl/inl/blacklab/index/PluginManager.html">PluginData</a>(T plugin, Map&lt;String, String&gt; configMap) {
+<a class="jxr_linenumber" name="L42" href="#L42">42</a>              <strong class="jxr_keyword">this</strong>.configMap = configMap;
+<a class="jxr_linenumber" name="L43" href="#L43">43</a>              <strong class="jxr_keyword">this</strong>.plugin = plugin;
+<a class="jxr_linenumber" name="L44" href="#L44">44</a>          }
+<a class="jxr_linenumber" name="L45" href="#L45">45</a>      }
+<a class="jxr_linenumber" name="L46" href="#L46">46</a>  
+<a class="jxr_linenumber" name="L47" href="#L47">47</a>      <strong class="jxr_keyword">private</strong> <strong class="jxr_keyword">static</strong> <strong class="jxr_keyword">final</strong> Logger logger = LogManager.getLogger(PluginManager.<strong class="jxr_keyword">class</strong>);
+<a class="jxr_linenumber" name="L48" href="#L48">48</a>  
+<a class="jxr_linenumber" name="L49" href="#L49">49</a>      <em class="jxr_javadoccomment">/** a pluginId may only contain a-z, A-Z, 0-9, and _ */</em>
+<a class="jxr_linenumber" name="L50" href="#L50">50</a>      <strong class="jxr_keyword">private</strong> <strong class="jxr_keyword">static</strong> <strong class="jxr_keyword">final</strong> Pattern PLUGINID_PATTERN = Pattern.compile(<span class="jxr_string">"[&#92;&#92;w]+"</span>);
+<a class="jxr_linenumber" name="L51" href="#L51">51</a>  
+<a class="jxr_linenumber" name="L52" href="#L52">52</a>      <em class="jxr_javadoccomment">/**</em>
+<a class="jxr_linenumber" name="L53" href="#L53">53</a>  <em class="jxr_javadoccomment">     * Delay initialization of plugins until they are first used. Useful for</em>
+<a class="jxr_linenumber" name="L54" href="#L54">54</a>  <em class="jxr_javadoccomment">     * development</em>
+<a class="jxr_linenumber" name="L55" href="#L55">55</a>  <em class="jxr_javadoccomment">     */</em>
+<a class="jxr_linenumber" name="L56" href="#L56">56</a>      <strong class="jxr_keyword">private</strong> <strong class="jxr_keyword">static</strong> <strong class="jxr_keyword">final</strong> String PROP_DELAY_INITIALIZATION = <span class="jxr_string">"delayInitialization"</span>;
+<a class="jxr_linenumber" name="L57" href="#L57">57</a>  
+<a class="jxr_linenumber" name="L58" href="#L58">58</a>      <em class="jxr_javadoccomment">/** Is the plugin system itself initialized */</em>
+<a class="jxr_linenumber" name="L59" href="#L59">59</a>      <strong class="jxr_keyword">private</strong> <strong class="jxr_keyword">static</strong> <strong class="jxr_keyword">boolean</strong> isInitialized = false;
+<a class="jxr_linenumber" name="L60" href="#L60">60</a>  
+<a class="jxr_linenumber" name="L61" href="#L61">61</a>      <strong class="jxr_keyword">private</strong> <strong class="jxr_keyword">static</strong> Map&lt;String, PluginData&lt;ConvertPlugin&gt;&gt; convertPlugins = <strong class="jxr_keyword">new</strong> HashMap&lt;&gt;();
+<a class="jxr_linenumber" name="L62" href="#L62">62</a>      <strong class="jxr_keyword">private</strong> <strong class="jxr_keyword">static</strong> Map&lt;String, PluginData&lt;TagPlugin&gt;&gt; tagPlugins = <strong class="jxr_keyword">new</strong> HashMap&lt;&gt;();
+<a class="jxr_linenumber" name="L63" href="#L63">63</a>  
+<a class="jxr_linenumber" name="L64" href="#L64">64</a>      <em class="jxr_comment">// Nothing to do; initialization happens when the blacklab config is loaded.</em>
+<a class="jxr_linenumber" name="L65" href="#L65">65</a>      <em class="jxr_comment">// The blacklab Config is automatically loaded when the first BlackLabIndex is</em>
+<a class="jxr_linenumber" name="L66" href="#L66">66</a>      <em class="jxr_comment">// opened, or earlier by a user library.</em>
+<a class="jxr_linenumber" name="L67" href="#L67">67</a>      <em class="jxr_comment">// So plugin formats should always be visible by the time they're needed.</em>
+<a class="jxr_linenumber" name="L68" href="#L68">68</a>      <em class="jxr_comment">// (except when trying to query available formats before opening an index or</em>
+<a class="jxr_linenumber" name="L69" href="#L69">69</a>      <em class="jxr_comment">// loading a config...this is an edge case)</em>
+<a class="jxr_linenumber" name="L70" href="#L70">70</a>      <strong class="jxr_keyword">private</strong> <a href="../../../../nl/inl/blacklab/index/PluginManager.html">PluginManager</a>() {
+<a class="jxr_linenumber" name="L71" href="#L71">71</a>      }
+<a class="jxr_linenumber" name="L72" href="#L72">72</a>  
+<a class="jxr_linenumber" name="L73" href="#L73">73</a>      <em class="jxr_javadoccomment">/**</em>
+<a class="jxr_linenumber" name="L74" href="#L74">74</a>  <em class="jxr_javadoccomment">     * Attempts to load and initialize all plugin classes on the classpath, passing</em>
+<a class="jxr_linenumber" name="L75" href="#L75">75</a>  <em class="jxr_javadoccomment">     * the values in the config to the matching plugin.</em>
+<a class="jxr_linenumber" name="L76" href="#L76">76</a>  <em class="jxr_javadoccomment">     *</em>
+<a class="jxr_linenumber" name="L77" href="#L77">77</a>  <em class="jxr_javadoccomment">     * @param pluginConfig the plugin configurations collection object. The format</em>
+<a class="jxr_linenumber" name="L78" href="#L78">78</a>  <em class="jxr_javadoccomment">     *            for this object is</em>
+<a class="jxr_linenumber" name="L79" href="#L79">79</a>  <em class="jxr_javadoccomment">     *</em>
+<a class="jxr_linenumber" name="L80" href="#L80">80</a>  <em class="jxr_javadoccomment">     *            &lt;pre&gt;</em>
+<a class="jxr_linenumber" name="L81" href="#L81">81</a>  <em class="jxr_javadoccomment">     * {</em>
+<a class="jxr_linenumber" name="L82" href="#L82">82</a>  <em class="jxr_javadoccomment">     *   "pluginId": {</em>
+<a class="jxr_linenumber" name="L83" href="#L83">83</a>  <em class="jxr_javadoccomment">     *     // arbitrary plugin config here</em>
+<a class="jxr_linenumber" name="L84" href="#L84">84</a>  <em class="jxr_javadoccomment">     *   },</em>
+<a class="jxr_linenumber" name="L85" href="#L85">85</a>  <em class="jxr_javadoccomment">     *</em>
+<a class="jxr_linenumber" name="L86" href="#L86">86</a>  <em class="jxr_javadoccomment">     *   "anotherPluginId": { ... },</em>
+<a class="jxr_linenumber" name="L87" href="#L87">87</a>  <em class="jxr_javadoccomment">     *   ...</em>
+<a class="jxr_linenumber" name="L88" href="#L88">88</a>  <em class="jxr_javadoccomment">     * }</em>
+<a class="jxr_linenumber" name="L89" href="#L89">89</a>  <em class="jxr_javadoccomment">     *            &lt;/pre&gt;</em>
+<a class="jxr_linenumber" name="L90" href="#L90">90</a>  <em class="jxr_javadoccomment">     */</em>
+<a class="jxr_linenumber" name="L91" href="#L91">91</a>      <strong class="jxr_keyword">public</strong> <strong class="jxr_keyword">static</strong> <strong class="jxr_keyword">void</strong> initPlugins(<a href="../../../../nl/inl/blacklab/config/BLConfigPlugins.html">BLConfigPlugins</a> pluginConfig) {
+<a class="jxr_linenumber" name="L92" href="#L92">92</a>          <strong class="jxr_keyword">if</strong> (isInitialized)
+<a class="jxr_linenumber" name="L93" href="#L93">93</a>              <strong class="jxr_keyword">throw</strong> <strong class="jxr_keyword">new</strong> IllegalStateException(<span class="jxr_string">"PluginManager already initialized"</span>);
+<a class="jxr_linenumber" name="L94" href="#L94">94</a>          isInitialized = <strong class="jxr_keyword">true</strong>;
 <a class="jxr_linenumber" name="L95" href="#L95">95</a>  
-<a class="jxr_linenumber" name="L96" href="#L96">96</a>          <em class="jxr_comment">// First load all plugins, so we have the full list of plugins available.</em>
-<a class="jxr_linenumber" name="L97" href="#L97">97</a>          convertPlugins = loadPlugins(ConvertPlugin.<strong class="jxr_keyword">class</strong>, pluginConfig);
-<a class="jxr_linenumber" name="L98" href="#L98">98</a>          tagPlugins = loadPlugins(TagPlugin.<strong class="jxr_keyword">class</strong>, pluginConfig);
+<a class="jxr_linenumber" name="L96" href="#L96">96</a>          logger.debug(<span class="jxr_string">"Initializing plugin system..."</span>);
+<a class="jxr_linenumber" name="L97" href="#L97">97</a>          
+<a class="jxr_linenumber" name="L98" href="#L98">98</a>          <strong class="jxr_keyword">boolean</strong> delayInitialization = pluginConfig.isDelayInitialization();
 <a class="jxr_linenumber" name="L99" href="#L99">99</a>  
-<a class="jxr_linenumber" name="L100" href="#L100">100</a> 
-<a class="jxr_linenumber" name="L101" href="#L101">101</a>         <em class="jxr_comment">// Some plugins take a LONG time to init, if we block, we block the loading of the config</em>
-<a class="jxr_linenumber" name="L102" href="#L102">102</a>         <em class="jxr_comment">// Which in turn blocks the whole of blacklab(-server), so don't do that</em>
-<a class="jxr_linenumber" name="L103" href="#L103">103</a>         <strong class="jxr_keyword">if</strong> (!delayInitialization) {
-<a class="jxr_linenumber" name="L104" href="#L104">104</a>             CompletableFuture.runAsync(() -&gt; {
-<a class="jxr_linenumber" name="L105" href="#L105">105</a>                 <em class="jxr_comment">// only now they're all located, initialize them</em>
-<a class="jxr_linenumber" name="L106" href="#L106">106</a>                 logger.info(<span class="jxr_string">"Config setting "</span> + PROP_DELAY_INITIALIZATION + <span class="jxr_string">" is false, initializing plugins..."</span>);
-<a class="jxr_linenumber" name="L107" href="#L107">107</a>                 initializePlugins(convertPlugins);
-<a class="jxr_linenumber" name="L108" href="#L108">108</a>                 initializePlugins(tagPlugins);
-<a class="jxr_linenumber" name="L109" href="#L109">109</a>                 logger.info(<span class="jxr_string">"Finished Initializing plugin system"</span>);
-<a class="jxr_linenumber" name="L110" href="#L110">110</a>             });
-<a class="jxr_linenumber" name="L111" href="#L111">111</a>         } <strong class="jxr_keyword">else</strong> {
-<a class="jxr_linenumber" name="L112" href="#L112">112</a>             logger.info(<span class="jxr_string">"Config setting "</span> + PROP_DELAY_INITIALIZATION + <span class="jxr_string">" is true, plugins will be initialized on first use."</span>);
-<a class="jxr_linenumber" name="L113" href="#L113">113</a>             logger.info(<span class="jxr_string">"Finished Initializing plugin system"</span>);
-<a class="jxr_linenumber" name="L114" href="#L114">114</a>         }
-<a class="jxr_linenumber" name="L115" href="#L115">115</a>     }
-<a class="jxr_linenumber" name="L116" href="#L116">116</a> 
-<a class="jxr_linenumber" name="L117" href="#L117">117</a>     <strong class="jxr_keyword">private</strong> <strong class="jxr_keyword">static</strong> &lt;T <strong class="jxr_keyword">extends</strong> Plugin&gt; Map&lt;String, PluginData&lt;T&gt;&gt; loadPlugins(Class&lt;T&gt; pluginClass, ObjectNode pluginConfig) {
-<a class="jxr_linenumber" name="L118" href="#L118">118</a>         Map&lt;String, PluginData&lt;T&gt;&gt; plugins = <strong class="jxr_keyword">new</strong> HashMap&lt;&gt;();
-<a class="jxr_linenumber" name="L119" href="#L119">119</a> 
-<a class="jxr_linenumber" name="L120" href="#L120">120</a>         Iterator&lt;T&gt; it = ServiceLoader.load(pluginClass).iterator();
-<a class="jxr_linenumber" name="L121" href="#L121">121</a>         <strong class="jxr_keyword">while</strong> (it.hasNext()) {
-<a class="jxr_linenumber" name="L122" href="#L122">122</a>             String id = <strong class="jxr_keyword">null</strong>;
-<a class="jxr_linenumber" name="L123" href="#L123">123</a> 
-<a class="jxr_linenumber" name="L124" href="#L124">124</a>             <strong class="jxr_keyword">try</strong> {
-<a class="jxr_linenumber" name="L125" href="#L125">125</a>                 T plugin = it.next();
-<a class="jxr_linenumber" name="L126" href="#L126">126</a>                 id = plugin.getId();
-<a class="jxr_linenumber" name="L127" href="#L127">127</a>                 <strong class="jxr_keyword">if</strong> (!PLUGINID_PATTERN.matcher(id).matches()) {
-<a class="jxr_linenumber" name="L128" href="#L128">128</a>                     logger.warn(<span class="jxr_string">"Plugin id "</span> + id + <span class="jxr_string">" (class "</span> + plugin.getClass().getCanonicalName() +
-<a class="jxr_linenumber" name="L129" href="#L129">129</a>                         <span class="jxr_string">") is not a valid id; ignoring plugin."</span>);
-<a class="jxr_linenumber" name="L130" href="#L130">130</a>                     <strong class="jxr_keyword">continue</strong>;
-<a class="jxr_linenumber" name="L131" href="#L131">131</a>                 }
-<a class="jxr_linenumber" name="L132" href="#L132">132</a> 
-<a class="jxr_linenumber" name="L133" href="#L133">133</a>                 Optional&lt;ObjectNode&gt; config = Optional.ofNullable(pluginConfig.get(plugin.getId())) <em class="jxr_comment">// get key + optional value</em>
-<a class="jxr_linenumber" name="L134" href="#L134">134</a>                     .filter(n -&gt; !(n instanceof NullNode)) <em class="jxr_comment">// if value</em>
-<a class="jxr_linenumber" name="L135" href="#L135">135</a>                     .map(n -&gt; YamlJsonReader.obj(n, plugin.getId())); <em class="jxr_comment">// get value</em>
-<a class="jxr_linenumber" name="L136" href="#L136">136</a> 
-<a class="jxr_linenumber" name="L137" href="#L137">137</a>                 PluginData&lt;T&gt; data = <strong class="jxr_keyword">new</strong> PluginData&lt;&gt;(plugin, config);
-<a class="jxr_linenumber" name="L138" href="#L138">138</a>                 plugins.put(id, data);
-<a class="jxr_linenumber" name="L139" href="#L139">139</a>             } <strong class="jxr_keyword">catch</strong> (ServiceConfigurationError e) {
-<a class="jxr_linenumber" name="L140" href="#L140">140</a>                 logger.error(<span class="jxr_string">"Plugin failed to load: "</span> + e.getMessage(), e);
-<a class="jxr_linenumber" name="L141" href="#L141">141</a>             } <strong class="jxr_keyword">catch</strong> (Exception e) {
-<a class="jxr_linenumber" name="L142" href="#L142">142</a>                 logger.error(<span class="jxr_string">"Plugin "</span> + (id == <strong class="jxr_keyword">null</strong> ? <span class="jxr_string">"(unknown)"</span> : id) + <span class="jxr_string">" failed to load: "</span> + e.getMessage(), e);
-<a class="jxr_linenumber" name="L143" href="#L143">143</a>             }
-<a class="jxr_linenumber" name="L144" href="#L144">144</a>         }
-<a class="jxr_linenumber" name="L145" href="#L145">145</a> 
-<a class="jxr_linenumber" name="L146" href="#L146">146</a>         <strong class="jxr_keyword">return</strong> plugins;
-<a class="jxr_linenumber" name="L147" href="#L147">147</a>     }
-<a class="jxr_linenumber" name="L148" href="#L148">148</a> 
-<a class="jxr_linenumber" name="L149" href="#L149">149</a>     <strong class="jxr_keyword">public</strong> <strong class="jxr_keyword">static</strong> Optional&lt;ConvertPlugin&gt; getConverter(String convertPluginId) <strong class="jxr_keyword">throws</strong> PluginException {
-<a class="jxr_linenumber" name="L150" href="#L150">150</a>         <strong class="jxr_keyword">if</strong> (!isInitialized)
-<a class="jxr_linenumber" name="L151" href="#L151">151</a>             <strong class="jxr_keyword">throw</strong> <strong class="jxr_keyword">new</strong> UnsupportedOperationException(<span class="jxr_string">"Plugin system is not initialized, place a top-level key \&quot;plugins\&quot; with per-plugin configuration in your blacklab config to use plugins."</span>);
-<a class="jxr_linenumber" name="L152" href="#L152">152</a> 
-<a class="jxr_linenumber" name="L153" href="#L153">153</a>         Optional&lt;PluginData&lt;ConvertPlugin&gt;&gt; data = Optional.ofNullable(convertPlugins.get(convertPluginId));
-<a class="jxr_linenumber" name="L154" href="#L154">154</a>         <strong class="jxr_keyword">if</strong> (data.isPresent())
-<a class="jxr_linenumber" name="L155" href="#L155">155</a>             initializePlugin(data.get());
-<a class="jxr_linenumber" name="L156" href="#L156">156</a> 
-<a class="jxr_linenumber" name="L157" href="#L157">157</a>         <strong class="jxr_keyword">return</strong> data.map(d -&gt; d.plugin);
-<a class="jxr_linenumber" name="L158" href="#L158">158</a>     }
-<a class="jxr_linenumber" name="L159" href="#L159">159</a> 
-<a class="jxr_linenumber" name="L160" href="#L160">160</a>     <strong class="jxr_keyword">public</strong> <strong class="jxr_keyword">static</strong> Optional&lt;TagPlugin&gt; getTagger(String tagPluginId) <strong class="jxr_keyword">throws</strong> PluginException {
-<a class="jxr_linenumber" name="L161" href="#L161">161</a>         <strong class="jxr_keyword">if</strong> (!isInitialized)
-<a class="jxr_linenumber" name="L162" href="#L162">162</a>             <strong class="jxr_keyword">throw</strong> <strong class="jxr_keyword">new</strong> UnsupportedOperationException(<span class="jxr_string">"Plugin system is not initialized, place a top-level key \&quot;plugins\&quot; with per-plugin configuration in your blacklab config to use plugins."</span>);
-<a class="jxr_linenumber" name="L163" href="#L163">163</a> 
-<a class="jxr_linenumber" name="L164" href="#L164">164</a>         Optional&lt;PluginData&lt;TagPlugin&gt;&gt; data = Optional.ofNullable(tagPlugins.get(tagPluginId));
-<a class="jxr_linenumber" name="L165" href="#L165">165</a>         <strong class="jxr_keyword">if</strong> (data.isPresent())
-<a class="jxr_linenumber" name="L166" href="#L166">166</a>             initializePlugin(data.get());
+<a class="jxr_linenumber" name="L100" href="#L100">100</a>         <em class="jxr_comment">// First load all plugins, so we have the full list of plugins available.</em>
+<a class="jxr_linenumber" name="L101" href="#L101">101</a>         convertPlugins = loadPlugins(ConvertPlugin.<strong class="jxr_keyword">class</strong>, pluginConfig);
+<a class="jxr_linenumber" name="L102" href="#L102">102</a>         tagPlugins = loadPlugins(TagPlugin.<strong class="jxr_keyword">class</strong>, pluginConfig);
+<a class="jxr_linenumber" name="L103" href="#L103">103</a> 
+<a class="jxr_linenumber" name="L104" href="#L104">104</a>         <em class="jxr_comment">// Some plugins take a LONG time to init, if we block, we block the loading of the config</em>
+<a class="jxr_linenumber" name="L105" href="#L105">105</a>         <em class="jxr_comment">// Which in turn blocks the whole of blacklab(-server), so don't do that</em>
+<a class="jxr_linenumber" name="L106" href="#L106">106</a>         <strong class="jxr_keyword">if</strong> (!delayInitialization) {
+<a class="jxr_linenumber" name="L107" href="#L107">107</a>             CompletableFuture.runAsync(() -&gt; {
+<a class="jxr_linenumber" name="L108" href="#L108">108</a>                 <em class="jxr_comment">// only now they're all located, initialize them</em>
+<a class="jxr_linenumber" name="L109" href="#L109">109</a>                 logger.trace(<span class="jxr_string">"Config setting "</span> + PROP_DELAY_INITIALIZATION + <span class="jxr_string">" is false, initializing plugins..."</span>);
+<a class="jxr_linenumber" name="L110" href="#L110">110</a>                 initializePlugins(convertPlugins);
+<a class="jxr_linenumber" name="L111" href="#L111">111</a>                 initializePlugins(tagPlugins);
+<a class="jxr_linenumber" name="L112" href="#L112">112</a>                 logger.trace(<span class="jxr_string">"Finished Initializing plugin system"</span>);
+<a class="jxr_linenumber" name="L113" href="#L113">113</a>             });
+<a class="jxr_linenumber" name="L114" href="#L114">114</a>         } <strong class="jxr_keyword">else</strong> {
+<a class="jxr_linenumber" name="L115" href="#L115">115</a>             logger.trace(<span class="jxr_string">"Config setting "</span> + PROP_DELAY_INITIALIZATION
+<a class="jxr_linenumber" name="L116" href="#L116">116</a>                     + <span class="jxr_string">" is true, plugins will be initialized on first use."</span>);
+<a class="jxr_linenumber" name="L117" href="#L117">117</a>             logger.trace(<span class="jxr_string">"Finished Initializing plugin system"</span>);
+<a class="jxr_linenumber" name="L118" href="#L118">118</a>         }
+<a class="jxr_linenumber" name="L119" href="#L119">119</a>     }
+<a class="jxr_linenumber" name="L120" href="#L120">120</a> 
+<a class="jxr_linenumber" name="L121" href="#L121">121</a>     <strong class="jxr_keyword">private</strong> <strong class="jxr_keyword">static</strong> &lt;T <strong class="jxr_keyword">extends</strong> Plugin&gt; Map&lt;String, PluginData&lt;T&gt;&gt; loadPlugins(Class&lt;T&gt; pluginClass,
+<a class="jxr_linenumber" name="L122" href="#L122">122</a>             <a href="../../../../nl/inl/blacklab/config/BLConfigPlugins.html">BLConfigPlugins</a> pluginConfig) {
+<a class="jxr_linenumber" name="L123" href="#L123">123</a>         Map&lt;String, PluginData&lt;T&gt;&gt; plugins = <strong class="jxr_keyword">new</strong> HashMap&lt;&gt;();
+<a class="jxr_linenumber" name="L124" href="#L124">124</a> 
+<a class="jxr_linenumber" name="L125" href="#L125">125</a>         Iterator&lt;T&gt; it = ServiceLoader.load(pluginClass).iterator();
+<a class="jxr_linenumber" name="L126" href="#L126">126</a>         Map&lt;String, Map&lt;String, String&gt;&gt; pluginParamConfig = pluginConfig.getPlugins();
+<a class="jxr_linenumber" name="L127" href="#L127">127</a>         <strong class="jxr_keyword">while</strong> (it.hasNext()) {
+<a class="jxr_linenumber" name="L128" href="#L128">128</a>             String id = <strong class="jxr_keyword">null</strong>;
+<a class="jxr_linenumber" name="L129" href="#L129">129</a> 
+<a class="jxr_linenumber" name="L130" href="#L130">130</a>             <strong class="jxr_keyword">try</strong> {
+<a class="jxr_linenumber" name="L131" href="#L131">131</a>                 T plugin = it.next();
+<a class="jxr_linenumber" name="L132" href="#L132">132</a>                 id = plugin.getId();
+<a class="jxr_linenumber" name="L133" href="#L133">133</a>                 <strong class="jxr_keyword">if</strong> (!PLUGINID_PATTERN.matcher(id).matches()) {
+<a class="jxr_linenumber" name="L134" href="#L134">134</a>                     logger.warn(<span class="jxr_string">"Plugin id "</span> + id + <span class="jxr_string">" (class "</span> + plugin.getClass().getCanonicalName() +
+<a class="jxr_linenumber" name="L135" href="#L135">135</a>                             <span class="jxr_string">") is not a valid id; ignoring plugin."</span>);
+<a class="jxr_linenumber" name="L136" href="#L136">136</a>                     <strong class="jxr_keyword">continue</strong>;
+<a class="jxr_linenumber" name="L137" href="#L137">137</a>                 }
+<a class="jxr_linenumber" name="L138" href="#L138">138</a> 
+<a class="jxr_linenumber" name="L139" href="#L139">139</a>                 <em class="jxr_comment">// Config available, or plugin needs no config?</em>
+<a class="jxr_linenumber" name="L140" href="#L140">140</a>                 <strong class="jxr_keyword">if</strong> (!plugin.needsConfig() || pluginParamConfig.containsKey(id)) {
+<a class="jxr_linenumber" name="L141" href="#L141">141</a>                     <em class="jxr_comment">// Yes, add the plugin data to our map.</em>
+<a class="jxr_linenumber" name="L142" href="#L142">142</a>                     PluginData&lt;T&gt; data = <strong class="jxr_keyword">new</strong> PluginData&lt;&gt;(plugin, pluginParamConfig.get(id));
+<a class="jxr_linenumber" name="L143" href="#L143">143</a>                     plugins.put(id, data);
+<a class="jxr_linenumber" name="L144" href="#L144">144</a>                 }
+<a class="jxr_linenumber" name="L145" href="#L145">145</a>             } <strong class="jxr_keyword">catch</strong> (ServiceConfigurationError e) {
+<a class="jxr_linenumber" name="L146" href="#L146">146</a>                 logger.error(<span class="jxr_string">"Plugin failed to load: "</span> + e.getMessage(), e);
+<a class="jxr_linenumber" name="L147" href="#L147">147</a>             } <strong class="jxr_keyword">catch</strong> (Exception e) {
+<a class="jxr_linenumber" name="L148" href="#L148">148</a>                 logger.error(<span class="jxr_string">"Plugin "</span> + (id == <strong class="jxr_keyword">null</strong> ? <span class="jxr_string">"(unknown)"</span> : id) + <span class="jxr_string">" failed to load: "</span> + e.getMessage(), e);
+<a class="jxr_linenumber" name="L149" href="#L149">149</a>             }
+<a class="jxr_linenumber" name="L150" href="#L150">150</a>         }
+<a class="jxr_linenumber" name="L151" href="#L151">151</a> 
+<a class="jxr_linenumber" name="L152" href="#L152">152</a>         <strong class="jxr_keyword">return</strong> plugins;
+<a class="jxr_linenumber" name="L153" href="#L153">153</a>     }
+<a class="jxr_linenumber" name="L154" href="#L154">154</a> 
+<a class="jxr_linenumber" name="L155" href="#L155">155</a>     <strong class="jxr_keyword">public</strong> <strong class="jxr_keyword">static</strong> Optional&lt;ConvertPlugin&gt; getConverter(String convertPluginId) <strong class="jxr_keyword">throws</strong> PluginException {
+<a class="jxr_linenumber" name="L156" href="#L156">156</a>         <strong class="jxr_keyword">if</strong> (!isInitialized)
+<a class="jxr_linenumber" name="L157" href="#L157">157</a>             <strong class="jxr_keyword">throw</strong> <strong class="jxr_keyword">new</strong> UnsupportedOperationException(
+<a class="jxr_linenumber" name="L158" href="#L158">158</a>                     <span class="jxr_string">"Plugin system is not initialized, place a top-level key \&quot;plugins\&quot; with "</span> +
+<a class="jxr_linenumber" name="L159" href="#L159">159</a>                             <span class="jxr_string">"per-plugin configuration in your blacklab config to use plugins."</span>);
+<a class="jxr_linenumber" name="L160" href="#L160">160</a> 
+<a class="jxr_linenumber" name="L161" href="#L161">161</a>         Optional&lt;PluginData&lt;ConvertPlugin&gt;&gt; data = Optional.ofNullable(convertPlugins.get(convertPluginId));
+<a class="jxr_linenumber" name="L162" href="#L162">162</a>         <strong class="jxr_keyword">if</strong> (data.isPresent())
+<a class="jxr_linenumber" name="L163" href="#L163">163</a>             initializePlugin(data.get());
+<a class="jxr_linenumber" name="L164" href="#L164">164</a> 
+<a class="jxr_linenumber" name="L165" href="#L165">165</a>         <strong class="jxr_keyword">return</strong> data.map(d -&gt; d.plugin);
+<a class="jxr_linenumber" name="L166" href="#L166">166</a>     }
 <a class="jxr_linenumber" name="L167" href="#L167">167</a> 
-<a class="jxr_linenumber" name="L168" href="#L168">168</a>         <strong class="jxr_keyword">return</strong> data.map(d -&gt; d.plugin);
-<a class="jxr_linenumber" name="L169" href="#L169">169</a>     }
-<a class="jxr_linenumber" name="L170" href="#L170">170</a> 
-<a class="jxr_linenumber" name="L171" href="#L171">171</a>     <em class="jxr_javadoccomment">/**</em>
-<a class="jxr_linenumber" name="L172" href="#L172">172</a> <em class="jxr_javadoccomment">     * Initialize the plugin, if it exists and is currently uninitialized.</em>
-<a class="jxr_linenumber" name="L173" href="#L173">173</a> <em class="jxr_javadoccomment">     * Previously encountered errors are rethrown.</em>
-<a class="jxr_linenumber" name="L174" href="#L174">174</a> <em class="jxr_javadoccomment">     * If am error is encountered, it is stored in the plugin data and rethrown.</em>
-<a class="jxr_linenumber" name="L175" href="#L175">175</a> <em class="jxr_javadoccomment">     *</em>
-<a class="jxr_linenumber" name="L176" href="#L176">176</a> <em class="jxr_javadoccomment">     * @param data plugin data</em>
-<a class="jxr_linenumber" name="L177" href="#L177">177</a> <em class="jxr_javadoccomment">     * @throws PluginException when the plugin fails to initialize, care should be taken by the caller to remove it from the list of plugins when this occurs.</em>
-<a class="jxr_linenumber" name="L178" href="#L178">178</a> <em class="jxr_javadoccomment">     */</em>
-<a class="jxr_linenumber" name="L179" href="#L179">179</a>     <strong class="jxr_keyword">private</strong> <strong class="jxr_keyword">static</strong> <strong class="jxr_keyword">void</strong> initializePlugin(PluginData&lt;?&gt; data) <strong class="jxr_keyword">throws</strong> PluginException {
-<a class="jxr_linenumber" name="L180" href="#L180">180</a>         <strong class="jxr_keyword">synchronized</strong> (data.plugin) {
-<a class="jxr_linenumber" name="L181" href="#L181">181</a>             <strong class="jxr_keyword">if</strong> (data.initializationException != <strong class="jxr_keyword">null</strong>)
-<a class="jxr_linenumber" name="L182" href="#L182">182</a>                 <strong class="jxr_keyword">throw</strong> data.initializationException;
-<a class="jxr_linenumber" name="L183" href="#L183">183</a>             <strong class="jxr_keyword">if</strong> (data.initialized)
-<a class="jxr_linenumber" name="L184" href="#L184">184</a>                 <strong class="jxr_keyword">return</strong>;
-<a class="jxr_linenumber" name="L185" href="#L185">185</a> 
-<a class="jxr_linenumber" name="L186" href="#L186">186</a>             <strong class="jxr_keyword">try</strong> {
-<a class="jxr_linenumber" name="L187" href="#L187">187</a>                 logger.debug(<span class="jxr_string">"Initializing plugin "</span> + data.plugin.getDisplayName());
-<a class="jxr_linenumber" name="L188" href="#L188">188</a>                 data.plugin.init(data.config);
-<a class="jxr_linenumber" name="L189" href="#L189">189</a>                 logger.debug(<span class="jxr_string">"Initialized plugin "</span> + data.plugin.getDisplayName());
-<a class="jxr_linenumber" name="L190" href="#L190">190</a>             } <strong class="jxr_keyword">catch</strong> (PluginException e) {
-<a class="jxr_linenumber" name="L191" href="#L191">191</a>                 data.initializationException = e;
-<a class="jxr_linenumber" name="L192" href="#L192">192</a>                 <strong class="jxr_keyword">throw</strong> e;
-<a class="jxr_linenumber" name="L193" href="#L193">193</a>             } <strong class="jxr_keyword">catch</strong> (Exception e) {
-<a class="jxr_linenumber" name="L194" href="#L194">194</a>                 data.initializationException = <strong class="jxr_keyword">new</strong> <a href="../../../../nl/inl/blacklab/indexers/preprocess/Plugin.html">PluginException</a>(<span class="jxr_string">"Error during initialization."</span>, e);
-<a class="jxr_linenumber" name="L195" href="#L195">195</a>                 <strong class="jxr_keyword">throw</strong> data.initializationException;
-<a class="jxr_linenumber" name="L196" href="#L196">196</a>             } <strong class="jxr_keyword">finally</strong> {
-<a class="jxr_linenumber" name="L197" href="#L197">197</a>                 data.initialized = <strong class="jxr_keyword">true</strong>;
-<a class="jxr_linenumber" name="L198" href="#L198">198</a>             }
-<a class="jxr_linenumber" name="L199" href="#L199">199</a>         }
-<a class="jxr_linenumber" name="L200" href="#L200">200</a>     }
-<a class="jxr_linenumber" name="L201" href="#L201">201</a> 
-<a class="jxr_linenumber" name="L202" href="#L202">202</a>     <em class="jxr_javadoccomment">/**</em>
-<a class="jxr_linenumber" name="L203" href="#L203">203</a> <em class="jxr_javadoccomment">     * Used to initialize all plugins in one go when {@link #PROP_DELAY_INITIALIZATION} is false.</em>
-<a class="jxr_linenumber" name="L204" href="#L204">204</a> <em class="jxr_javadoccomment">     *</em>
-<a class="jxr_linenumber" name="L205" href="#L205">205</a> <em class="jxr_javadoccomment">     * @param plugins</em>
-<a class="jxr_linenumber" name="L206" href="#L206">206</a> <em class="jxr_javadoccomment">     */</em>
-<a class="jxr_linenumber" name="L207" href="#L207">207</a>     <strong class="jxr_keyword">private</strong> <strong class="jxr_keyword">static</strong> &lt;T <strong class="jxr_keyword">extends</strong> Plugin&gt; <strong class="jxr_keyword">void</strong> initializePlugins(Map&lt;String, PluginData&lt;T&gt;&gt; plugins) {
-<a class="jxr_linenumber" name="L208" href="#L208">208</a>         plugins.values().forEach(pd -&gt; {
-<a class="jxr_linenumber" name="L209" href="#L209">209</a>             <strong class="jxr_keyword">try</strong> {
-<a class="jxr_linenumber" name="L210" href="#L210">210</a>                 initializePlugin(pd);
-<a class="jxr_linenumber" name="L211" href="#L211">211</a>             } <strong class="jxr_keyword">catch</strong> (PluginException e) {
-<a class="jxr_linenumber" name="L212" href="#L212">212</a>                 <em class="jxr_comment">// exception already cached in plugindata, no need to throw.</em>
-<a class="jxr_linenumber" name="L213" href="#L213">213</a>                 logger.error(<span class="jxr_string">"Plugin "</span> + pd.plugin.getId() + <span class="jxr_string">" failed to initialize: "</span> + e.getMessage(), e);
-<a class="jxr_linenumber" name="L214" href="#L214">214</a>             }
-<a class="jxr_linenumber" name="L215" href="#L215">215</a>         });
-<a class="jxr_linenumber" name="L216" href="#L216">216</a>     }
-<a class="jxr_linenumber" name="L217" href="#L217">217</a> }
+<a class="jxr_linenumber" name="L168" href="#L168">168</a>     <strong class="jxr_keyword">public</strong> <strong class="jxr_keyword">static</strong> Optional&lt;TagPlugin&gt; getTagger(String tagPluginId) <strong class="jxr_keyword">throws</strong> PluginException {
+<a class="jxr_linenumber" name="L169" href="#L169">169</a>         <strong class="jxr_keyword">if</strong> (!isInitialized)
+<a class="jxr_linenumber" name="L170" href="#L170">170</a>             <strong class="jxr_keyword">throw</strong> <strong class="jxr_keyword">new</strong> UnsupportedOperationException(
+<a class="jxr_linenumber" name="L171" href="#L171">171</a>                     <span class="jxr_string">"Plugin system is not initialized, place a top-level key \&quot;plugins\&quot; with "</span> +
+<a class="jxr_linenumber" name="L172" href="#L172">172</a>                             <span class="jxr_string">"per-plugin configuration in your blacklab config to use plugins."</span>);
+<a class="jxr_linenumber" name="L173" href="#L173">173</a> 
+<a class="jxr_linenumber" name="L174" href="#L174">174</a>         Optional&lt;PluginData&lt;TagPlugin&gt;&gt; data = Optional.ofNullable(tagPlugins.get(tagPluginId));
+<a class="jxr_linenumber" name="L175" href="#L175">175</a>         <strong class="jxr_keyword">if</strong> (data.isPresent())
+<a class="jxr_linenumber" name="L176" href="#L176">176</a>             initializePlugin(data.get());
+<a class="jxr_linenumber" name="L177" href="#L177">177</a> 
+<a class="jxr_linenumber" name="L178" href="#L178">178</a>         <strong class="jxr_keyword">return</strong> data.map(d -&gt; d.plugin);
+<a class="jxr_linenumber" name="L179" href="#L179">179</a>     }
+<a class="jxr_linenumber" name="L180" href="#L180">180</a> 
+<a class="jxr_linenumber" name="L181" href="#L181">181</a>     <em class="jxr_javadoccomment">/**</em>
+<a class="jxr_linenumber" name="L182" href="#L182">182</a> <em class="jxr_javadoccomment">     * Initialize the plugin, if it exists and is currently uninitialized.</em>
+<a class="jxr_linenumber" name="L183" href="#L183">183</a> <em class="jxr_javadoccomment">     * Previously encountered errors are rethrown. If am error is encountered, it is</em>
+<a class="jxr_linenumber" name="L184" href="#L184">184</a> <em class="jxr_javadoccomment">     * stored in the plugin data and rethrown.</em>
+<a class="jxr_linenumber" name="L185" href="#L185">185</a> <em class="jxr_javadoccomment">     *</em>
+<a class="jxr_linenumber" name="L186" href="#L186">186</a> <em class="jxr_javadoccomment">     * @param data plugin data</em>
+<a class="jxr_linenumber" name="L187" href="#L187">187</a> <em class="jxr_javadoccomment">     * @throws PluginException when the plugin fails to initialize, care should be</em>
+<a class="jxr_linenumber" name="L188" href="#L188">188</a> <em class="jxr_javadoccomment">     *             taken by the caller to remove it from the list of plugins when</em>
+<a class="jxr_linenumber" name="L189" href="#L189">189</a> <em class="jxr_javadoccomment">     *             this occurs.</em>
+<a class="jxr_linenumber" name="L190" href="#L190">190</a> <em class="jxr_javadoccomment">     */</em>
+<a class="jxr_linenumber" name="L191" href="#L191">191</a>     <strong class="jxr_keyword">private</strong> <strong class="jxr_keyword">static</strong> <strong class="jxr_keyword">void</strong> initializePlugin(PluginData&lt;?&gt; data) <strong class="jxr_keyword">throws</strong> PluginException {
+<a class="jxr_linenumber" name="L192" href="#L192">192</a>         <strong class="jxr_keyword">synchronized</strong> (data.plugin) {
+<a class="jxr_linenumber" name="L193" href="#L193">193</a>             <strong class="jxr_keyword">if</strong> (data.initializationException != <strong class="jxr_keyword">null</strong>)
+<a class="jxr_linenumber" name="L194" href="#L194">194</a>                 <strong class="jxr_keyword">throw</strong> data.initializationException;
+<a class="jxr_linenumber" name="L195" href="#L195">195</a>             <strong class="jxr_keyword">if</strong> (data.initialized)
+<a class="jxr_linenumber" name="L196" href="#L196">196</a>                 <strong class="jxr_keyword">return</strong>;
+<a class="jxr_linenumber" name="L197" href="#L197">197</a> 
+<a class="jxr_linenumber" name="L198" href="#L198">198</a>             <strong class="jxr_keyword">try</strong> {
+<a class="jxr_linenumber" name="L199" href="#L199">199</a>                 logger.debug(<span class="jxr_string">"Initializing plugin "</span> + data.plugin.getDisplayName());
+<a class="jxr_linenumber" name="L200" href="#L200">200</a>                 data.plugin.init(data.configMap);
+<a class="jxr_linenumber" name="L201" href="#L201">201</a>                 logger.debug(<span class="jxr_string">"Initialized plugin "</span> + data.plugin.getDisplayName());
+<a class="jxr_linenumber" name="L202" href="#L202">202</a>             } <strong class="jxr_keyword">catch</strong> (PluginException e) {
+<a class="jxr_linenumber" name="L203" href="#L203">203</a>                 data.initializationException = e;
+<a class="jxr_linenumber" name="L204" href="#L204">204</a>                 <strong class="jxr_keyword">throw</strong> e;
+<a class="jxr_linenumber" name="L205" href="#L205">205</a>             } <strong class="jxr_keyword">catch</strong> (Exception e) {
+<a class="jxr_linenumber" name="L206" href="#L206">206</a>                 data.initializationException = <strong class="jxr_keyword">new</strong> <a href="../../../../nl/inl/blacklab/exceptions/PluginException.html">PluginException</a>(<span class="jxr_string">"Error during initialization."</span>, e);
+<a class="jxr_linenumber" name="L207" href="#L207">207</a>                 <strong class="jxr_keyword">throw</strong> data.initializationException;
+<a class="jxr_linenumber" name="L208" href="#L208">208</a>             } <strong class="jxr_keyword">finally</strong> {
+<a class="jxr_linenumber" name="L209" href="#L209">209</a>                 data.initialized = <strong class="jxr_keyword">true</strong>;
+<a class="jxr_linenumber" name="L210" href="#L210">210</a>             }
+<a class="jxr_linenumber" name="L211" href="#L211">211</a>         }
+<a class="jxr_linenumber" name="L212" href="#L212">212</a>     }
+<a class="jxr_linenumber" name="L213" href="#L213">213</a> 
+<a class="jxr_linenumber" name="L214" href="#L214">214</a>     <em class="jxr_javadoccomment">/**</em>
+<a class="jxr_linenumber" name="L215" href="#L215">215</a> <em class="jxr_javadoccomment">     * Used to initialize all plugins in one go when</em>
+<a class="jxr_linenumber" name="L216" href="#L216">216</a> <em class="jxr_javadoccomment">     * {@link #PROP_DELAY_INITIALIZATION} is false.</em>
+<a class="jxr_linenumber" name="L217" href="#L217">217</a> <em class="jxr_javadoccomment">     *</em>
+<a class="jxr_linenumber" name="L218" href="#L218">218</a> <em class="jxr_javadoccomment">     * @param plugins</em>
+<a class="jxr_linenumber" name="L219" href="#L219">219</a> <em class="jxr_javadoccomment">     */</em>
+<a class="jxr_linenumber" name="L220" href="#L220">220</a>     <strong class="jxr_keyword">private</strong> <strong class="jxr_keyword">static</strong> &lt;T <strong class="jxr_keyword">extends</strong> Plugin&gt; <strong class="jxr_keyword">void</strong> initializePlugins(Map&lt;String, PluginData&lt;T&gt;&gt; plugins) {
+<a class="jxr_linenumber" name="L221" href="#L221">221</a>         plugins.values().forEach(pd -&gt; {
+<a class="jxr_linenumber" name="L222" href="#L222">222</a>             <strong class="jxr_keyword">try</strong> {
+<a class="jxr_linenumber" name="L223" href="#L223">223</a>                 initializePlugin(pd);
+<a class="jxr_linenumber" name="L224" href="#L224">224</a>             } <strong class="jxr_keyword">catch</strong> (PluginException e) {
+<a class="jxr_linenumber" name="L225" href="#L225">225</a>                 <em class="jxr_comment">// exception already cached in plugindata, no need to throw.</em>
+<a class="jxr_linenumber" name="L226" href="#L226">226</a>                 logger.error(<span class="jxr_string">"Plugin "</span> + pd.plugin.getId() + <span class="jxr_string">" failed to initialize: "</span> + e.getMessage(), e);
+<a class="jxr_linenumber" name="L227" href="#L227">227</a>             }
+<a class="jxr_linenumber" name="L228" href="#L228">228</a>         });
+<a class="jxr_linenumber" name="L229" href="#L229">229</a>     }
+<a class="jxr_linenumber" name="L230" href="#L230">230</a> }
 </pre>
 <hr/>
-<div id="footer">Copyright &#169; 2018 <a href="http://www.inl.nl">Instituut voor Nederlandse Taal (INT)</a>. All rights reserved.</div>
+<div id="footer">Copyright &#169; 2020 <a href="https://www.ivdnt.org/">Instituut voor Nederlandse Taal (INT)</a>. All rights reserved.</div>
 </body>
 </html>

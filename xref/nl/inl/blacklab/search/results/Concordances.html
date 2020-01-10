@@ -1,0 +1,161 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+<title>Concordances xref</title>
+<link type="text/css" rel="stylesheet" href="../../../../../stylesheet.css" />
+</head>
+<body>
+<div id="overview"><a href="../../../../../../apidocs/nl/inl/blacklab/search/results/Concordances.html">View Javadoc</a></div><pre>
+<a class="jxr_linenumber" name="L1" href="#L1">1</a>   <strong class="jxr_keyword">package</strong> nl.inl.blacklab.search.results;
+<a class="jxr_linenumber" name="L2" href="#L2">2</a>   
+<a class="jxr_linenumber" name="L3" href="#L3">3</a>   <strong class="jxr_keyword">import</strong> java.util.ArrayList;
+<a class="jxr_linenumber" name="L4" href="#L4">4</a>   <strong class="jxr_keyword">import</strong> java.util.HashMap;
+<a class="jxr_linenumber" name="L5" href="#L5">5</a>   <strong class="jxr_keyword">import</strong> java.util.List;
+<a class="jxr_linenumber" name="L6" href="#L6">6</a>   <strong class="jxr_keyword">import</strong> java.util.Map;
+<a class="jxr_linenumber" name="L7" href="#L7">7</a>   
+<a class="jxr_linenumber" name="L8" href="#L8">8</a>   <strong class="jxr_keyword">import</strong> org.eclipse.collections.api.map.primitive.MutableIntObjectMap;
+<a class="jxr_linenumber" name="L9" href="#L9">9</a>   <strong class="jxr_keyword">import</strong> org.eclipse.collections.impl.factory.primitive.IntObjectMaps;
+<a class="jxr_linenumber" name="L10" href="#L10">10</a>  
+<a class="jxr_linenumber" name="L11" href="#L11">11</a>  <strong class="jxr_keyword">import</strong> nl.inl.blacklab.search.Concordance;
+<a class="jxr_linenumber" name="L12" href="#L12">12</a>  <strong class="jxr_keyword">import</strong> nl.inl.blacklab.search.ConcordanceType;
+<a class="jxr_linenumber" name="L13" href="#L13">13</a>  <strong class="jxr_keyword">import</strong> nl.inl.blacklab.search.Doc;
+<a class="jxr_linenumber" name="L14" href="#L14">14</a>  <strong class="jxr_keyword">import</strong> nl.inl.blacklab.search.indexmetadata.AnnotatedField;
+<a class="jxr_linenumber" name="L15" href="#L15">15</a>  <strong class="jxr_keyword">import</strong> nl.inl.util.XmlHighlighter;
+<a class="jxr_linenumber" name="L16" href="#L16">16</a>  
+<a class="jxr_linenumber" name="L17" href="#L17">17</a>  <em class="jxr_javadoccomment">/** Concordances for a list of hits. */</em>
+<a class="jxr_linenumber" name="L18" href="#L18">18</a>  <strong class="jxr_keyword">public</strong> <strong class="jxr_keyword">class</strong> <a href="../../../../../nl/inl/blacklab/search/results/Concordances.html">Concordances</a> {
+<a class="jxr_linenumber" name="L19" href="#L19">19</a>  
+<a class="jxr_linenumber" name="L20" href="#L20">20</a>      <em class="jxr_javadoccomment">/**</em>
+<a class="jxr_linenumber" name="L21" href="#L21">21</a>  <em class="jxr_javadoccomment">     * The concordances, if they have been retrieved.</em>
+<a class="jxr_linenumber" name="L22" href="#L22">22</a>  <em class="jxr_javadoccomment">     *</em>
+<a class="jxr_linenumber" name="L23" href="#L23">23</a>  <em class="jxr_javadoccomment">     * NOTE: when making concordances from the forward index, this will always be</em>
+<a class="jxr_linenumber" name="L24" href="#L24">24</a>  <em class="jxr_javadoccomment">     * null, because Kwics will be used internally. This is only used when making</em>
+<a class="jxr_linenumber" name="L25" href="#L25">25</a>  <em class="jxr_javadoccomment">     * concordances from the content store (the old default).</em>
+<a class="jxr_linenumber" name="L26" href="#L26">26</a>  <em class="jxr_javadoccomment">     */</em>
+<a class="jxr_linenumber" name="L27" href="#L27">27</a>      <strong class="jxr_keyword">private</strong> Map&lt;Hit, Concordance&gt; concordances;
+<a class="jxr_linenumber" name="L28" href="#L28">28</a>      
+<a class="jxr_linenumber" name="L29" href="#L29">29</a>      <a href="../../../../../nl/inl/blacklab/search/results/Kwics.html">Kwics</a> kwics = <strong class="jxr_keyword">null</strong>;
+<a class="jxr_linenumber" name="L30" href="#L30">30</a>  
+<a class="jxr_linenumber" name="L31" href="#L31">31</a>      <em class="jxr_javadoccomment">/**</em>
+<a class="jxr_linenumber" name="L32" href="#L32">32</a>  <em class="jxr_javadoccomment">     * @param hits</em>
+<a class="jxr_linenumber" name="L33" href="#L33">33</a>  <em class="jxr_javadoccomment">     */</em>
+<a class="jxr_linenumber" name="L34" href="#L34">34</a>      <a href="../../../../../nl/inl/blacklab/search/results/Concordances.html">Concordances</a>(<a href="../../../../../nl/inl/blacklab/search/results/Hits.html">Hits</a> hits, <a href="../../../../../nl/inl/blacklab/search/ConcordanceType.html">ConcordanceType</a> type, <a href="../../../../../nl/inl/blacklab/search/results/ContextSize.html">ContextSize</a> contextSize) {
+<a class="jxr_linenumber" name="L35" href="#L35">35</a>          <strong class="jxr_keyword">if</strong> (contextSize.left() &lt; 0)
+<a class="jxr_linenumber" name="L36" href="#L36">36</a>              <strong class="jxr_keyword">throw</strong> <strong class="jxr_keyword">new</strong> IllegalArgumentException(<span class="jxr_string">"contextSize cannot be negative"</span>);
+<a class="jxr_linenumber" name="L37" href="#L37">37</a>          <strong class="jxr_keyword">if</strong> (type == ConcordanceType.FORWARD_INDEX) {
+<a class="jxr_linenumber" name="L38" href="#L38">38</a>              kwics = <strong class="jxr_keyword">new</strong> <a href="../../../../../nl/inl/blacklab/search/results/Kwics.html">Kwics</a>(hits, contextSize);
+<a class="jxr_linenumber" name="L39" href="#L39">39</a>          }
+<a class="jxr_linenumber" name="L40" href="#L40">40</a>      
+<a class="jxr_linenumber" name="L41" href="#L41">41</a>          <em class="jxr_comment">// Get the concordances</em>
+<a class="jxr_linenumber" name="L42" href="#L42">42</a>          concordances = retrieveConcordancesFromContentStore(hits, contextSize);
+<a class="jxr_linenumber" name="L43" href="#L43">43</a>      }
+<a class="jxr_linenumber" name="L44" href="#L44">44</a>  
+<a class="jxr_linenumber" name="L45" href="#L45">45</a>      <em class="jxr_javadoccomment">/**</em>
+<a class="jxr_linenumber" name="L46" href="#L46">46</a>  <em class="jxr_javadoccomment">     * Return the concordance for the specified hit.</em>
+<a class="jxr_linenumber" name="L47" href="#L47">47</a>  <em class="jxr_javadoccomment">     *</em>
+<a class="jxr_linenumber" name="L48" href="#L48">48</a>  <em class="jxr_javadoccomment">     * The first call to this method will fetch the concordances for all the hits in</em>
+<a class="jxr_linenumber" name="L49" href="#L49">49</a>  <em class="jxr_javadoccomment">     * this Hits object. So make sure to select an appropriate HitsWindow first:</em>
+<a class="jxr_linenumber" name="L50" href="#L50">50</a>  <em class="jxr_javadoccomment">     * don't call this method on a Hits set with &gt;1M hits unless you really want to</em>
+<a class="jxr_linenumber" name="L51" href="#L51">51</a>  <em class="jxr_javadoccomment">     * display all of them in one go.</em>
+<a class="jxr_linenumber" name="L52" href="#L52">52</a>  <em class="jxr_javadoccomment">     *</em>
+<a class="jxr_linenumber" name="L53" href="#L53">53</a>  <em class="jxr_javadoccomment">     * @param h the hit</em>
+<a class="jxr_linenumber" name="L54" href="#L54">54</a>  <em class="jxr_javadoccomment">     * @return concordance for this hit</em>
+<a class="jxr_linenumber" name="L55" href="#L55">55</a>  <em class="jxr_javadoccomment">     */</em>
+<a class="jxr_linenumber" name="L56" href="#L56">56</a>      <strong class="jxr_keyword">public</strong> <a href="../../../../../nl/inl/blacklab/search/Concordance.html">Concordance</a> get(<a href="../../../../../nl/inl/blacklab/search/results/Hit.html">Hit</a> h) {
+<a class="jxr_linenumber" name="L57" href="#L57">57</a>          <strong class="jxr_keyword">if</strong> (kwics != <strong class="jxr_keyword">null</strong>)
+<a class="jxr_linenumber" name="L58" href="#L58">58</a>              <strong class="jxr_keyword">return</strong> kwics.get(h).toConcordance();
+<a class="jxr_linenumber" name="L59" href="#L59">59</a>          <strong class="jxr_keyword">return</strong> concordances.get(h);
+<a class="jxr_linenumber" name="L60" href="#L60">60</a>      }
+<a class="jxr_linenumber" name="L61" href="#L61">61</a>  
+<a class="jxr_linenumber" name="L62" href="#L62">62</a>      <em class="jxr_javadoccomment">/**</em>
+<a class="jxr_linenumber" name="L63" href="#L63">63</a>  <em class="jxr_javadoccomment">     * Retrieves the concordance information (left, hit and right context) for a</em>
+<a class="jxr_linenumber" name="L64" href="#L64">64</a>  <em class="jxr_javadoccomment">     * number of hits in the same document from the ContentStore.</em>
+<a class="jxr_linenumber" name="L65" href="#L65">65</a>  <em class="jxr_javadoccomment">     *</em>
+<a class="jxr_linenumber" name="L66" href="#L66">66</a>  <em class="jxr_javadoccomment">     * NOTE1: it is assumed that all hits in this Hits object are in the same</em>
+<a class="jxr_linenumber" name="L67" href="#L67">67</a>  <em class="jxr_javadoccomment">     * document!</em>
+<a class="jxr_linenumber" name="L68" href="#L68">68</a>  <em class="jxr_javadoccomment">     * </em>
+<a class="jxr_linenumber" name="L69" href="#L69">69</a>  <em class="jxr_javadoccomment">     * @param hits hits to make concordance for</em>
+<a class="jxr_linenumber" name="L70" href="#L70">70</a>  <em class="jxr_javadoccomment">     * @param field field to make conc for</em>
+<a class="jxr_linenumber" name="L71" href="#L71">71</a>  <em class="jxr_javadoccomment">     * @param wordsAroundHit number of words left and right of hit to fetch</em>
+<a class="jxr_linenumber" name="L72" href="#L72">72</a>  <em class="jxr_javadoccomment">     * @param conc where to add the concordances</em>
+<a class="jxr_linenumber" name="L73" href="#L73">73</a>  <em class="jxr_javadoccomment">     * @param hl</em>
+<a class="jxr_linenumber" name="L74" href="#L74">74</a>  <em class="jxr_javadoccomment">     */</em>
+<a class="jxr_linenumber" name="L75" href="#L75">75</a>      <strong class="jxr_keyword">private</strong> <strong class="jxr_keyword">synchronized</strong> <strong class="jxr_keyword">static</strong> <strong class="jxr_keyword">void</strong> makeConcordancesSingleDocContentStore(<a href="../../../../../nl/inl/blacklab/search/results/Hits.html">Hits</a> hits, <a href="../../../../../nl/inl/blacklab/search/results/ContextSize.html">ContextSize</a> wordsAroundHit,
+<a class="jxr_linenumber" name="L76" href="#L76">76</a>              Map&lt;Hit, Concordance&gt; conc,
+<a class="jxr_linenumber" name="L77" href="#L77">77</a>              <a href="../../../../../nl/inl/util/XmlHighlighter.html">XmlHighlighter</a> hl) {
+<a class="jxr_linenumber" name="L78" href="#L78">78</a>          <strong class="jxr_keyword">if</strong> (hits.size() == 0)
+<a class="jxr_linenumber" name="L79" href="#L79">79</a>              <strong class="jxr_keyword">return</strong>;
+<a class="jxr_linenumber" name="L80" href="#L80">80</a>          <a href="../../../../../nl/inl/blacklab/search/results/QueryInfo.html">QueryInfo</a> queryInfo = hits.queryInfo();
+<a class="jxr_linenumber" name="L81" href="#L81">81</a>          <a href="../../../../../nl/inl/blacklab/search/Doc.html">Doc</a> doc = queryInfo.index().doc(hits.get(0).doc());
+<a class="jxr_linenumber" name="L82" href="#L82">82</a>          <strong class="jxr_keyword">int</strong> arrayLength = hits.size() * 2;
+<a class="jxr_linenumber" name="L83" href="#L83">83</a>          <strong class="jxr_keyword">int</strong>[] startsOfWords = <strong class="jxr_keyword">new</strong> <strong class="jxr_keyword">int</strong>[arrayLength];
+<a class="jxr_linenumber" name="L84" href="#L84">84</a>          <strong class="jxr_keyword">int</strong>[] endsOfWords = <strong class="jxr_keyword">new</strong> <strong class="jxr_keyword">int</strong>[arrayLength];
+<a class="jxr_linenumber" name="L85" href="#L85">85</a>  
+<a class="jxr_linenumber" name="L86" href="#L86">86</a>          <em class="jxr_comment">// Determine the first and last word of the concordance, as well as the</em>
+<a class="jxr_linenumber" name="L87" href="#L87">87</a>          <em class="jxr_comment">// first and last word of the actual hit inside the concordance.</em>
+<a class="jxr_linenumber" name="L88" href="#L88">88</a>          <strong class="jxr_keyword">int</strong> startEndArrayIndex = 0;
+<a class="jxr_linenumber" name="L89" href="#L89">89</a>          <strong class="jxr_keyword">int</strong> contextSz = wordsAroundHit.left();
+<a class="jxr_linenumber" name="L90" href="#L90">90</a>          <strong class="jxr_keyword">for</strong> (Hit hit : hits) {
+<a class="jxr_linenumber" name="L91" href="#L91">91</a>              <strong class="jxr_keyword">int</strong> hitStart = hit.start();
+<a class="jxr_linenumber" name="L92" href="#L92">92</a>              <strong class="jxr_keyword">int</strong> hitEnd = hit.end() - 1;
+<a class="jxr_linenumber" name="L93" href="#L93">93</a>  
+<a class="jxr_linenumber" name="L94" href="#L94">94</a>              <strong class="jxr_keyword">int</strong> start = hitStart - contextSz;
+<a class="jxr_linenumber" name="L95" href="#L95">95</a>              <strong class="jxr_keyword">if</strong> (start &lt; 0)
+<a class="jxr_linenumber" name="L96" href="#L96">96</a>                  start = 0;
+<a class="jxr_linenumber" name="L97" href="#L97">97</a>              <strong class="jxr_keyword">int</strong> end = hitEnd + contextSz;
+<a class="jxr_linenumber" name="L98" href="#L98">98</a>  
+<a class="jxr_linenumber" name="L99" href="#L99">99</a>              startsOfWords[startEndArrayIndex] = start;
+<a class="jxr_linenumber" name="L100" href="#L100">100</a>             startsOfWords[startEndArrayIndex + 1] = hitStart;
+<a class="jxr_linenumber" name="L101" href="#L101">101</a>             endsOfWords[startEndArrayIndex] = hitEnd;
+<a class="jxr_linenumber" name="L102" href="#L102">102</a>             endsOfWords[startEndArrayIndex + 1] = end;
+<a class="jxr_linenumber" name="L103" href="#L103">103</a> 
+<a class="jxr_linenumber" name="L104" href="#L104">104</a>             startEndArrayIndex += 2;
+<a class="jxr_linenumber" name="L105" href="#L105">105</a>         }
+<a class="jxr_linenumber" name="L106" href="#L106">106</a> 
+<a class="jxr_linenumber" name="L107" href="#L107">107</a>         <em class="jxr_comment">// Get the relevant character offsets (overwrites the startsOfWords and endsOfWords</em>
+<a class="jxr_linenumber" name="L108" href="#L108">108</a>         <em class="jxr_comment">// arrays)</em>
+<a class="jxr_linenumber" name="L109" href="#L109">109</a>         <a href="../../../../../nl/inl/blacklab/search/indexmetadata/AnnotatedField.html">AnnotatedField</a> field = queryInfo.field();
+<a class="jxr_linenumber" name="L110" href="#L110">110</a>         doc.characterOffsets(field, startsOfWords, endsOfWords, <strong class="jxr_keyword">true</strong>);
+<a class="jxr_linenumber" name="L111" href="#L111">111</a> 
+<a class="jxr_linenumber" name="L112" href="#L112">112</a>         <em class="jxr_comment">// Make all the concordances</em>
+<a class="jxr_linenumber" name="L113" href="#L113">113</a>         List&lt;Concordance&gt; newConcs = doc.makeConcordancesFromContentStore(field, startsOfWords, endsOfWords, hl);
+<a class="jxr_linenumber" name="L114" href="#L114">114</a>         <strong class="jxr_keyword">for</strong> (<strong class="jxr_keyword">int</strong> i = 0; i &lt; hits.size(); i++) {
+<a class="jxr_linenumber" name="L115" href="#L115">115</a>             conc.put(hits.get(i), newConcs.get(i));
+<a class="jxr_linenumber" name="L116" href="#L116">116</a>         }
+<a class="jxr_linenumber" name="L117" href="#L117">117</a>     }
+<a class="jxr_linenumber" name="L118" href="#L118">118</a> 
+<a class="jxr_linenumber" name="L119" href="#L119">119</a>     <em class="jxr_javadoccomment">/**</em>
+<a class="jxr_linenumber" name="L120" href="#L120">120</a> <em class="jxr_javadoccomment">     * Generate concordances from content store (slower).</em>
+<a class="jxr_linenumber" name="L121" href="#L121">121</a> <em class="jxr_javadoccomment">     *</em>
+<a class="jxr_linenumber" name="L122" href="#L122">122</a> <em class="jxr_javadoccomment">     * @param hits hits for which to generate concordances</em>
+<a class="jxr_linenumber" name="L123" href="#L123">123</a> <em class="jxr_javadoccomment">     * @param contextSize how many words around the hit to retrieve</em>
+<a class="jxr_linenumber" name="L124" href="#L124">124</a> <em class="jxr_javadoccomment">     * @return the concordances</em>
+<a class="jxr_linenumber" name="L125" href="#L125">125</a> <em class="jxr_javadoccomment">     */</em>
+<a class="jxr_linenumber" name="L126" href="#L126">126</a>     <strong class="jxr_keyword">private</strong> <strong class="jxr_keyword">static</strong> Map&lt;Hit, Concordance&gt; retrieveConcordancesFromContentStore(<a href="../../../../../nl/inl/blacklab/search/results/Hits.html">Hits</a> hits, <a href="../../../../../nl/inl/blacklab/search/results/ContextSize.html">ContextSize</a> contextSize) {
+<a class="jxr_linenumber" name="L127" href="#L127">127</a>         <a href="../../../../../nl/inl/util/XmlHighlighter.html">XmlHighlighter</a> hl = <strong class="jxr_keyword">new</strong> <a href="../../../../../nl/inl/util/XmlHighlighter.html">XmlHighlighter</a>(); <em class="jxr_comment">// used to make fragments well-formed</em>
+<a class="jxr_linenumber" name="L128" href="#L128">128</a>         <a href="../../../../../nl/inl/blacklab/search/results/QueryInfo.html">QueryInfo</a> queryInfo = hits.queryInfo();
+<a class="jxr_linenumber" name="L129" href="#L129">129</a>         hl.setUnbalancedTagsStrategy(queryInfo.index().defaultUnbalancedTagsStrategy());
+<a class="jxr_linenumber" name="L130" href="#L130">130</a>         <em class="jxr_comment">// Group hits per document</em>
+<a class="jxr_linenumber" name="L131" href="#L131">131</a>         MutableIntObjectMap&lt;List&lt;Hit&gt;&gt; hitsPerDocument = IntObjectMaps.mutable.empty();
+<a class="jxr_linenumber" name="L132" href="#L132">132</a>         <strong class="jxr_keyword">for</strong> (Hit key: hits) {
+<a class="jxr_linenumber" name="L133" href="#L133">133</a>             List&lt;Hit&gt; hitsInDoc = hitsPerDocument.get(key.doc());
+<a class="jxr_linenumber" name="L134" href="#L134">134</a>             <strong class="jxr_keyword">if</strong> (hitsInDoc == <strong class="jxr_keyword">null</strong>) {
+<a class="jxr_linenumber" name="L135" href="#L135">135</a>                 hitsInDoc = <strong class="jxr_keyword">new</strong> ArrayList&lt;&gt;();
+<a class="jxr_linenumber" name="L136" href="#L136">136</a>                 hitsPerDocument.put(key.doc(), hitsInDoc);
+<a class="jxr_linenumber" name="L137" href="#L137">137</a>             }
+<a class="jxr_linenumber" name="L138" href="#L138">138</a>             hitsInDoc.add(key);
+<a class="jxr_linenumber" name="L139" href="#L139">139</a>         }
+<a class="jxr_linenumber" name="L140" href="#L140">140</a>         Map&lt;Hit, Concordance&gt; conc = <strong class="jxr_keyword">new</strong> HashMap&lt;&gt;();
+<a class="jxr_linenumber" name="L141" href="#L141">141</a>         <strong class="jxr_keyword">for</strong> (List&lt;Hit&gt; l : hitsPerDocument.values()) {
+<a class="jxr_linenumber" name="L142" href="#L142">142</a>             <a href="../../../../../nl/inl/blacklab/search/results/Hits.html">Hits</a> hitsInThisDoc = Hits.fromList(queryInfo, l);
+<a class="jxr_linenumber" name="L143" href="#L143">143</a>             Concordances.makeConcordancesSingleDocContentStore(hitsInThisDoc, contextSize, conc, hl);
+<a class="jxr_linenumber" name="L144" href="#L144">144</a>         }
+<a class="jxr_linenumber" name="L145" href="#L145">145</a>         <strong class="jxr_keyword">return</strong> conc;
+<a class="jxr_linenumber" name="L146" href="#L146">146</a>     }
+<a class="jxr_linenumber" name="L147" href="#L147">147</a>     
+<a class="jxr_linenumber" name="L148" href="#L148">148</a> }
+</pre>
+<hr/>
+<div id="footer">Copyright &#169; 2020 <a href="https://www.ivdnt.org/">Instituut voor Nederlandse Taal (INT)</a>. All rights reserved.</div>
+</body>
+</html>
