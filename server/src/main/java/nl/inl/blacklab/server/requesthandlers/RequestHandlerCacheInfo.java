@@ -27,10 +27,11 @@ public class RequestHandlerCacheInfo extends RequestHandler {
         boolean debugInfo = strDebugInfo == null ? false : strDebugInfo.matches("true|yes|1");
         ds.startMap()
                 .startEntry("cacheStatus");
-        searchMan.getBlackLabCache().dataStreamCacheStatus(ds);
+        //TODO move this to an interface
+        //searchMan.getBlackLabCache().dataStreamCacheStatus(ds);
         ds.endEntry()
                 .startEntry("cacheContents");
-        searchMan.getBlackLabCache().dataStreamContents(ds, debugInfo);
+        //searchMan.getBlackLabCache().dataStreamContents(ds, debugInfo);
         ds.endEntry()
                 .endMap();
         return HTTP_OK;

@@ -36,6 +36,7 @@ import org.apache.lucene.search.Weight;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.store.LockObtainFailedException;
+import org.apache.lucene.store.RAMDirectory;
 import org.apache.lucene.util.Bits;
 
 import nl.inl.blacklab.analysis.BLDutchAnalyzer;
@@ -829,11 +830,7 @@ public class BlackLabIndexImpl implements BlackLabIndexWriter {
             indexPath = Files.readSymbolicLink(indexPath);
         }
         Directory indexLuceneDir = FSDirectory.open(indexPath);
-        if (useAnalyzer == null)
-            useAnalyzer = new BLDutchAnalyzer();
-        IndexWriterConfig config = LuceneUtil.getIndexWriterConfig(useAnalyzer, create);
-        IndexWriter writer = new IndexWriter(indexLuceneDir, config);
-
+        IndexWriter indexWriter = openIndexWriterInternal(indexLuceneDir, create, useAnalyzer);
         if (create)
             VersionFile.write(indexDir, "blacklab", "2");
         else {
@@ -842,7 +839,19 @@ public class BlackLabIndexImpl implements BlackLabIndexWriter {
                         + VersionFile.report(indexDir) + ": " + indexDir);
             }
         }
+        return indexWriter;
+    }
 
+    public IndexWriter openEphemeralIndex(boolean create, Analyzer useAnalyzer)  throws IOException {
+        RAMDirectory ramDirectory = new RAMDirectory();
+        return openIndexWriterInternal(ramDirectory, create, useAnalyzer);
+    }
+
+    public IndexWriter openIndexWriterInternal(Directory indexLuceneDir, boolean create, Analyzer useAnalyzer) throws IOException {
+        if (useAnalyzer == null)
+            useAnalyzer = new BLDutchAnalyzer();
+        IndexWriterConfig config = LuceneUtil.getIndexWriterConfig(useAnalyzer, create);
+        IndexWriter writer = new IndexWriter(indexLuceneDir, config);
         return writer;
     }
 

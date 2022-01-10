@@ -326,7 +326,7 @@ public abstract class Hits extends Results<Hit, HitProperty> {
             for (int i = 0; i < indices.length; ++i)
                 indices[i] = i;
 
-            IntArrays.quickSort(indices, p::compare);
+            IntArrays.quickSort(indices, p);
 
             HitsArrays r = new HitsArrays();
             EphemeralHit eph = new EphemeralHit();

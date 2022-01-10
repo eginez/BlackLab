@@ -8,6 +8,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -96,6 +97,7 @@ public class BlsCache implements SearchCache {
     private int abandonedCountAbortTimeSec;
 
     protected Map<Search<?>, BlsCacheEntry<? extends SearchResult>> searches = new HashMap<>();
+
 
     protected boolean trace = false;
 
@@ -190,7 +192,7 @@ public class BlsCache implements SearchCache {
         return getFromCache(search, false, allowQueue);
     }
 
-    @SuppressWarnings("unchecked")
+        @SuppressWarnings("unchecked")
     private synchronized <R extends SearchResult> BlsCacheEntry<R> getFromCache(Search<R> search, boolean block, boolean allowQueue) {
         //if (trace) logger.debug("getFromCache({}, block={}, allowQueue={})", search, block, allowQueue);
         BlsCacheEntry<R> future;

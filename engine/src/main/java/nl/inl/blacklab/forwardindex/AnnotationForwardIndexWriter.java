@@ -25,13 +25,8 @@ import java.nio.LongBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileChannel.MapMode;
-import java.util.AbstractSet;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.Iterator;
-import java.util.List;
-import java.util.NoSuchElementException;
-import java.util.Set;
+import java.util.*;
+import java.util.function.Consumer;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -206,39 +201,43 @@ class AnnotationForwardIndexWriter extends AnnotationForwardIndex {
         tocModified = true;
     }
 
+    private void withMMFile(File file, int size, Consumer<ByteBuffer> consumer) {
+        try (RandomAccessFile raf = new RandomAccessFile(file, "rw");
+             FileChannel fc = raf.getChannel()) {
+            long fileSize = SIZEOF_INT + (SIZEOF_LONG + SIZEOF_INT + 1) * size;
+            fc.truncate(fileSize);
+            MappedByteBuffer buf = fc.map(MapMode.READ_WRITE, 0, fileSize);
+            consumer.accept(buf);
+        } catch (IOException e) {
+            throw BlackLabRuntimeException.wrap(e);
+        }
+    }
     /**
      * Write the table of contents to the file
      */
     private void writeToc() {
-        try {
-            int n = toc.size();
-            long[] offset = new long[n];
-            int[] length = new int[n];
-            byte[] deleted = new byte[n];
-            int i = 0;
-            for (TocEntry e : toc) {
-                offset[i] = e.offset;
-                length[i] = e.length;
-                deleted[i] = (byte) (e.deleted ? 1 : 0);
-                i++;
-            }
-            try (RandomAccessFile raf = new RandomAccessFile(tocFile, "rw");
-                    FileChannel fc = raf.getChannel()) {
-                long fileSize = SIZEOF_INT + (SIZEOF_LONG + SIZEOF_INT + 1) * n;
-                fc.truncate(fileSize);
-                MappedByteBuffer buf = fc.map(MapMode.READ_WRITE, 0, fileSize);
-                buf.putInt(n);
-                LongBuffer lb = buf.asLongBuffer();
-                lb.put(offset);
-                ((Buffer)buf).position(buf.position() + SIZEOF_LONG * n);
-                IntBuffer ib = buf.asIntBuffer();
-                ib.put(length);
-                ((Buffer)buf).position(buf.position() + SIZEOF_INT * n);
-                buf.put(deleted);
-            }
-        } catch (IOException e) {
-            throw BlackLabRuntimeException.wrap(e);
+        int n = toc.size();
+        long[] offset = new long[n];
+        int[] length = new int[n];
+        byte[] deleted = new byte[n];
+        int i = 0;
+        for (TocEntry e : toc) {
+            offset[i] = e.offset;
+            length[i] = e.length;
+            deleted[i] = (byte) (e.deleted ? 1 : 0);
+            i++;
         }
+
+        withMMFile(tocFile, n, (ByteBuffer buf) -> {
+            buf.putInt(n);
+            LongBuffer lb = buf.asLongBuffer();
+            lb.put(offset);
+            ((Buffer)buf).position(buf.position() + SIZEOF_LONG * n);
+            IntBuffer ib = buf.asIntBuffer();
+            ib.put(length);
+            ((Buffer)buf).position(buf.position() + SIZEOF_INT * n);
+            buf.put(deleted);
+        });
         tocModified = false;
     }
 

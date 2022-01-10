@@ -2,10 +2,8 @@ package nl.inl.blacklab.server.search;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.commons.lang3.StringUtils;
 
@@ -23,19 +21,15 @@ public class BlsCacheEntry<T extends SearchResult> extends SearchCacheEntry<T> {
     static final int POLLING_TIME_MS = 100;
 
     /** id for the next job started */
-    private static Long nextEntryId = 0L;
+    //private static Long nextEntryId = 0L;
+    private static AtomicLong nextEntryAtomic = new AtomicLong(0);
 
     private static long now() {
         return System.currentTimeMillis();
     }
 
     public static long getNextEntryId() {
-        Long n;
-        synchronized(nextEntryId) {
-            n = nextEntryId;
-            nextEntryId++;
-        }
-        return n;
+        return nextEntryAtomic.getAndIncrement();
     }
 
     /** Unique entry id */
@@ -53,6 +47,7 @@ public class BlsCacheEntry<T extends SearchResult> extends SearchCacheEntry<T> {
      * because the thread sets our result instance variable directly.
      */
     private Future<?> future = null;
+
 
     /** Result of the search (set directly by thread) */
     private T result = null;
@@ -255,11 +250,8 @@ public class BlsCacheEntry<T extends SearchResult> extends SearchCacheEntry<T> {
     @Override
     public T get(long time, TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
         // Wait until result available
-        long ms = unit.toMillis(time);
-        while (ms > 0 && !isDone() && !isCancelled()) {
-            Thread.sleep(POLLING_TIME_MS);
-            ms -= POLLING_TIME_MS;
-        }
+        future.get(time, unit);
+
         if (isCancelled()) {
             InterruptedSearch interruptedSearch = new InterruptedSearch("Search was cancelled");
             interruptedSearch.setCacheEntry(this);
@@ -267,8 +259,11 @@ public class BlsCacheEntry<T extends SearchResult> extends SearchCacheEntry<T> {
         }
         if (exceptionThrown != null)
             throw new ExecutionException(exceptionThrown);
-        if (!isDone())
+        if (!isDone()) {
+            long ms = unit.toMillis(time);
             throw new TimeoutException("Result still not available after " + ms + "ms");
+        }
+
         return result;
     }
 

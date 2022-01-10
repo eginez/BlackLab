@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.CompletableFuture;
 
 import javax.servlet.http.HttpServletRequest;
 
@@ -608,6 +609,15 @@ public class SearchParameters {
         return hits().filter(prop, value);
     }
 
+    public CompletableFuture<SearchHits> hitsFilteredcf() throws BlsException {
+        HitFilterSettings hitFilterSettings = getHitFilterSettings();
+        if (hitFilterSettings == null)
+            return hitscf();
+        HitProperty prop = HitProperty.deserialize(blIndex(), blIndex().mainAnnotatedField(), hitFilterSettings.getProperty());
+        PropertyValue value = PropertyValue.deserialize(blIndex(), blIndex().mainAnnotatedField(), hitFilterSettings.getValue());
+        return hitscf().get().filter(prop, value);
+    }
+
     public SearchHits hits() throws BlsException {
         SearchEmpty search = blIndex().search(null, getUseCache(), searchLogger);
         try {
@@ -618,6 +628,15 @@ public class SearchParameters {
         } catch (BlsException e) {
             throw e;
         }
+    }
+
+    public CompletableFuture<SearchHits> hitscf() throws BlsException {
+        SearchEmpty search = blIndex().search(null, getUseCache(), searchLogger);
+        Query filter = hasFilter() ? getFilterQuery() : null;
+
+        CompletableFuture<SearchHits> future = CompletableFuture.supplyAsync(() ->
+                search.find(getPattern().toQuery(search.queryInfo(), filter), getSearchSettings()));
+        return future;
     }
 
     public SearchDocs docsWindow() throws BlsException {

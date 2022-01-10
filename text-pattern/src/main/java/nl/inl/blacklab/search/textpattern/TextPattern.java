@@ -78,6 +78,7 @@ public abstract class TextPattern {
     }
 
     public BLSpanQuery toQuery(QueryInfo queryInfo, Query filter) throws InvalidQuery {
+        // Query text to compiled search starts here
         QueryExecutionContext context = queryInfo.index().defaultExecutionContext(queryInfo.field());
         BLSpanQuery spanQuery = translate(context);
         if (filter != null)
