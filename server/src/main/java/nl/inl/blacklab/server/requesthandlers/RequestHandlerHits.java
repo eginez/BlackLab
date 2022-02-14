@@ -11,6 +11,8 @@ import java.util.concurrent.ExecutionException;
 import javax.servlet.http.HttpServletRequest;
 
 import nl.inl.blacklab.searches.SearchCacheEntry;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.search.BooleanClause.Occur;
@@ -22,45 +24,14 @@ import org.eclipse.collections.impl.set.mutable.primitive.IntHashSet;
 import nl.inl.blacklab.exceptions.InvalidQuery;
 import nl.inl.blacklab.exceptions.RegexpTooLarge;
 import nl.inl.blacklab.exceptions.WildcardTermTooBroad;
-import nl.inl.blacklab.resultproperty.HitProperty;
-import nl.inl.blacklab.resultproperty.HitPropertyDoc;
-import nl.inl.blacklab.resultproperty.HitPropertyDocumentId;
-import nl.inl.blacklab.resultproperty.HitPropertyDocumentStoredField;
-import nl.inl.blacklab.resultproperty.HitPropertyHitText;
-import nl.inl.blacklab.resultproperty.HitPropertyMultiple;
-import nl.inl.blacklab.resultproperty.PropertyValue;
-import nl.inl.blacklab.resultproperty.PropertyValueMultiple;
-import nl.inl.blacklab.search.BlackLabIndex;
-import nl.inl.blacklab.search.Concordance;
-import nl.inl.blacklab.search.ConcordanceType;
-import nl.inl.blacklab.search.Doc;
-import nl.inl.blacklab.search.Kwic;
-import nl.inl.blacklab.search.QueryExplanation;
-import nl.inl.blacklab.search.SingleDocIdFilter;
-import nl.inl.blacklab.search.Span;
-import nl.inl.blacklab.search.TermFrequency;
-import nl.inl.blacklab.search.TermFrequencyList;
+import nl.inl.blacklab.resultproperty.*;
+import nl.inl.blacklab.search.*;
 import nl.inl.blacklab.search.indexmetadata.Annotation;
 import nl.inl.blacklab.search.indexmetadata.MatchSensitivity;
 import nl.inl.blacklab.search.indexmetadata.MetadataField;
 import nl.inl.blacklab.search.lucene.BLSpanQuery;
-import nl.inl.blacklab.search.results.Concordances;
-import nl.inl.blacklab.search.results.ContextSize;
-import nl.inl.blacklab.search.results.DocResults;
-import nl.inl.blacklab.search.results.Hit;
-import nl.inl.blacklab.search.results.HitGroup;
-import nl.inl.blacklab.search.results.HitGroups;
-import nl.inl.blacklab.search.results.Hits;
-import nl.inl.blacklab.search.results.Kwics;
-import nl.inl.blacklab.search.results.QueryInfo;
-import nl.inl.blacklab.search.results.ResultCount;
-import nl.inl.blacklab.search.results.Results;
-import nl.inl.blacklab.search.results.ResultsStats;
-import nl.inl.blacklab.search.textpattern.TextPattern;
-import nl.inl.blacklab.search.textpattern.TextPatternAnd;
-import nl.inl.blacklab.search.textpattern.TextPatternAnnotation;
-import nl.inl.blacklab.search.textpattern.TextPatternSensitive;
-import nl.inl.blacklab.search.textpattern.TextPatternTerm;
+import nl.inl.blacklab.search.results.*;
+import nl.inl.blacklab.search.textpattern.*;
 import nl.inl.blacklab.searches.SearchEmpty;
 import nl.inl.blacklab.searches.SearchHitGroupsFromHits;
 import nl.inl.blacklab.searches.SearchHits;
@@ -68,16 +39,29 @@ import nl.inl.blacklab.server.BlackLabServer;
 import nl.inl.blacklab.server.datastream.DataStream;
 import nl.inl.blacklab.server.exceptions.BadRequest;
 import nl.inl.blacklab.server.exceptions.BlsException;
-import nl.inl.blacklab.server.jobs.ContextSettings;
 import nl.inl.blacklab.server.jobs.User;
 import nl.inl.blacklab.server.jobs.WindowSettings;
-import nl.inl.blacklab.server.search.BlsCacheEntry;
 import nl.inl.blacklab.server.util.BlsUtils;
+import org.apache.commons.lang3.tuple.Pair;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.apache.lucene.document.Document;
+import org.apache.lucene.search.BooleanClause.Occur;
+import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.DocValuesTermsQuery;
+import org.eclipse.collections.api.set.primitive.MutableIntSet;
+import org.eclipse.collections.impl.set.mutable.primitive.IntHashSet;
+
+import javax.servlet.http.HttpServletRequest;
+import java.util.*;
+import java.util.concurrent.ExecutionException;
 
 /**
  * Request handler for hit results.
  */
 public class RequestHandlerHits extends RequestHandler {
+
+    private static final Logger logger = LogManager.getLogger(RequestHandlerHits.class);
 
     public RequestHandlerHits(BlackLabServer servlet, HttpServletRequest request, User user, String indexName,
             String urlResource, String urlPathPart) {
@@ -95,23 +79,26 @@ public class RequestHandlerHits extends RequestHandler {
         if (viewGroup == null)
             viewGroup = "";
 
-        BlsCacheEntry<?> cacheEntry;
+        SearchCacheEntry<?> cacheEntry;
         Hits hits;
         ResultsStats hitsCount;
         ResultsStats docsCount;
 
+        boolean viewingGroup = groupBy.length() > 0 && viewGroup.length() > 0;
         try {
-            if (groupBy.length() > 0 && viewGroup.length() > 0) {
-                Pair<BlsCacheEntry<?>, Hits> res = getHitsFromGroup(groupBy, viewGroup);
+            if (viewingGroup) {
+                // We're viewing a single group. Get the hits from the grouping results.
+                Pair<SearchCacheEntry<?>, Hits> res = getHitsFromGroup(groupBy, viewGroup);
                 cacheEntry = res.getLeft();
                 hits = res.getRight();
                 // The hits are already complete - get the stats directly.
                 hitsCount = hits.hitsStats();
                 docsCount = hits.docsStats();
             } else {
-                cacheEntry = (BlsCacheEntry<ResultCount>)searchParam.hitsCount().executeAsync(); // always launch totals nonblocking!
+                // Regular hits request. Start the search.
+                cacheEntry = searchParam.hitsCount().executeAsync(); // always launch totals nonblocking!
                 hits = searchParam.hitsSample().execute();
-                hitsCount = ((BlsCacheEntry<ResultCount>)cacheEntry).get();
+                hitsCount = ((SearchCacheEntry<ResultCount>)cacheEntry).get();
                 docsCount = searchParam.docsCount().execute();
             }
             // Wait until all hits have been counted.
@@ -133,14 +120,20 @@ public class RequestHandlerHits extends RequestHandler {
         if (!hits.hitsStats().processedAtLeast(windowSettings.first()))
             throw new BadRequest("HIT_NUMBER_OUT_OF_RANGE", "Non-existent hit number specified.");
 
-        // Request the window of hits we're interested in.
-        // (we hold on to the cache entry so that we can differentiate between search and count time later)
-        BlsCacheEntry<Hits> cacheEntryWindow = (BlsCacheEntry<Hits>)searchParam.hitsWindow().executeAsync();
+        SearchCacheEntry<Hits> cacheEntryWindow = null;
         Hits window;
-        try {
-            window = cacheEntryWindow.get(); // blocks until requested hits window is available
-        } catch (InterruptedException | ExecutionException e) {
-            throw RequestHandler.translateSearchException(e);
+        if (!viewingGroup) {
+            // Request the window of hits we're interested in.
+            // (we hold on to the cache entry so that we can differentiate between search and count time later)
+            cacheEntryWindow = (SearchCacheEntry<Hits>) searchParam.hitsWindow().executeAsync();
+            try {
+                window = cacheEntryWindow.get(); // blocks until requested hits window is available
+            } catch (InterruptedException | ExecutionException e) {
+                throw RequestHandler.translateSearchException(e);
+            }
+        } else {
+            // We're viewing a single group in a grouping result. Just get the hits window directly.
+            window = hits.window(windowSettings.first(), windowSettings.size());
         }
 
         DocResults perDocResults = null;
@@ -155,19 +148,9 @@ public class RequestHandlerHits extends RequestHandler {
             totalTokens = perDocResults.subcorpusSize().getTokens();
         }
 
-        searchLogger.setResultsFound(hitsCount.processedSoFar());
-
-
         // Find KWICs/concordances from forward index or original XML
         // (note that on large indexes, this can actually take significant time)
         long startTimeKwicsMs = System.currentTimeMillis();
-        ContextSettings contextSettings = searchParam.getContextSettings();
-        Concordances concordances = null;
-        Kwics kwics = null;
-        if (contextSettings.concType() == ConcordanceType.CONTENT_STORE)
-            concordances = window.concordances(contextSettings.size(), ConcordanceType.CONTENT_STORE);
-        else
-            kwics = window.kwics(contextSettings.size());
         long kwicTimeMs = System.currentTimeMillis() - startTimeKwicsMs;
 
         // Search is done; construct the results object
@@ -176,11 +159,11 @@ public class RequestHandlerHits extends RequestHandler {
 
         // The summary
         ds.startEntry("summary").startMap();
-
         // Search time should be time user (originally) had to wait for the response to this request.
         // Count time is the time it took (or is taking) to iterate through all the results to count the total.
-        long searchTime = cacheEntryWindow.timeUserWaitedMs() + kwicTimeMs;
+        long searchTime = (cacheEntryWindow == null ? cacheEntry.timeUserWaitedMs() : cacheEntryWindow.timeUserWaitedMs()) + kwicTimeMs;
         long countTime = cacheEntry.threwException() ? -1 : cacheEntry.timeUserWaitedMs();
+        logger.info("Total search time is:{} ms", searchTime);
         addSummaryCommonFields(ds, searchParam, searchTime, countTime, null, window.windowStats());
         addNumberOfResultsSummaryTotalHits(ds, hitsCount, docsCount, countTime < 0, null);
         if (includeTokenCount)
@@ -213,68 +196,15 @@ public class RequestHandlerHits extends RequestHandler {
         }
         ds.endMap().endEntry();
 
-        ds.startEntry("hits").startList();
-
         Map<Integer, String> pids = new HashMap<>();
-        Set<Annotation> annotationsToList = new HashSet<>(getAnnotationsToWrite());
-        Set<MetadataField> metadataFieldsTolist = new HashSet<>(this.getMetadataToWrite());
-        for (Hit hit : window) {
-            ds.startItem("hit").startMap();
-
-            // Find pid
-            String pid = pids.get(hit.doc());
-            if (pid == null) {
-                Document document = index.doc(hit.doc()).luceneDoc();
-                pid = getDocumentPid(index, hit.doc(), document);
-                pids.put(hit.doc(), pid);
-            }
-
-            // TODO: use RequestHandlerDocSnippet.getHitOrFragmentInfo()
-
-            // Add basic hit info
-            ds.entry("docPid", pid);
-            ds.entry("start", hit.start());
-            ds.entry("end", hit.end());
-
-            if (window.hasCapturedGroups()) {
-                Map<String, Span> capturedGroups = window.capturedGroups().getMap(hit);
-                if (capturedGroups != null) {
-                    ds.startEntry("captureGroups").startList();
-                    for (Map.Entry<String, Span> capturedGroup : capturedGroups.entrySet()) {
-                        if (capturedGroup.getValue() != null) {
-                            ds.startItem("group").startMap();
-                            ds.entry("name", capturedGroup.getKey());
-                            ds.entry("start", capturedGroup.getValue().start());
-                            ds.entry("end", capturedGroup.getValue().end());
-                            ds.endMap().endItem();
-                        }
-                    }
-                    ds.endList().endEntry();
-                }
-            }
-
-            if (contextSettings.concType() == ConcordanceType.CONTENT_STORE) {
-                // Add concordance from original XML
-                Concordance c = concordances.get(hit);
-                ds.startEntry("left").plain(c.left()).endEntry()
-                        .startEntry("match").plain(c.match()).endEntry()
-                        .startEntry("right").plain(c.right()).endEntry();
-            } else {
-                // Add KWIC info
-                Kwic c = kwics.get(hit);
-                ds.startEntry("left").contextList(c.annotations(), annotationsToList, c.left()).endEntry()
-                        .startEntry("match").contextList(c.annotations(), annotationsToList, c.match()).endEntry()
-                        .startEntry("right").contextList(c.annotations(), annotationsToList, c.right()).endEntry();
-            }
-            ds.endMap().endItem();
-        }
-        ds.endList().endEntry();
+        writeHits(ds, window, pids, searchParam.getContextSettings());
 
         ds.startEntry("docInfos").startMap();
-        //DataObjectMapAttribute docInfos = new DataObjectMapAttribute("docInfo", "pid");
         MutableIntSet docsDone = new IntHashSet();
         Document doc = null;
         String lastPid = "";
+        Set<MetadataField> metadataFieldsTolist = new HashSet<>(this.getMetadataToWrite());
+
         for (Hit hit : window) {
             String pid = pids.get(hit.doc());
 
@@ -382,7 +312,7 @@ public class RequestHandlerHits extends RequestHandler {
 
         // All specifiers merged!
         // Construct the query that will get us our hits.
-        SearchEmpty search = blIndex().search(blIndex().mainAnnotatedField(), searchParam.getUseCache(), searchLogger);
+        SearchEmpty search = blIndex().search(blIndex().mainAnnotatedField(), searchParam.getUseCache());
         QueryInfo queryInfo = QueryInfo.create(blIndex(), blIndex().mainAnnotatedField());
         BLSpanQuery query = usedFilter ? tp.toQuery(queryInfo, fqb.build()) : tp.toQuery(queryInfo);
         SearchHits hits = search.find(query, searchParam.getSearchSettings());
@@ -395,11 +325,11 @@ public class RequestHandlerHits extends RequestHandler {
         return hits;
     }
 
-    private Pair<BlsCacheEntry<?>, Hits> getHitsFromGroup(String groupBy, String viewGroup) throws InterruptedException, ExecutionException, InvalidQuery, BlsException {
+    private Pair<SearchCacheEntry<?>, Hits> getHitsFromGroup(String groupBy, String viewGroup) throws InterruptedException, ExecutionException, InvalidQuery, BlsException {
         PropertyValue viewGroupVal = PropertyValue.deserialize(blIndex(), blIndex().mainAnnotatedField(), viewGroup);
         if (viewGroupVal == null)
             throw new BadRequest("ERROR_IN_GROUP_VALUE", "Cannot deserialize group value: " + viewGroup);
-        BlsCacheEntry<HitGroups> jobHitGroups = (BlsCacheEntry<HitGroups>)searchParam.hitsGrouped().executeAsync();
+        SearchCacheEntry<HitGroups> jobHitGroups = searchParam.hitsGroupedStats().executeAsync();
         HitGroups hitGroups = jobHitGroups.get();
         HitGroup group = hitGroups.get(viewGroupVal);
         if (group == null)
@@ -420,8 +350,8 @@ public class RequestHandlerHits extends RequestHandler {
             SearchHits findHitsFromOnlyRequestedGroup = getQueryForHitsInSpecificGroupOnly(viewGroupVal, groupByProp, hitGroups);
             if (findHitsFromOnlyRequestedGroup != null) {
                 // place the group-contents query in the cache and return the results.
-                BlsCacheEntry<ResultCount> cacheEntry = (BlsCacheEntry<ResultCount>)findHitsFromOnlyRequestedGroup.count().executeAsync();
-                hits = ((BlsCacheEntry<Hits>)findHitsFromOnlyRequestedGroup.executeAsync()).get();
+                SearchCacheEntry<ResultCount> cacheEntry = findHitsFromOnlyRequestedGroup.count().executeAsync();
+                hits = (findHitsFromOnlyRequestedGroup.executeAsync()).get();
                 return Pair.of(cacheEntry, hits);
             }
 
@@ -429,12 +359,11 @@ public class RequestHandlerHits extends RequestHandler {
             // Since the group we got from the cached results didn't contain the hits, we need to get the hits from their original query
             // and then group them here (using a different code path, since the normal code path  doesn't always store the hits due to performance).
             // And, since retrieving just the hits for one group couldn't be done (findHitsFromOnlyRequestedGroup == null), we need to unfortunately get all hits.
-            SearchHitGroupsFromHits searchGroups = (SearchHitGroupsFromHits) searchParam.hitsSample().group(groupByProp, Results.NO_LIMIT);
-            searchGroups.forceStoreHits();
+            SearchHitGroupsFromHits searchGroups = (SearchHitGroupsFromHits) searchParam.hitsSample().groupWithStoredHits(groupByProp, Results.NO_LIMIT);
             // now run the separate grouping search, making sure not to actually store the hits.
             // Sorting of the resultant groups is not applied, but is also not required because the groups aren't shown, only their contents.
             // If a later query requests the groups in a sorted order, the cache will ensure these results become the input to that query anyway, so worst case we just deferred the work.
-            jobHitGroups = (BlsCacheEntry<HitGroups>)searchGroups.executeAsync(); // place groups with hits in search cache
+            jobHitGroups = searchGroups.executeAsync(); // place groups with hits in search cache
             hits = jobHitGroups
                 .get() //get grouped results
                 .get(viewGroupVal) // get group

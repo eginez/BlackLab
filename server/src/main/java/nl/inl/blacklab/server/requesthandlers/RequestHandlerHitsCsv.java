@@ -1,21 +1,5 @@
 package nl.inl.blacklab.server.requesthandlers;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ExecutionException;
-
-import javax.servlet.http.HttpServletRequest;
-
-import org.apache.commons.csv.CSVFormat;
-import org.apache.commons.csv.CSVPrinter;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.lucene.document.Document;
-
 import nl.inl.blacklab.exceptions.InvalidQuery;
 import nl.inl.blacklab.resultproperty.DocProperty;
 import nl.inl.blacklab.resultproperty.HitProperty;
@@ -23,13 +7,8 @@ import nl.inl.blacklab.resultproperty.PropertyValue;
 import nl.inl.blacklab.search.Kwic;
 import nl.inl.blacklab.search.indexmetadata.Annotation;
 import nl.inl.blacklab.search.indexmetadata.MetadataField;
-import nl.inl.blacklab.search.results.CorpusSize;
-import nl.inl.blacklab.search.results.DocResults;
-import nl.inl.blacklab.search.results.Hit;
-import nl.inl.blacklab.search.results.HitGroup;
-import nl.inl.blacklab.search.results.HitGroups;
-import nl.inl.blacklab.search.results.Hits;
-import nl.inl.blacklab.search.results.Kwics;
+import nl.inl.blacklab.search.results.*;
+import nl.inl.blacklab.searches.SearchCacheEntry;
 import nl.inl.blacklab.server.BlackLabServer;
 import nl.inl.blacklab.server.datastream.DataFormat;
 import nl.inl.blacklab.server.datastream.DataStream;
@@ -38,7 +17,15 @@ import nl.inl.blacklab.server.exceptions.BadRequest;
 import nl.inl.blacklab.server.exceptions.BlsException;
 import nl.inl.blacklab.server.exceptions.InternalServerError;
 import nl.inl.blacklab.server.jobs.User;
-import nl.inl.blacklab.server.search.BlsCacheEntry;
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVPrinter;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.lucene.document.Document;
+
+import javax.servlet.http.HttpServletRequest;
+import java.io.IOException;
+import java.util.*;
+import java.util.concurrent.ExecutionException;
 
 /**
  * Request handler for hit results.
@@ -88,7 +75,7 @@ public class RequestHandlerHitsCsv extends RequestHandler {
         if (sortBy.isEmpty())
             sortBy = null;
 
-        BlsCacheEntry<?> cacheEntry = null;
+        SearchCacheEntry<?> cacheEntry = null;
         Hits hits = null;
         HitGroups groups = null;
         DocResults subcorpus = searchParam.subcorpus().execute();
@@ -96,7 +83,7 @@ public class RequestHandlerHitsCsv extends RequestHandler {
         try {
             if (!StringUtils.isEmpty(groupBy)) {
                 hits = searchParam.hits().execute();
-                groups = searchParam.hitsGrouped().execute();
+                groups = searchParam.hitsGroupedWithStoredHits().execute();
 
                 if (viewGroup != null) {
                     PropertyValue groupId = PropertyValue.deserialize(blIndex(), blIndex().mainAnnotatedField(), viewGroup);
@@ -121,7 +108,7 @@ public class RequestHandlerHitsCsv extends RequestHandler {
                 }
             } else {
                 // Use a regular search for hits, so that not all hits are actually retrieved yet, we'll have to construct a pagination view on top of the hits manually
-                cacheEntry = (BlsCacheEntry<Hits>)searchParam.hitsSample().executeAsync();
+                cacheEntry = searchParam.hitsSample().executeAsync();
                 hits = (Hits) cacheEntry.get();
             }
         } catch (InterruptedException | ExecutionException e) {
@@ -153,8 +140,6 @@ public class RequestHandlerHitsCsv extends RequestHandler {
     }
 
     private void writeGroups(Hits inputHitsForGroups, HitGroups groups, DocResults subcorpusResults, DataStreamPlain ds) throws BlsException {
-        searchLogger.setResultsFound(groups.size());
-
         DocProperty metadataGroupProperties = null;
         if (RequestHandlerHitsGrouped.INCLUDE_RELATIVE_FREQ) {
             metadataGroupProperties = groups.groupCriteria().docPropsOnly();
@@ -262,8 +247,6 @@ public class RequestHandlerHitsCsv extends RequestHandler {
         DocResults subcorpusResults,
         DataStreamPlain ds
     ) throws BlsException {
-        searchLogger.setResultsFound(hits.size());
-
         final Annotation mainTokenProperty = blIndex().mainAnnotatedField().mainAnnotation();
         try {
             // Build the table headers

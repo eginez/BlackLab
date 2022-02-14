@@ -127,6 +127,7 @@ parameters:
 
     # Context around match ("wordsaroundhit" parameter)
     # (higher values might cause copyright issues and may stress the server)
+    # Set to 0 to omit the left and right context altogether.
     contextSize:
         default: 5
         max: 20
@@ -138,6 +139,12 @@ parameters:
     #  Default filter language to use.
     #  The filterlang GET parameter override this value.
     filterLanguage: luceneql
+
+    # By default, should we include the grouped hits in
+    # grouped responses? If false, just include group 
+    # identity and size. Can be overridden using the
+    # "includegroupcontents" parameter.
+    writeHitsAndDocsInGroupedHits: false
 
 
 
@@ -189,6 +196,13 @@ cache:
     # Use  targetFreeMemMegs to set a "free memory goal" and maxJobAgeSec to set a
     # "cache cleanup goal".
     maxNumberOfJobs: 100
+    
+    # The cache implementation to use.
+    # (FQDN or class name (in package nl.inl.blacklab.server.search) of
+    # SearchCache subclass to instantiate)
+    # The default is BlsCache. An alternative is ResultsCache, which is more
+    # efficient if you have a large number of small, short-lived indexes.
+    implementation: BlsCache
 
 
 
@@ -275,9 +289,6 @@ authentication:
 # Settings related to logging
 log:
 
-    # Where to log detailed information about requests and cache stats
-    sqliteDatabase: /home/jan/blacklab/sqlite_log.db
-
     # What subjects to log messages for
     trace:
         # BL trace settings
@@ -342,6 +353,10 @@ indexing:
     
     # Max. number of values to store per metadata field
     maxMetadataValuesToStore: 100
+    
+    # Max. number of indices per user
+    # (only relevant if you've configured private indices and authorization)
+    maxNumberOfIndicesPerUser: 10
 
 
 # Plugin options. Plugins allow you to automatically convert files (e.g. .html, .docx) or 

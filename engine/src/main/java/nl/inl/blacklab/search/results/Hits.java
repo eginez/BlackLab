@@ -1,19 +1,5 @@
 package nl.inl.blacklab.search.results;
 
-import java.util.Iterator;
-import java.util.List;
-import java.util.Random;
-import java.util.Set;
-import java.util.TreeSet;
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java.util.function.Consumer;
-
-import org.apache.commons.lang3.mutable.MutableInt;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.eclipse.collections.impl.list.mutable.primitive.IntArrayList;
-
 import it.unimi.dsi.fastutil.ints.IntArrays;
 import nl.inl.blacklab.exceptions.BlackLabRuntimeException;
 import nl.inl.blacklab.exceptions.WildcardTermTooBroad;
@@ -27,8 +13,21 @@ import nl.inl.blacklab.search.indexmetadata.MatchSensitivity;
 import nl.inl.blacklab.search.lucene.BLSpanQuery;
 import nl.inl.util.Sort;
 import nl.inl.util.Sort.Sortable;
+import org.apache.commons.lang3.mutable.MutableInt;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.eclipse.collections.impl.list.mutable.primitive.IntArrayList;
+
+import java.util.*;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.Consumer;
 
 public abstract class Hits extends Results<Hit, HitProperty> {
+
+    /** A mutable implementation of Hit, to be used for short-lived
+     *  instances used while e.g. iterating through a list of hits.
+     */
     public static class EphemeralHit implements Hit {
         public int doc = -1;
         public int start = -1;
@@ -381,12 +380,12 @@ public abstract class Hits extends Results<Hit, HitProperty> {
      * Make a wrapper Hits object for a list of Hit objects.
      *
      * Will create Hit objects from the arrays. Mainly useful for testing.
-     * Prefer using @link { {@link #fromArrays(QueryInfo, IntArrayList, IntArrayList, IntArrayList) }
+     * Prefer using @link { {@link #fromList(QueryInfo, HitsArrays, CapturedGroups)} }
      *
      * @param queryInfo information about the original query
-     * @param doc doc ids
-     * @param start hit starts
-     * @param end hit ends
+     * @param docs doc ids
+     * @param starts hit starts
+     * @param ends hit ends
      * @return hits found
      */
     public static Hits fromArrays(QueryInfo queryInfo, int[] docs, int[] starts, int[] ends) {
@@ -531,7 +530,9 @@ public abstract class Hits extends Results<Hit, HitProperty> {
     /** Construct an empty, mutable Hits object.
      *
      * @param queryInfo query info for corresponding query
-     * @deprecated if you need an empty Hits object, use {@link #Hits(QueryInfo, boolean)}; otherwise, use {@link #Hits(QueryInfo, HitsArrays)}
+     * @deprecated if you need an empty Hits object, use either
+     *     {@link #immutableEmptyList(QueryInfo)} or {@link #mutableEmptyList(QueryInfo)};
+     *     otherwise, use {@link #Hits(QueryInfo, HitsArrays)}
      */
     @Deprecated
     public Hits(QueryInfo queryInfo) {

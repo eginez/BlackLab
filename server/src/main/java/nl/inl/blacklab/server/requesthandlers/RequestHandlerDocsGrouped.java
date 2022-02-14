@@ -1,27 +1,20 @@
 package nl.inl.blacklab.server.requesthandlers;
 
-import java.util.Arrays;
-import java.util.List;
-import java.util.concurrent.ExecutionException;
-
-import javax.servlet.http.HttpServletRequest;
-
 import nl.inl.blacklab.exceptions.InvalidQuery;
 import nl.inl.blacklab.resultproperty.DocProperty;
 import nl.inl.blacklab.resultproperty.DocPropertyMultiple;
 import nl.inl.blacklab.resultproperty.PropertyValue;
-import nl.inl.blacklab.search.results.CorpusSize;
-import nl.inl.blacklab.search.results.DocGroup;
-import nl.inl.blacklab.search.results.DocGroups;
-import nl.inl.blacklab.search.results.DocResults;
-import nl.inl.blacklab.search.results.ResultCount;
-import nl.inl.blacklab.search.results.WindowStats;
+import nl.inl.blacklab.search.results.*;
+import nl.inl.blacklab.searches.SearchCacheEntry;
 import nl.inl.blacklab.server.BlackLabServer;
 import nl.inl.blacklab.server.datastream.DataStream;
 import nl.inl.blacklab.server.exceptions.BlsException;
 import nl.inl.blacklab.server.jobs.User;
-import nl.inl.blacklab.server.search.BlsCacheEntry;
 
+import javax.servlet.http.HttpServletRequest;
+import java.util.Arrays;
+import java.util.List;
+import java.util.concurrent.ExecutionException;
 /**
  * Request handler for grouped doc results.
  */
@@ -35,13 +28,13 @@ public class RequestHandlerDocsGrouped extends RequestHandler {
     public int handle(DataStream ds) throws BlsException, InvalidQuery {
 
         // Make sure we have the hits search, so we can later determine totals.
-        BlsCacheEntry<ResultCount> originalHitsSearch = null;
+        SearchCacheEntry<ResultCount> originalHitsSearch = null;
         if (searchParam.hasPattern()) {
-            originalHitsSearch = (BlsCacheEntry<ResultCount>)searchParam.hitsCount().executeAsync();
+            originalHitsSearch = searchParam.hitsCount().executeAsync();
         }
         // Get the window we're interested in
         DocResults docResults = searchParam.docs().execute();
-        BlsCacheEntry<DocGroups> groupSearch = (BlsCacheEntry<DocGroups>)searchParam.docsGrouped().executeAsync();
+        SearchCacheEntry<DocGroups> groupSearch = searchParam.docsGrouped().executeAsync();
         DocGroups groups;
         try {
             groups = groupSearch.get();
@@ -93,7 +86,6 @@ public class RequestHandlerDocsGrouped extends RequestHandler {
             addNumberOfResultsSummaryTotalHits(ds, totalHits, docsStats, false, subcorpusSize);
 
         ds.endMap().endEntry();
-        searchLogger.setResultsFound(groups.size());
 
         /* Gather group values per property:
          * In the case we're grouping by multiple values, the DocPropertyMultiple and PropertyValueMultiple will
