@@ -52,6 +52,9 @@ import nl.inl.util.XmlUtil;
  */
 public class DocIndexerXPath extends DocIndexerConfig {
 
+    /** Did we log a warning about a possible XPath issue? If so, don't keep warning again and again. */
+    private static boolean warnedAboutXpathIssue = false;
+
     private enum FragmentPosition {
         BEFORE_OPEN_TAG,
         AFTER_OPEN_TAG,
@@ -525,7 +528,8 @@ public class DocIndexerXPath extends DocIndexerConfig {
                             // There is no good way to check whether this exception will occur
                             // When the exception occurs we try to evaluate the xpath as string
                             // NOTE: an xpath with dot like: string(.//tei:availability[1]/@status='free') may fail silently!!
-                            if (logger.isDebugEnabled()) {
+                            if (logger.isDebugEnabled() && !warnedAboutXpathIssue) {
+                                warnedAboutXpathIssue = true;
                                 logger.debug(String.format("An xpath with a dot like %s may fail silently and may have to be replaced by one like %s",
                                         "string(.//tei:availability[1]/@status='free')",
                                         "string(//tei:availability[1]/@status='free')"));
@@ -559,7 +563,8 @@ public class DocIndexerXPath extends DocIndexerConfig {
                         // There is no good way to check whether this exception will occur
                         // When the exception occurs we try to evaluate the xpath as string
                         // NOTE: an xpath with dot like: string(.//tei:availability[1]/@status='free') may fail silently!!
-                        if (logger.isDebugEnabled()) {
+                        if (logger.isDebugEnabled() && !warnedAboutXpathIssue) {
+                            warnedAboutXpathIssue = true;
                             logger.debug(String.format("An xpath with a dot like %s may fail silently and may have to be replaced by one like %s",
                                     "string(.//tei:availability[1]/@status='free')",
                                     "string(//tei:availability[1]/@status='free')"));
@@ -608,7 +613,7 @@ public class DocIndexerXPath extends DocIndexerConfig {
         try {
             String valuePath = annotation.getValuePath();
             if (valuePath == null) {
-                // No valuePath given. Assume this will be captures using forEach.
+                // No valuePath given. Assume this will be captured using forEach.
                 return;
             }
 
@@ -626,7 +631,6 @@ public class DocIndexerXPath extends DocIndexerConfig {
             Collection<String> annotValue = findAnnotationMatches(annotation, valuePath, indexAtPositions, null);
 
             // For each configured subannotation...
-            Set<String> alreadySeen = new HashSet<>(); // keep track of which annotation have multiple values so we can use the correct position increment
             for (ConfigAnnotation subAnnot : annotation.getSubAnnotations()) {
                 // Subannotation configs without a valuePath are just for
                 // adding information about subannotations captured in forEach's,
@@ -641,7 +645,6 @@ public class DocIndexerXPath extends DocIndexerConfig {
                     navpush();
                     AutoPilot apForEach = acquireAutoPilot(subAnnot.getForEachPath());
                     AutoPilot apName = acquireAutoPilot(subAnnot.getName());
-                    alreadySeen.clear();
                     while (apForEach.evalXPath() != -1) {
                         // Find the name and value for this forEach match
                         apName.resetXPath();

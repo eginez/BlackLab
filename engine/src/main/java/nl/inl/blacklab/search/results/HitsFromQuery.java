@@ -1,14 +1,14 @@
 package nl.inl.blacklab.search.results;
 
-import nl.inl.blacklab.exceptions.BlackLabRuntimeException;
-import nl.inl.blacklab.exceptions.InterruptedSearch;
-import nl.inl.blacklab.exceptions.WildcardTermTooBroad;
-import nl.inl.blacklab.search.BlackLabIndex;
-import nl.inl.blacklab.search.Span;
-import nl.inl.blacklab.search.lucene.BLSpanQuery;
-import nl.inl.blacklab.search.lucene.BLSpans;
-import nl.inl.blacklab.search.lucene.HitQueryContext;
-import nl.inl.blacklab.search.lucene.optimize.ClauseCombinerNfa;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.Term;
@@ -19,10 +19,16 @@ import org.apache.lucene.search.spans.SpanWeight.Postings;
 import org.apache.lucene.search.spans.Spans;
 import org.apache.lucene.util.Bits;
 
-import java.io.IOException;
-import java.util.*;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
+import nl.inl.blacklab.exceptions.BlackLabRuntimeException;
+import nl.inl.blacklab.exceptions.InterruptedSearch;
+import nl.inl.blacklab.exceptions.WildcardTermTooBroad;
+import nl.inl.blacklab.search.BlackLabIndex;
+import nl.inl.blacklab.search.BlackLabIndexImpl;
+import nl.inl.blacklab.search.Span;
+import nl.inl.blacklab.search.lucene.BLSpanQuery;
+import nl.inl.blacklab.search.lucene.BLSpans;
+import nl.inl.blacklab.search.lucene.HitQueryContext;
+import nl.inl.blacklab.search.lucene.optimize.ClauseCombinerNfa;
 
 /**
  * A Hits object that is filled from a BLSpanQuery.
@@ -103,19 +109,22 @@ public class HitsFromQuery extends Hits {
 
             // Override FI match threshold? (debug use only!)
             long oldFiMatchValue = ClauseCombinerNfa.getNfaThreshold();
-            if (searchSettings.fiMatchFactor() != -1) {
+            if (searchSettings.fiMatchFactor() != -1 && searchSettings.fiMatchFactor() != ClauseCombinerNfa.getNfaThreshold()) {
                 logger.debug("setting NFA threshold for this query to " + searchSettings.fiMatchFactor());
                 ClauseCombinerNfa.setNfaThreshold(searchSettings.fiMatchFactor());
             }
 
             sourceQuery.setQueryInfo(queryInfo);
-            logger.debug("Query before optimize()/rewrite(): " + sourceQuery);
+            if (BlackLabIndexImpl.traceOptimization())
+                logger.debug("Query before optimize()/rewrite(): " + sourceQuery);
 
             BLSpanQuery optimize = sourceQuery.optimize(reader);
-            logger.debug("Query after optimize(): " + optimize);
+            if (BlackLabIndexImpl.traceOptimization())
+                logger.debug("Query after optimize(): " + optimize);
 
             BLSpanQuery spanQuery = optimize.rewrite(reader);
-            logger.debug("Query after rewrite(): " + spanQuery);
+            if (BlackLabIndexImpl.traceOptimization())
+                logger.debug("Query after rewrite(): " + spanQuery);
 
             // Restore previous FI match threshold
             if (searchSettings.fiMatchFactor() != -1) {

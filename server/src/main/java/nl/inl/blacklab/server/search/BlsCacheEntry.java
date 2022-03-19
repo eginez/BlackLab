@@ -28,6 +28,9 @@ public class BlsCacheEntry<T extends SearchResult> extends SearchCacheEntry<T> {
     /** id for the next job started */
     private static Long nextEntryId = 0L;
 
+    /** A peek at the result of the search, or null if not available */
+    private T peekValue;
+
     private static long now() {
         return System.currentTimeMillis();
     }
@@ -115,6 +118,7 @@ public class BlsCacheEntry<T extends SearchResult> extends SearchCacheEntry<T> {
             throw new RuntimeException("Search already started");
         started = true;
         final String requestId = ThreadContext.get("requestId");
+        peekValue = search.peekObject(this);
         future = search.queryInfo().index().blackLab().searchExecutorService().submit(() -> {
             ThreadContext.put("requestId", requestId);
             executeSearch();
@@ -127,7 +131,7 @@ public class BlsCacheEntry<T extends SearchResult> extends SearchCacheEntry<T> {
      */
     public void executeSearch() {
         try {
-            result = search.executeInternal();
+            result = search.executeInternal(this);
         } catch (Throwable e) {
 
             if (e instanceof InterruptedSearch) {
@@ -158,18 +162,6 @@ public class BlsCacheEntry<T extends SearchResult> extends SearchCacheEntry<T> {
 
     public long worthiness() {
         return worthiness;
-    }
-
-    public Throwable exceptionThrown() {
-        return exceptionThrown;
-    }
-
-    public String exceptionStacktrace() {
-        if (exceptionThrown == null)
-            return "";
-        StringWriter out = new StringWriter();
-        exceptionThrown.printStackTrace(new PrintWriter(out));
-        return out.toString();
     }
 
     @Override
@@ -266,7 +258,7 @@ public class BlsCacheEntry<T extends SearchResult> extends SearchCacheEntry<T> {
             ms -= POLLING_TIME_MS;
         }
         if (isCancelled()) {
-            InterruptedSearch interruptedSearch = new InterruptedSearch("Search was cancelled");
+            InterruptedSearch interruptedSearch = new InterruptedSearch();
             interruptedSearch.setCacheEntry(this);
             throw interruptedSearch;
         }
@@ -407,6 +399,8 @@ public class BlsCacheEntry<T extends SearchResult> extends SearchCacheEntry<T> {
                         "stackTrace", st.toString()
                 );
                 debugInfo.put("thrownException", thrownException);
+            } else {
+                debugInfo.put("thrownException", Collections.emptyMap());
             }
             info.put("debugInfo", debugInfo);
         }
@@ -459,6 +453,19 @@ public class BlsCacheEntry<T extends SearchResult> extends SearchCacheEntry<T> {
     @Override
     public String getReason() {
         return reason;
+    }
+
+    /**
+     * Peek at the result even if it's not yet finished.
+     *
+     * Used for running counts.
+     *
+     * @return the result so far, or null if not supported for this operation
+     */
+    public T peek() {
+        if (isCancelled())
+            throw new InterruptedSearch();
+        return peekValue;
     }
 
 }
